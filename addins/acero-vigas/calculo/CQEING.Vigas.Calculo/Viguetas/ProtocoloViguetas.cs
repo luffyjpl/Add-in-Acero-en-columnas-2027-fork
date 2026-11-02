@@ -12,12 +12,21 @@ public sealed record ListoViguetas : MensajeViguetas;
 
 public sealed record ElegirPiso(string Id, bool ViguetasComoBorde) : MensajeViguetas;
 
-/// <summary>Pide la propuesta de un panel. Medidas en mm; <paramref name="Borradas"/> son ids de <see cref="Vigueta"/>.</summary>
-public sealed record PedirPropuesta(string Panel, Direccion Direccion, double EjeAEje, double Ancho, IReadOnlyList<string> Borradas) : MensajeViguetas;
+/// <summary>
+/// Pide la propuesta de uno o varios paneles (decisión 12). Medidas en mm; <paramref name="Borradas"/> son ids de
+/// <see cref="Vigueta"/>; <paramref name="Continuas"/>: crear de punta a punta a través de las vigas (decisión 13);
+/// <paramref name="Seguir"/>: seguir las líneas de las viguetas que ya están (decisión 16); <paramref name="QuitarModelo"/>:
+/// ids de las piezas de viguetas del modelo que se quitan al crear (<see cref="PiezaModelo"/>, decisión 22).
+/// </summary>
+public sealed record PedirPropuesta(IReadOnlyList<string> Paneles, Direccion Direccion, double EjeAEje, double Ancho, IReadOnlyList<string> Borradas,
+    bool Continuas = true, bool Seguir = true, IReadOnlyList<string>? QuitarModelo = null) : MensajeViguetas
+{
+    public IReadOnlyList<string> DelModelo => QuitarModelo ?? [];
+}
 
 public sealed record CrearViguetas(PedirPropuesta Propuesta, string Tipo) : MensajeViguetas;
 
-public sealed record QuitarCreadas(string Panel) : MensajeViguetas;
+public sealed record QuitarCreadas(IReadOnlyList<string> Paneles) : MensajeViguetas;
 
 public sealed record CerrarViguetas : MensajeViguetas;
 
@@ -43,14 +52,16 @@ public static class ProtocoloViguetas
         }
         if (e is null)
             return new DesconocidoViguetas();
-        PedirPropuesta Pedido() => new(e.Panel ?? "", e.Direccion ?? Direccion.X, e.EjeAEje ?? 0, e.Ancho ?? 0, e.Borradas ?? []);
+        List<string> paneles = e.Paneles ?? [];
+        PedirPropuesta Pedido() => new(paneles, e.Direccion ?? Direccion.X, e.EjeAEje ?? 0, e.Ancho ?? 0, e.Borradas ?? [], e.Continuas ?? true, e.Seguir ?? true,
+            e.QuitarModelo ?? []);
         return e.Tipo switch
         {
             "listo" => new ListoViguetas(),
             "piso" when e.Id is not null => new ElegirPiso(e.Id, e.ViguetasComoBorde ?? false),
-            "propuesta" when e.Panel is not null => Pedido(),
-            "crear" when e.Panel is not null && e.TipoVigueta is not null => new CrearViguetas(Pedido(), e.TipoVigueta),
-            "quitar" when e.Panel is not null => new QuitarCreadas(e.Panel),
+            "propuesta" when paneles.Count > 0 => Pedido(),
+            "crear" when paneles.Count > 0 && e.TipoVigueta is not null => new CrearViguetas(Pedido(), e.TipoVigueta),
+            "quitar" when paneles.Count > 0 => new QuitarCreadas(paneles),
             "cerrar" => new CerrarViguetas(),
             _ => new DesconocidoViguetas(),
         };
@@ -71,24 +82,35 @@ public static class ProtocoloViguetas
         paneles = p.Paneles.Select(x => new { id = x.Id, eje = x.Eje.Select(Xy), libre = x.Libre.Select(Xy), creadas = p.CreadasEn(x).Count }),
     });
 
-    public static string Propuesta(PropuestaViguetas? p, string panel) => p is null
-        ? Escribir(new { tipo = "propuesta", panel, propuesta = (object?)null })
+    /// <summary>
+    /// <paramref name="paneles"/> son los que pidió la página: la respuesta solo vale si siguen siendo esos.
+    /// <paramref name="hayGuias"/>: hay viguetas existentes que se pueden seguir, para mostrar la opción.
+    /// <paramref name="modelo"/>: las piezas de las viguetas del modelo dentro de los paneles, y cuáles se quitan
+    /// (decisión 22).
+    /// </summary>
+    public static string Propuesta(PropuestaViguetas? p, IReadOnlyList<string> paneles, bool continuas, bool hayGuias = false,
+        IEnumerable<(PiezaModelo Pieza, bool Quitada)>? modelo = null) => p is null
+        ? Escribir(new { tipo = "propuesta", paneles, propuesta = (object?)null })
         : Escribir(new
         {
             tipo = "propuesta",
-            panel,
+            paneles,
             propuesta = new
             {
                 direccion = p.Direccion,
                 ancho = p.Ancho,
-                libre = p.Libre,
-                cantidad = p.Reparto.Cantidad,
-                ejeAEje = p.Reparto.EjeAEje,
-                libreExtremos = p.Reparto.LibreExtremos,
-                libreMaximo = p.Reparto.LibreMaximo,
+                lineas = p.Lineas(continuas).Count,
+                hayGuias,
+                modelo = (modelo ?? []).Select(m => new { id = m.Pieza.Id, elemento = m.Pieza.Elemento, desde = Xy(m.Pieza.Inicio), hasta = Xy(m.Pieza.Fin), quitada = m.Quitada }),
+                paneles = p.Paneles.Select(r => new
+                {
+                    id = r.Panel, libre = r.Libre, cantidad = r.Reparto.Cantidad, ejeAEje = r.Reparto.EjeAEje,
+                    libreExtremos = r.Reparto.LibreExtremos, libreFinal = r.LibreOtroExtremo, libreMaximo = r.Reparto.LibreMaximo,
+                    origen = r.Origen, guia = r.Guia,
+                }),
                 viguetas = p.Viguetas.Select(v => new
                 {
-                    id = v.Id, cota = v.Cota, desde = Xy(p.Punto(v.Cota, v.Desde)), hasta = Xy(p.Punto(v.Cota, v.Hasta)),
+                    id = v.Id, panel = v.Panel, cota = v.Cota, desde = Xy(p.Punto(v.Cota, v.Desde)), hasta = Xy(p.Punto(v.Cota, v.Hasta)),
                     largo = v.Largo, tipo = v.Tipo, borrada = v.Borrada,
                 }),
                 tipos = p.Tipos,
@@ -106,7 +128,10 @@ public static class ProtocoloViguetas
         public string? Tipo { get; set; }
         public string? Id { get; set; }
         public bool? ViguetasComoBorde { get; set; }
-        public string? Panel { get; set; }
+        public List<string>? Paneles { get; set; }
+        public bool? Continuas { get; set; }
+        public bool? Seguir { get; set; }
+        public List<string>? QuitarModelo { get; set; }
         public Direccion? Direccion { get; set; }
         public double? EjeAEje { get; set; }
         public double? Ancho { get; set; }

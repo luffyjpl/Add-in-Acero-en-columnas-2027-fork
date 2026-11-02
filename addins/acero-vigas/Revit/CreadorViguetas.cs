@@ -1,6 +1,6 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
-using CQEING.Vigas.Calculo.Viguetas;
+using CQEING.Vigas.Calculo.Porticos;
 
 namespace CQEING.Vigas.Revit;
 
@@ -10,23 +10,27 @@ namespace CQEING.Vigas.Revit;
 internal static class CreadorViguetas
 {
     /// <summary>
-    /// Crea las viguetas vivas de <paramref name="propuesta"/> con <paramref name="tipo"/>, de eje a eje de viga, en
-    /// <paramref name="nivel"/> y a la cota de las vigas del piso. Antes quita las que el add-in ya había creado en el
-    /// panel (<paramref name="anteriores"/>), así repetir no las duplica. Devuelve cuántas creó.
+    /// Crea una vigueta por línea (<see cref="Calculo.Viguetas.PropuestaViguetas.Lineas"/>, de eje a eje de viga) con
+    /// <paramref name="tipo"/>, en <paramref name="nivel"/> y a la cota de las vigas del piso. Antes quita las que el
+    /// add-in ya había creado en esos paneles (<paramref name="anteriores"/>), así repetir no las duplica, y recorta las
+    /// viguetas del modelo que el usuario marcó (<paramref name="recortes"/>, decisiones 19 y 21). Devuelve cuántas creó y
+    /// cuántas del modelo recortó.
     /// </summary>
-    public static int Crear(Document doc, Level nivel, FamilySymbol tipo, PropuestaViguetas propuesta, IEnumerable<ElementId> anteriores)
+    public static (int Creadas, int Recortadas) Crear(Document doc, Level nivel, FamilySymbol tipo, IEnumerable<(Punto Desde, Punto Hasta)> lineas,
+        IEnumerable<ElementId> anteriores, IEnumerable<(ElementId Id, List<(double Desde, double Hasta)> Restos)> recortes)
     {
         double z = LectorPiso.CotaLineas(doc, nivel);
         double minimo = doc.Application.ShortCurveTolerance;
         using var t = new Transaction(doc, "CQEING: crear viguetas");
         t.Start();
         Borrar(doc, anteriores);
+        int recortadas = recortes.Count(r => Recortar(doc, r.Id, r.Restos));
         if (!tipo.IsActive)
             tipo.Activate();
         int creadas = 0;
-        foreach (Vigueta v in propuesta.Vivas)
+        foreach ((Punto desde, Punto hasta) in lineas)
         {
-            XYZ a = Pies(propuesta.Punto(v.Cota, v.EjeDesde), z), b = Pies(propuesta.Punto(v.Cota, v.EjeHasta), z);
+            XYZ a = Pies(desde, z), b = Pies(hasta, z);
             if (a.DistanceTo(b) <= minimo)
                 continue;
             FamilyInstance f = doc.Create.NewFamilyInstance(Line.CreateBound(a, b), tipo, nivel, StructuralType.Beam);
@@ -34,7 +38,7 @@ internal static class CreadorViguetas
             creadas++;
         }
         t.Commit();
-        return creadas;
+        return (creadas, recortadas);
     }
 
     /// <summary>Quita las viguetas que creó el add-in (solo esas: se comprueba la marca). Devuelve cuántas quitó.</summary>
@@ -47,6 +51,30 @@ internal static class CreadorViguetas
         return quitadas;
     }
 
+    /// <summary>
+    /// Deja de la vigueta del modelo solo sus <paramref name="restos"/> (fracciones de su línea de ubicación, decisión 21):
+    /// el elemento se acorta al primero y cada uno de los demás va en una copia del mismo elemento. Sin restos, se borra.
+    /// Solo toca armazón estructural.
+    /// </summary>
+    private static bool Recortar(Document doc, ElementId id, List<(double Desde, double Hasta)> restos)
+    {
+        if (doc.GetElement(id) is not FamilyInstance f || f.Category?.Id.Value != (long)BuiltInCategory.OST_StructuralFraming
+            || f.Location is not LocationCurve { Curve: Line linea } ubicacion)
+            return false;
+        if (restos.Count == 0)
+        {
+            doc.Delete(id);
+            return true;
+        }
+        XYZ p0 = linea.GetEndPoint(0), p1 = linea.GetEndPoint(1);
+        Line Tramo((double Desde, double Hasta) t) => Line.CreateBound(p0 + (p1 - p0) * t.Desde, p0 + (p1 - p0) * t.Hasta);
+        foreach ((double, double) resto in restos.Skip(1))
+            if (doc.GetElement(ElementTransformUtils.CopyElement(doc, id, XYZ.Zero).First()).Location is LocationCurve copia)
+                copia.Curve = Tramo(resto);
+        ubicacion.Curve = Tramo(restos[0]);
+        return true;
+    }
+
     private static int Borrar(Document doc, IEnumerable<ElementId> ids)
     {
         List<ElementId> nuestras = ids.Where(id => doc.GetElement(id) is Element e && LectorPiso.EsCreada(e)).ToList();
@@ -55,6 +83,6 @@ internal static class CreadorViguetas
         return nuestras.Count;
     }
 
-    private static XYZ Pies(Calculo.Porticos.Punto p, double z) =>
+    private static XYZ Pies(Punto p, double z) =>
         new(UnitUtils.ConvertToInternalUnits(p.X, UnitTypeId.Millimeters), UnitUtils.ConvertToInternalUnits(p.Y, UnitTypeId.Millimeters), z);
 }

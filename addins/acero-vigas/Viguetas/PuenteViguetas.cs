@@ -33,8 +33,11 @@ internal sealed class PuenteViguetas
         switch (mensaje)
         {
             case PedirPropuesta p:
-                ventana.Enviar(ProtocoloViguetas.Propuesta(Propuesta(p), p.Panel));
+            {
+                (PropuestaViguetas? propuesta, bool hayGuias) = Propuesta(p);
+                ventana.Enviar(ProtocoloViguetas.Propuesta(propuesta, p.Paneles, p.Continuas, hayGuias, Modelo(p)));
                 break;
+            }
             case CerrarViguetas:
                 ventana.Close();
                 break;
@@ -66,7 +69,7 @@ internal sealed class PuenteViguetas
                 Crear(c);
                 break;
             case QuitarCreadas q:
-                Quitar(q.Panel);
+                Quitar(q.Paneles);
                 break;
         }
     }
@@ -83,35 +86,65 @@ internal sealed class PuenteViguetas
 
     private void Crear(CrearViguetas c)
     {
-        if (piso is null || piso.Panel(c.Propuesta.Panel) is not Panel panel || Propuesta(c.Propuesta) is not PropuestaViguetas propuesta)
+        if (piso is null || Propuesta(c.Propuesta).Propuesta is not PropuestaViguetas propuesta)
             return;
         if (Nivel(piso.Piso.Id) is not Level nivel || doc.GetElement(Id(c.Tipo)) is not FamilySymbol tipo)
         {
             ventana.Enviar(ProtocoloViguetas.Aviso("Elija un tipo de vigueta."));
             return;
         }
-        int creadas = CreadorViguetas.Crear(doc, nivel, tipo, propuesta, Ids(piso.CreadasEn(panel)));
+        List<Panel> paneles = piso.PanelesDe(c.Propuesta.Paneles);
+        HashSet<string> marcadas = c.Propuesta.DelModelo.ToHashSet();
+        var recortes = piso.PiezasDelModelo(paneles).Where(x => marcadas.Contains(x.Id)).GroupBy(x => x.Elemento)
+            .Select(g => (Id(g.Key), PisoViguetas.Restos(piso.Elemento(g.Key)!, g.Select(x => (x.Desde, x.Hasta))))).ToList();
+        (int creadas, int recortadas) = CreadorViguetas.Crear(doc, nivel, tipo, propuesta.Lineas(c.Propuesta.Continuas),
+            Ids(paneles.SelectMany(piso.CreadasEn)), recortes);
         Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
-        ventana.Enviar(ProtocoloViguetas.Aviso($"Se crearon {creadas} viguetas en {panel.Id}. Ctrl+Z en Revit las deshace.", bien: true));
+        string delModelo = recortadas > 0 ? $" y se quitó de {recortadas} viguetas del modelo el tramo dentro del panel" : "";
+        ventana.Enviar(ProtocoloViguetas.Aviso($"Se crearon {creadas} viguetas en {Nombres(paneles)}{delModelo}. Ctrl+Z en Revit lo deshace.", bien: true));
     }
 
-    private void Quitar(string id)
+    private void Quitar(IReadOnlyList<string> ids)
     {
-        if (piso?.Panel(id) is not Panel panel)
+        if (piso is null)
             return;
-        int quitadas = CreadorViguetas.Quitar(doc, Ids(piso.CreadasEn(panel)));
+        List<Panel> paneles = piso.PanelesDe(ids);
+        int quitadas = CreadorViguetas.Quitar(doc, Ids(paneles.SelectMany(piso.CreadasEn)));
         Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
-        ventana.Enviar(ProtocoloViguetas.Aviso($"Se quitaron {quitadas} viguetas de {panel.Id}.", bien: true));
+        ventana.Enviar(ProtocoloViguetas.Aviso($"Se quitaron {quitadas} viguetas de {Nombres(paneles)}.", bien: true));
     }
 
-    private PropuestaViguetas? Propuesta(PedirPropuesta p) =>
-        piso?.Panel(p.Panel) is Panel panel
-            ? PlanificadorViguetas.Planificar(panel, p.Direccion, p.EjeAEje, p.Ancho, p.Borradas.ToHashSet())
-            : null;
+    /// <summary>
+    /// La propuesta pedida y si hay viguetas existentes que se puedan seguir (decisión 16): la página muestra la opción
+    /// solo entonces.
+    /// </summary>
+    private (PropuestaViguetas? Propuesta, bool HayGuias) Propuesta(PedirPropuesta p)
+    {
+        if (piso is null)
+            return (null, false);
+        List<Panel> paneles = piso.PanelesDe(p.Paneles);
+        HashSet<string> borradas = p.Borradas.ToHashSet();
+        PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
+            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias);
+        PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion, paneles, p.DelModelo.Select(PisoViguetas.ElementoDe)));
+        bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
+        return (p.Seguir || !hay ? siguiendo : Con(null), hay);
+    }
+
+    private static string Nombres(List<Panel> paneles) => string.Join(", ", paneles.Select(p => p.Id));
+
+    /// <summary>Las piezas de las viguetas del modelo en los paneles pedidos y si están marcadas (decisión 22).</summary>
+    private List<(PiezaModelo Pieza, bool Quitada)> Modelo(PedirPropuesta p)
+    {
+        if (piso is null)
+            return [];
+        HashSet<string> marcadas = p.DelModelo.ToHashSet();
+        return piso.PiezasDelModelo(piso.PanelesDe(p.Paneles)).Select(x => (x, marcadas.Contains(x.Id))).ToList();
+    }
 
     private Level? Nivel(string id) => doc.GetElement(Id(id)) as Level;
 
     private static ElementId Id(string id) => long.TryParse(id, out long n) ? new ElementId(n) : ElementId.InvalidElementId;
 
-    private static IEnumerable<ElementId> Ids(IEnumerable<ArmazonPiso> armazon) => armazon.Select(a => Id(a.Id)).ToList();
+    private static IEnumerable<ElementId> Ids(IEnumerable<ArmazonPiso> armazon) => armazon.Select(a => Id(a.Id)).Distinct().ToList();
 }

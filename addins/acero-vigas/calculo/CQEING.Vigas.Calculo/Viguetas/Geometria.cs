@@ -97,6 +97,36 @@ public static class Geometria
         return tramos;
     }
 
+    /// <summary>
+    /// Las partes del segmento <paramref name="a"/>–<paramref name="b"/> que caen dentro del polígono, como fracciones
+    /// [desde, hasta] de su largo (0 = a, 1 = b), ordenadas.
+    /// </summary>
+    public static List<(double Desde, double Hasta)> TramosDentro(Punto a, Punto b, IReadOnlyList<Punto> p)
+    {
+        var t = new List<double> { 0, 1 };
+        (double dx, double dy) = (b.X - a.X, b.Y - a.Y);
+        for (int i = 0; i < p.Count; i++)
+        {
+            Punto c = p[i], d = p[(i + 1) % p.Count];
+            (double ex, double ey) = (d.X - c.X, d.Y - c.Y);
+            double det = Cruz(dx, dy, ex, ey);
+            if (Math.Abs(det) < 1e-9)
+                continue;
+            double s = Cruz(c.X - a.X, c.Y - a.Y, ex, ey) / det, u = Cruz(c.X - a.X, c.Y - a.Y, dx, dy) / det;
+            if (s > 0 && s < 1 && u >= -1e-9 && u <= 1 + 1e-9)
+                t.Add(s);
+        }
+        t.Sort();
+        var tramos = new List<(double, double)>();
+        for (int i = 0; i + 1 < t.Count; i++)
+        {
+            double m = (t[i] + t[i + 1]) / 2;
+            if (t[i + 1] - t[i] > 1e-9 && Dentro(p, new Punto(a.X + dx * m, a.Y + dy * m)))
+                tramos.Add((t[i], t[i + 1]));
+        }
+        return tramos;
+    }
+
     private static (Punto, Punto) Corrido(Punto a, Punto b, double d)
     {
         double largo = Distancia(a, b);
