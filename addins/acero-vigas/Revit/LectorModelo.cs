@@ -49,25 +49,24 @@ internal static class LectorModelo
             if (Apoyo(columna, TipoApoyo.Columna, null) is ApoyoLeido a)
                 apoyos.Add(a);
 
-        // Solo muros de carga (decisión 4 del plan): los de cerramiento o división no apoyan vigas.
+        // Los muros de carga apoyan vigas (decisión 4 del plan). Los de cerramiento o división van marcados: solo apoyan la
+        // viga que descansa en ellos sin llegar a columnas, como la de amarre del cielo raso (Santiago, 3-nov).
         foreach (Wall muro in new FilteredElementCollector(doc).OfClass(typeof(Wall)).Cast<Wall>())
         {
-            if (muro.StructuralUsage == StructuralWallUsage.NonBearing)
-                continue;
             Punto? direccion = muro.Location is LocationCurve { Curve: Line l } ? new Punto(l.Direction.X, l.Direction.Y) : null;
-            if (Apoyo(muro, TipoApoyo.Muro, direccion) is ApoyoLeido a)
+            if (Apoyo(muro, TipoApoyo.Muro, direccion, muro.StructuralUsage != StructuralWallUsage.NonBearing) is ApoyoLeido a)
                 apoyos.Add(a);
         }
         return apoyos;
     }
 
-    private static ApoyoLeido? Apoyo(Element e, TipoApoyo tipo, Punto? direccion)
+    private static ApoyoLeido? Apoyo(Element e, TipoApoyo tipo, Punto? direccion, bool deCarga = true)
     {
         List<XYZ> puntos = Puntos(e);
         if (puntos.Count == 0)
             return null;
         List<Punto> huella = puntos.Select(Planta).Distinct().ToList();
-        return new ApoyoLeido(e.Id.ToString(), tipo, huella, Mm(puntos.Min(p => p.Z)), Mm(puntos.Max(p => p.Z)), direccion);
+        return new ApoyoLeido(e.Id.ToString(), tipo, huella, Mm(puntos.Min(p => p.Z)), Mm(puntos.Max(p => p.Z)), direccion, deCarga);
     }
 
     private static IEnumerable<FamilyInstance> Instancias(Document doc, BuiltInCategory categoria) =>

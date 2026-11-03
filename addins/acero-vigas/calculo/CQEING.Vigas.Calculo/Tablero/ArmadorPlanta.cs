@@ -26,26 +26,38 @@ public static class ArmadorPlanta
     /// <summary>
     /// La planta de los pórticos (<paramref name="porticos"/>, con su id de la lista). Se omiten los que no tienen
     /// ubicación en el modelo. Sin <paramref name="modelo"/> no hay ejes ni columnas, y la cota de cada nivel es la menor
-    /// cara de arriba de sus pórticos.
+    /// cara de arriba de sus pórticos. <paramref name="sinApoyos"/> se dibujan en su nivel como <c>"sinApoyos"</c>: un
+    /// nivel que solo tiene de esas también sale, separado de los demás (pisos y cielos rasos, Santiago 3-nov).
     /// </summary>
-    public static PlantaVista Armar(IEnumerable<(string Id, PorticoLeido Portico)> porticos, ModeloLeido? modelo)
+    public static PlantaVista Armar(IEnumerable<(string Id, PorticoLeido Portico)> porticos, ModeloLeido? modelo,
+        IEnumerable<VigasSinApoyos>? sinApoyos = null)
     {
         Dictionary<string, VigaLeida> vigas = modelo?.Vigas.GroupBy(v => v.Id).ToDictionary(g => g.Key, g => g.First()) ?? [];
         List<EnPlanta> enPlanta = porticos
             .Where(p => p.Portico.Ubicacion is { Vigas.Count: > 0 })
             .Select(p => EnPlanta.De(p.Id, p.Portico, vigas))
             .ToList();
+        List<VigasSinApoyos> sueltas = sinApoyos?.ToList() ?? [];
         List<EjePlanta> ejes = modelo?.Ejes.Select(e => new EjePlanta(e.Nombre, M(e.Desde.X), M(e.Desde.Y), M(e.Hasta.X), M(e.Hasta.Y))).ToList() ?? [];
 
-        var niveles = enPlanta
-            .GroupBy(e => e.Portico.Nivel ?? SinNivel)
-            .Select(g => (Nombre: g.Key, Cota: CotaDe(g.Key, g.ToList()), Elementos: g.ToList()))
+        var niveles = enPlanta.Select(e => e.Portico.Nivel ?? SinNivel).Concat(sueltas.Select(s => s.Nivel?.Nombre ?? SinNivel)).Distinct()
+            .Select(nombre =>
+            {
+                List<EnPlanta> propios = enPlanta.Where(e => (e.Portico.Nivel ?? SinNivel) == nombre).ToList();
+                List<VigasSinApoyos> sinPortico = sueltas.Where(s => (s.Nivel?.Nombre ?? SinNivel) == nombre).ToList();
+                return (Nombre: nombre, Cota: CotaDe(nombre, propios, sinPortico), Propios: propios, SinPortico: sinPortico);
+            })
             .OrderBy(n => n.Nombre == SinNivel)
             .ThenBy(n => n.Cota)
-            .Select(n => new NivelPlanta(n.Nombre, M(n.Cota), ejes, Columnas(modelo, n.Cota), Elementos(n.Elementos)))
+            .Select(n => new NivelPlanta(n.Nombre, M(n.Cota), ejes, Columnas(modelo, n.Cota),
+                [.. Elementos(n.Propios), .. n.SinPortico.Select(Suelta)]))
             .ToList();
         return new PlantaVista(niveles);
     }
+
+    /// <summary>Vigas sin apoyos: el id es el de sus vigas, que la página muestra y no abre (no hay pórtico).</summary>
+    private static ElementoPlanta Suelta(VigasSinApoyos s) =>
+        new(string.Join(", ", s.Vigas), "sinApoyos", M(s.Desde.X), M(s.Desde.Y), M(s.Hasta.X), M(s.Hasta.Y), M(s.Ancho));
 
     /// <summary>
     /// Los ids de los pórticos de cada sistema de viguetas de <paramref name="planta"/>: cada miembro apunta a la lista
@@ -68,10 +80,10 @@ public static class ArmadorPlanta
     /// La cota del nivel, en mm: la del nivel de Revit de sus vigas; sin ella (sin modelo o "Sin nivel"), la menor cara
     /// de arriba de sus pórticos.
     /// </summary>
-    private static double CotaDe(string nombre, List<EnPlanta> elementos) =>
-        nombre != SinNivel && elementos.Select(e => e.Nivel).FirstOrDefault(n => n is not null) is { } nivel
+    private static double CotaDe(string nombre, List<EnPlanta> elementos, List<VigasSinApoyos> sueltas) =>
+        nombre != SinNivel && elementos.Select(e => e.Nivel).Concat(sueltas.Select(s => s.Nivel)).FirstOrDefault(n => n is not null) is { } nivel
             ? nivel.Elevacion
-            : elementos.Min(e => e.Portico.Ubicacion!.ZArriba);
+            : elementos.Select(e => e.Portico.Ubicacion!.ZArriba).Concat(sueltas.Select(s => s.ZArriba)).Min();
 
     /// <summary>
     /// Las columnas y muros cuyo alto alcanza la cota (con <see cref="ToleranciaCota"/>): las que llegan desde abajo y las
@@ -83,7 +95,8 @@ public static class ArmadorPlanta
             return [];
         var vistas = new HashSet<string>();
         var columnas = new List<ColumnaPlanta>();
-        foreach (ApoyoLeido a in modelo.Apoyos.Where(a => a.Tipo != TipoApoyo.Viga && a.Huella.Count > 0
+        // Los divisorios no: en un piso son muchos y taparían las vigas; los que apoyan algo se ven en su alzado.
+        foreach (ApoyoLeido a in modelo.Apoyos.Where(a => a.Tipo != TipoApoyo.Viga && a.DeCarga && a.Huella.Count > 0
             && a.ZAbajo - ToleranciaCota <= cota && cota <= a.ZArriba + ToleranciaCota))
         {
             double[][] puntos = Contorno(a.Huella).Select(p => new[] { M(p.X), M(p.Y) }).ToArray();

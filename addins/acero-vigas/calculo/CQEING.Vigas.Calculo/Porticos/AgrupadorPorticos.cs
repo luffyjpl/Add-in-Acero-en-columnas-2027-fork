@@ -25,11 +25,15 @@ public static class AgrupadorPorticos
     {
         var porticos = new List<PorticoLeido>();
         var avisos = new List<AvisoLectura>();
+        var sinApoyos = new List<VigasSinApoyos>();
         int sinEje = 0, viguetas = 0;
 
         foreach (Linea linea in Lineas(modelo.Vigas))
         {
-            List<Soporte> soportes = Soportes(linea, modelo);
+            List<Soporte> soportes = Soportes(linea, modelo, false);
+            // Sin columna ni muro de carga en toda la línea, la viga descansa en los muros divisorios (viga de amarre).
+            if (!soportes.Any(s => s.Tipo != TipoApoyo.Viga))
+                soportes = Soportes(linea, modelo, true);
             List<List<Tramo>> cadenas = Cadenas(linea, soportes);
             EjeLeido? ejePropio = modelo.Ejes.FirstOrDefault(e => linea.EsColineal(e.Desde, e.Hasta));
 
@@ -43,6 +47,9 @@ public static class AgrupadorPorticos
                 if (propios.Count == 0)
                 {
                     avisos.Add(new AvisoLectura(TipoAvisoLectura.SinApoyos, string.Join(", ", cadena.Select(t => t.Viga.Id))));
+                    double lado = cadena.Average(t => linea.Normal(t.Viga.Centro ?? t.Viga.Desde));
+                    sinApoyos.Add(new VigasSinApoyos(cadena.Select(t => t.Viga.Id).ToList(), cadena[0].Viga.Nivel,
+                        linea.EnPlanta(desde, lado), linea.EnPlanta(hasta, lado), cadena.Max(t => t.Viga.Ancho), cadena.Max(t => t.Viga.ZArriba)));
                     continue;
                 }
 
@@ -55,7 +62,7 @@ public static class AgrupadorPorticos
                 porticos.Add(Armar(linea, modelo.Ejes, cadena, propios, nombre, eje?.Nombre, desde, hasta, avisos, clase));
             }
         }
-        return new ResultadoLectura(porticos, avisos, modelo);
+        return new ResultadoLectura(porticos, avisos, modelo, sinApoyos);
     }
 
     /// <summary>
@@ -204,6 +211,9 @@ public static class AgrupadorPorticos
         /// <summary>Distancia con signo a la línea, sin descontar su desplazamiento.</summary>
         public double Normal(Punto p) => -p.X * Uy + p.Y * Ux;
 
+        /// <summary>El punto a <paramref name="a"/> a lo largo y <paramref name="normal"/> de lado: el inverso de A y Normal.</summary>
+        public Punto EnPlanta(double a, double normal) => new(a * Ux - normal * Uy, a * Uy + normal * Ux);
+
         public bool EsParalela(double dx, double dy)
         {
             double largo = Math.Sqrt(dx * dx + dy * dy);
@@ -242,6 +252,13 @@ public static class AgrupadorPorticos
 
         public bool SeSolapaEnAlto(double zAbajo, double zArriba) =>
             Math.Min(zArriba, ZTope) - Math.Max(zAbajo, ZAbajo) > SolapeMinimoEnAlto;
+
+        /// <summary>
+        /// El muro llega a la cara de abajo de la línea (o entra en ella) sin pasarla: la viga descansa encima. El bloque
+        /// se modela hasta debajo de la viga, así que no se solapa con ella en alto.
+        /// </summary>
+        public bool DescansaEncima(double zAbajo, double zArriba) =>
+            zAbajo < ZAbajo && zArriba >= ZAbajo - ToleranciaLinea && zArriba <= ZTope + SolapeMinimoEnAlto;
     }
 
     private static List<Linea> Lineas(IReadOnlyList<VigaLeida> vigas)
@@ -266,14 +283,15 @@ public static class AgrupadorPorticos
 
     /// <summary>
     /// Columnas y muros de carga que cruzan la línea en planta y se solapan con ella en alto; los muros que van a lo
-    /// largo no cuentan. Las vigas que la cruzan quedan como candidatas a viga cargadora.
+    /// largo no cuentan. Las vigas que la cruzan quedan como candidatas a viga cargadora. Con
+    /// <paramref name="divisorios"/>, también los muros divisorios sobre los que descansa la línea.
     /// </summary>
-    private static List<Soporte> Soportes(Linea linea, ModeloLeido modelo)
+    private static List<Soporte> Soportes(Linea linea, ModeloLeido modelo, bool divisorios)
     {
         var soportes = new List<Soporte>();
         foreach (ApoyoLeido a in modelo.Apoyos)
         {
-            if (!linea.SeSolapaEnAlto(a.ZAbajo, a.ZArriba))
+            if (a.DeCarga ? !linea.SeSolapaEnAlto(a.ZAbajo, a.ZArriba) : !divisorios || !linea.DescansaEncima(a.ZAbajo, a.ZArriba))
                 continue;
             if (a.Direccion is Punto d && linea.EsParalela(d.X, d.Y))
                 continue;
@@ -334,10 +352,13 @@ public static class AgrupadorPorticos
             || modelo.Vigas.FirstOrDefault(v => v.Id == s.Id) is VigaLeida v && modelo.Apoyos.Any(a => Descansa(v, a))).ToList();
     }
 
-    /// <summary>La viga descansa en el apoyo si se pisan en planta y el apoyo llega a la altura de la viga.</summary>
+    /// <summary>
+    /// La viga descansa en el apoyo si se pisan en planta y el apoyo llega a la altura de la viga. Un muro divisorio no
+    /// la vuelve principal: eso sigue siendo de columnas y muros de carga.
+    /// </summary>
     private static bool Descansa(VigaLeida v, ApoyoLeido a)
     {
-        if (a.ZArriba < v.ZAbajo - ToleranciaContacto || a.ZAbajo > v.ZArriba)
+        if (!a.DeCarga || a.ZArriba < v.ZAbajo - ToleranciaContacto || a.ZAbajo > v.ZArriba)
             return false;
         double dx = v.Hasta.X - v.Desde.X, dy = v.Hasta.Y - v.Desde.Y;
         double largo = Math.Sqrt(dx * dx + dy * dy), ux = dx / largo, uy = dy / largo;
