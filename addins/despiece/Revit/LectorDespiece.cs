@@ -22,28 +22,33 @@ internal static class LectorDespiece
     public static double Mm(double pies) => UnitUtils.ConvertFromInternalUnits(pies, UnitTypeId.Millimeters);
 
     /// <summary>
-    /// Las plantas donde se eligen las vigas, de abajo hacia arriba: los planos estructurales y, en los niveles con vigas
-    /// que no tienen ninguno, una planta de piso. Un modelo hecho con plantilla de arquitectura solo trae plantas de piso,
-    /// y el despiece salía vacío aunque el add-in de acero sí veía sus pisos (3-nov).
+    /// Las plantas donde se eligen las vigas, de abajo hacia arriba: una por nivel con vigas, como las arma el add-in de
+    /// acero (el nivel de referencia de cada viga). No depende de las vistas del proyecto: con solo las vistas que había,
+    /// el despiece mostraba 4 niveles donde el de acero mostraba todos (3-nov).
     /// </summary>
-    public static List<ViewPlan> Plantas(Document doc)
+    public static List<Level> Plantas(Document doc)
     {
-        List<ViewPlan> vistas = new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
-            .Where(v => !v.IsTemplate && v.GenLevel is not null).ToList();
-        List<ViewPlan> estructurales = vistas.Where(v => v.ViewType == ViewType.EngineeringPlan).ToList();
-        var conPlano = new HashSet<ElementId>(estructurales.Select(v => v.GenLevel.Id));
-        // Los niveles como los toma el add-in de acero: el de referencia de cada viga.
         var conVigas = new HashSet<ElementId>(new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming)
             .WhereElementIsNotElementType().OfType<FamilyInstance>()
             .Select(v => v.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM)?.AsElementId() ?? ElementId.InvalidElementId));
-        IEnumerable<ViewPlan> dePiso = vistas
-            .Where(v => v.ViewType == ViewType.FloorPlan && !conPlano.Contains(v.GenLevel.Id) && conVigas.Contains(v.GenLevel.Id))
-            // Una por nivel: la principal (no dependiente) de nombre más corto, que suele ser la del nivel sin variantes.
-            .GroupBy(v => v.GenLevel.Id)
-            .Select(g => g.OrderBy(v => v.GetPrimaryViewId() != ElementId.InvalidElementId).ThenBy(v => v.Name.Length).ThenBy(v => v.Name, StringComparer.Ordinal).First());
-        return estructurales.Concat(dePiso)
-            .OrderBy(v => v.GenLevel.Elevation).ThenBy(v => v.Name, StringComparer.Ordinal).ToList();
+        return new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
+            .Where(n => conVigas.Contains(n.Id))
+            .OrderBy(n => n.Elevation).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
     }
+
+    /// <summary>
+    /// La vista del nivel de la que parte la imagen: su plano estructural y, si no tiene, su planta de piso. Una por nivel:
+    /// la principal (no dependiente) de nombre más corto, que suele ser la del nivel sin variantes. Null si el nivel no
+    /// tiene ninguna; entonces se crea una temporal.
+    /// </summary>
+    public static ViewPlan? VistaDe(Document doc, Level nivel) =>
+        new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
+            .Where(v => !v.IsTemplate && v.GenLevel?.Id == nivel.Id
+                && v.ViewType is ViewType.EngineeringPlan or ViewType.FloorPlan)
+            .OrderBy(v => v.ViewType != ViewType.EngineeringPlan)
+            .ThenBy(v => v.GetPrimaryViewId() != ElementId.InvalidElementId)
+            .ThenBy(v => v.Name.Length).ThenBy(v => v.Name, StringComparer.Ordinal)
+            .FirstOrDefault();
 
     public static List<VigaContinua> Leer(Document doc)
     {
