@@ -277,7 +277,7 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
         en3d = null; // la vista previa es del documento anterior: quien recarga la quita en Revit
         lectura = leer();
         porticos = ConId(lectura.Porticos);
-        planta = ArmadorPlanta.Armar(porticos.Select(p => (p.Id, p.Portico)), lectura.Modelo, lectura.SinApoyos);
+        planta = ArmadorPlanta.Armar(porticos.Select(p => (p.Id, p.Portico)), lectura.Modelo);
         grupos = ArmadorPlanta.Grupos(planta);
         foreach (string nombre in opciones.Keys.Where(n => Buscar(n) is null).ToList())
             opciones.Remove(nombre);
