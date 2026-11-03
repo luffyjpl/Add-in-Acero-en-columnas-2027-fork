@@ -910,5 +910,75 @@ Probar("ganchos_longitudinales_giran_por_el_lindero", () =>
     Cierto(g.Girado && g.Dx == -1, $"girado hacia −X: ({g.Dx}, {g.Dy})");
 });
 
+// Contra zapata (plan 2026-11-03-contra-zapata-piso-entero.md). En metros.
+const double Min = 0.01, Tol = 0.05;
+
+// Los estribos solo no pueden ir DENTRO de la zapata (Santiago, 3-nov): sobre
+// la cara superior todo es libre o nudo, nunca contra zapata.
+
+Probar("tramos_dado_de_referencia_lleva_estribos", () =>
+{
+    // Dado −0,65..0 (arranca en la cara superior de la zapata) con la viga del
+    // nivel 0 en −0,35..0.
+    var t = TramosColumna.Coser(-0.65, 0.0, new[] { (-0.35, 0.0) }, Min);
+    Cierto(t.Count == 2, $"{t.Count} tramos");
+    Cierto(t[0].Tipo == TipoTramo.Libre, $"tramo 0 es {t[0].Tipo}");
+    Igual(-0.65, t[0].Inf, "desde la cara de la zapata"); Igual(-0.35, t[0].Sup, "hasta la viga");
+    Cierto(t[1].Tipo == TipoTramo.DentroDeViga, $"tramo 1 es {t[1].Tipo}");
+});
+
+Probar("tramos_dado_y_columna_en_un_solo_elemento_sin_contra_zapata", () =>
+{
+    // El caso del reporte: un elemento de la zapata (−0,65) a la viga del piso 1.
+    var t = TramosColumna.Coser(-0.65, 3.5, new[] { (3.0, 3.5) }, Min);
+    Cierto(t.Count == 2, $"{t.Count} tramos");
+    Cierto(t[0].Tipo == TipoTramo.Libre, $"tramo 0 es {t[0].Tipo}");
+    Igual(-0.65, t[0].Inf, "libre desde"); Igual(3.0, t[0].Sup, "libre hasta");
+    Cierto(t[1].Tipo == TipoTramo.DentroDeViga, $"tramo 1 es {t[1].Tipo}");
+});
+
+Probar("tramos_elemento_que_arranca_en_un_nudo", () =>
+{
+    // Elemento que arranca dentro de una viga, con otra viga arriba.
+    var t = TramosColumna.Coser(0.0, 3.5, new[] { (0.0, 0.4), (3.0, 3.5) }, Min);
+    Cierto(t.Select(x => x.Tipo).SequenceEqual(new[] { TipoTramo.DentroDeViga, TipoTramo.Libre, TipoTramo.DentroDeViga }),
+        string.Join(", ", t.Select(x => x.Tipo)));
+    Igual(0.4, t[1].Inf, "libre desde la viga");
+});
+
+Probar("zapata_es_la_que_contiene_el_pie_no_la_viga_de_amarre", () =>
+{
+    // Columna empotrada en la zapata (−1,2..−0,65) desde −1,1; viga de amarre
+    // en la categoría Cimentación 0..0,5. Antes ganaba la viga (cara más alta).
+    var cims = new[] { (0.0, 0.5), (-1.2, -0.65) };
+    Cierto(TramosColumna.ElegirZapata(cims, -1.1, Tol) == 1, "elige la zapata");
+});
+
+Probar("zapata_a_ras_entra_por_la_tolerancia", () =>
+{
+    var cims = new[] { (-1.2, -0.65) };
+    Cierto(TramosColumna.ElegirZapata(cims, -0.63, Tol) == 0, "a 2 cm de la cara superior");
+    Cierto(TramosColumna.ElegirZapata(cims, -0.50, Tol) is null, "a 15 cm ya no es su zapata");
+});
+
+Probar("zapata_lejos_del_pie_no_cuenta", () =>
+{
+    // Columna que nace en un piso alto sobre una zapata que coincide en planta.
+    Cierto(TramosColumna.ElegirZapata(new[] { (-1.2, -0.65) }, 6.0, Tol) is null, "sin zapata");
+});
+
+Probar("zapata_entre_varias_la_mas_profunda", () =>
+{
+    var cims = new[] { (-0.9, -0.6), (-1.5, -0.6) };
+    Cierto(TramosColumna.ElegirZapata(cims, -0.6, Tol) == 1, "la más profunda");
+});
+
+Probar("fusionar_junta_bandas_pegadas", () =>
+{
+    var f = TramosColumna.Fusionar(new[] { (3.0, 3.5), (0.0, 0.5), (3.505, 3.6) }, Min);
+    Cierto(f.Count == 2, $"{f.Count} bandas");
+    Igual(0.0, f[0].Inf, "primera desde"); Igual(3.6, f[1].Sup, "segunda hasta");
+});
+
 Console.WriteLine(fallas == 0 ? "0 fallas" : $"{fallas} falla(s)");
 return fallas == 0 ? 0 : 1;
