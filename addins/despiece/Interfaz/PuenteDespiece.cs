@@ -160,7 +160,7 @@ internal sealed class PuenteDespiece
     {
         vigas = LectorDespiece.Leer(doc!);
         grupos = AgrupadorIguales.Agrupar(vigas.Select(v => v.Elemento));
-        List<ViewPlan> lista = LectorDespiece.Plantas(doc!);
+        List<Level> lista = LectorDespiece.Plantas(doc!);
         pendientes.Clear();
         pendientes.AddRange(lista.Select(p => p.Id.ToString()));
         plantas.Clear();
@@ -245,9 +245,9 @@ internal sealed class PuenteDespiece
     /// <summary>Null si la planta ya no existe: la pudieron borrar mientras esperaba su turno.</summary>
     private object? GenerarPlanta(string id)
     {
-        if (doc!.GetElement(new ElementId(long.Parse(id))) is not ViewPlan vista)
+        if (doc!.GetElement(new ElementId(long.Parse(id))) is not Level nivel)
             return null;
-        PlantaGenerada p = GeneradorPlanta.Generar(doc, vista, ventana.CarpetaPrevia);
+        PlantaGenerada p = GeneradorPlanta.Generar(doc, nivel, ventana.CarpetaPrevia);
         object listo = new { tipo = "planta", id, url = Url(p.Ruta), ancho = p.Ancho, alto = p.Alto, cajas = p.Cajas.Select(c => new { viga = c.Key, x = c.Value.X, y = c.Value.Y, w = c.Value.Ancho, h = c.Value.Alto }) };
         plantas[id] = listo;
         return listo;

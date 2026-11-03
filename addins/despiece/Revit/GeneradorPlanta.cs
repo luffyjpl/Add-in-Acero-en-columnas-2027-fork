@@ -22,21 +22,29 @@ internal static class GeneradorPlanta
     /// <summary>Cuánto mira por debajo de su nivel una planta de piso: lo que cuelga la viga más alta.</summary>
     private const double BajoElNivel = 1.0 * PiesPorMetro;
 
-    public static PlantaGenerada Generar(Document doc, ViewPlan planta, string carpeta)
+    /// <summary>
+    /// La imagen de la planta de un nivel. Parte de su vista (<see cref="LectorDespiece.VistaDe"/>) o, si el nivel no
+    /// tiene ninguna, de un plano estructural nuevo; las dos cosas se deshacen al terminar.
+    /// </summary>
+    public static PlantaGenerada Generar(Document doc, Level nivel, string carpeta)
     {
-        Registro.Paso("planta: empieza " + planta.Name);
+        Registro.Paso("planta: empieza " + nivel.Name);
         using var t = new Transaction(doc, "Vista previa de planta");
         t.Start();
         try
         {
-            var copia = (ViewPlan)doc.GetElement(planta.Duplicate(ViewDuplicateOption.Duplicate));
+            ViewPlan? planta = LectorDespiece.VistaDe(doc, nivel);
+            var copia = planta is not null
+                ? (ViewPlan)doc.GetElement(planta.Duplicate(ViewDuplicateOption.Duplicate))
+                : ViewPlan.Create(doc, TipoDePlanta(doc), nivel.Id);
             copia.Name = "CQEING temporal " + Guid.NewGuid().ToString("N");
             copia.ViewTemplateId = ElementId.InvalidElementId;
             copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
             // Una planta de piso de arquitectura puede ocultar el armazón o no mirar por debajo del nivel, donde cuelgan las
-            // vigas. En la copia se muestran y se mira un metro abajo; la planta original no se toca.
+            // vigas; una vista nueva trae el rango por defecto del tipo. En la copia se muestran y se mira un metro abajo;
+            // la planta original no se toca.
             copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_StructuralFraming), false);
-            if (copia.ViewType == ViewType.FloorPlan)
+            if (planta is null || copia.ViewType == ViewType.FloorPlan)
                 MirarBajoElNivel(copia);
 
             List<Element> vigas = new FilteredElementCollector(doc, copia.Id).OfCategory(BuiltInCategory.OST_StructuralFraming)
@@ -69,6 +77,14 @@ internal static class GeneradorPlanta
             t.RollBack();
             Registro.Paso("planta: deshecha");
         }
+    }
+
+    /// <summary>El tipo de vista para un nivel sin vistas: plano estructural y, si el proyecto no tiene, planta de piso.</summary>
+    private static ElementId TipoDePlanta(Document doc)
+    {
+        List<ViewFamilyType> tipos = new FilteredElementCollector(doc).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>().ToList();
+        return (tipos.FirstOrDefault(t => t.ViewFamily == ViewFamily.StructuralPlan)
+            ?? tipos.First(t => t.ViewFamily == ViewFamily.FloorPlan)).Id;
     }
 
     private static void MirarBajoElNivel(ViewPlan copia)
