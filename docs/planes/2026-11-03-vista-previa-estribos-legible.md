@@ -337,5 +337,6 @@ En Revit (pendiente): la columna del modelo de referencia en el paso
   - `dotnet test CQEING-Addins.sln`: 0 fallas.
   - Luciano lo aprobó ("ya todo bien") y pidió commit y push (3-nov). No se
     desplegó en Revit 2027 antes del commit porque Revit seguía abierto.
-  - [ ] Falta probar en Revit, con el mouse y con el touchpad (sobre todo
-    poner grapas con zoom).
+  - Desplegado en Revit 2027 después del commit `1697d58` (Revit cerrado,
+    comprobado con `Get-Process`).
+  - [x] Probado en Revit por Luciano (3-nov): "ya ahora sí todo bien".
