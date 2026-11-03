@@ -21,10 +21,29 @@ internal static class LectorDespiece
 
     public static double Mm(double pies) => UnitUtils.ConvertFromInternalUnits(pies, UnitTypeId.Millimeters);
 
-    /// <summary>Las plantas estructurales, de abajo hacia arriba.</summary>
-    public static List<ViewPlan> Plantas(Document doc) => new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
-        .Where(v => !v.IsTemplate && v.ViewType == ViewType.EngineeringPlan && v.GenLevel is not null)
-        .OrderBy(v => v.GenLevel.Elevation).ThenBy(v => v.Name, StringComparer.Ordinal).ToList();
+    /// <summary>
+    /// Las plantas donde se eligen las vigas, de abajo hacia arriba: los planos estructurales y, en los niveles con vigas
+    /// que no tienen ninguno, una planta de piso. Un modelo hecho con plantilla de arquitectura solo trae plantas de piso,
+    /// y el despiece salía vacío aunque el add-in de acero sí veía sus pisos (3-nov).
+    /// </summary>
+    public static List<ViewPlan> Plantas(Document doc)
+    {
+        List<ViewPlan> vistas = new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
+            .Where(v => !v.IsTemplate && v.GenLevel is not null).ToList();
+        List<ViewPlan> estructurales = vistas.Where(v => v.ViewType == ViewType.EngineeringPlan).ToList();
+        var conPlano = new HashSet<ElementId>(estructurales.Select(v => v.GenLevel.Id));
+        // Los niveles como los toma el add-in de acero: el de referencia de cada viga.
+        var conVigas = new HashSet<ElementId>(new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming)
+            .WhereElementIsNotElementType().OfType<FamilyInstance>()
+            .Select(v => v.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM)?.AsElementId() ?? ElementId.InvalidElementId));
+        IEnumerable<ViewPlan> dePiso = vistas
+            .Where(v => v.ViewType == ViewType.FloorPlan && !conPlano.Contains(v.GenLevel.Id) && conVigas.Contains(v.GenLevel.Id))
+            // Una por nivel: la principal (no dependiente) de nombre más corto, que suele ser la del nivel sin variantes.
+            .GroupBy(v => v.GenLevel.Id)
+            .Select(g => g.OrderBy(v => v.GetPrimaryViewId() != ElementId.InvalidElementId).ThenBy(v => v.Name.Length).ThenBy(v => v.Name, StringComparer.Ordinal).First());
+        return estructurales.Concat(dePiso)
+            .OrderBy(v => v.GenLevel.Elevation).ThenBy(v => v.Name, StringComparer.Ordinal).ToList();
+    }
 
     public static List<VigaContinua> Leer(Document doc)
     {
