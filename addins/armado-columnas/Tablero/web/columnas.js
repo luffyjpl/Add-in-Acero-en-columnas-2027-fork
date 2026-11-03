@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   const { html, render, Component } = window.htmPreact;
-  const { Planta, Seccion, Elevacion, Traslapos, escalaSeccion, ESTADO, C } = window.DibujosColumnas;
+  const { Planta, Seccion, Elevacion, Traslapos, Ampliable, escalaSeccion, ESTADO, C } = window.DibujosColumnas;
 
   const enRevit = !!(window.chrome && window.chrome.webview);
   const f2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
@@ -93,7 +93,7 @@
       this.state = {
         vista: null, paso: 1, tramo: null, herramienta: null, primero: null, encima: null, pieza: null,
         ocultarEsquinas: false, zonaTraslapo: false, busqueda: '', menu: null, nombreNueva: '', borrar: null,
-        borrarAjeno: false, cuadro: false, avisos: false, mas: false, avisoVisto: null, tam: { w: 700, h: 560 },
+        borrarAjeno: false, cuadro: false, avisos: false, mas: false, avisoVisto: null, tam: { w: 700, h: 560 }, cara: 'X',
       };
       this.medida = null;
       this.onTecla = this.onTecla.bind(this);
@@ -421,7 +421,7 @@
     lienzoBarras(col) {
       const { w, h } = this.state.tam;
       return html`<div class="lienzo"><div class="medida" ref=${(el) => this.medir(el)}>
-        <${Seccion} sec=${col.seccion} w=${w} h=${h} rotulos="barras" />
+        <${Ampliable} clave="barras"><${Seccion} sec=${col.seccion} w=${w} h=${h} rotulos="barras" /></${Ampliable}>
         <span class="consejo">Sección vista desde arriba, a escala. Cada barra lleva el color de su número, igual que en Revit.</span>
       </div></div>`;
     }
@@ -432,11 +432,27 @@
       const ZN = { confinada: ['#1F5FAF', 'Puntas (confinado)'], central: ['#86A9D6', 'Centro del tramo'], uniforme: ['#4F7FBF', 'Uniforme'], nudo: ['#7D8A99', 'Nudo (cruce con la viga)'], zapata: ['#B9C2CC', 'Sin estribos'] };
       return html`<div class="lienzo">
         <div class="medida" ref=${(el) => this.medir(el)}>
-          <${Elevacion} col=${col} w=${w} h=${h} conEstribos=${true} seleccionado=${s.tramo} onTramo=${(i) => this.elegirTramo(s.tramo === i ? null : i)} />
+          <${Ampliable} clave="estribos">${(z) => html`
+            <${Elevacion} col=${col} w=${w} h=${h} conEstribos=${true} cara=${s.cara} zoom=${z} seleccionado=${s.tramo}
+              onTramo=${(i) => this.elegirTramo(s.tramo === i ? null : i)} />`}
+          </${Ampliable}>
         </div>
         <div class="lado-lienzo der">
-          <h3 style="align-self: flex-start">Sección</h3>
-          <${Seccion} sec=${col.seccion} w=${158} h=${158} chica=${true} />
+          <div class="segmentado" role="group" aria-label="Qué lado de la columna se ve" style="align-self: stretch">
+            <button type="button" class="chico" aria-pressed=${s.cara === 'X' ? 'true' : 'false'} onClick=${() => this.setState({ cara: 'X' })}>Frente (X)</button>
+            <button type="button" class="chico" aria-pressed=${s.cara === 'Y' ? 'true' : 'false'} onClick=${() => this.setState({ cara: 'Y' })}>Costado (Y)</button>
+          </div>
+          ${(() => {
+            // La sección del tramo elegido (plan 2026-11-03-vista-previa-estribos-legible.md, decisión 8): la suya si
+            // tiene otra medida (un dado), y en un nudo sin grapas ni cerrados, como GeneradorArmado.
+            const t = s.tramo != null ? col.tramos[s.tramo] : null;
+            const propia = t && (col.seccionesTramo || []).find((x) => x.indice === t.indice);
+            let sec = propia ? propia.seccion : col.seccion;
+            if (t && t.tipo === 'DentroDeViga') sec = { ...sec, menores: [] };
+            return html`<h3 style="align-self: flex-start">${t ? `Sección del tramo ${t.indice + 1}` : 'Sección de la columna'}</h3>
+              <${Seccion} sec=${sec} w=${158} h=${158} chica=${true} />
+              ${propia ? html`<p class="ayuda" style="margin: 0; align-self: stretch">${`Este tramo mide ${Math.round(sec.ancho * 10) / 10} × ${Math.round(sec.alto * 10) / 10} cm. El estribo es el mismo de toda la columna, alrededor de las barras.`}</p>` : null}`;
+          })()}
           <div class="leyenda" style="flex-direction: column; align-self: stretch">
             ${usadas.map((z) => html`<span><i style=${`background: ${ZN[z][0]}; border-color: ${ZN[z][0]}`}></i>${ZN[z][1]}</span>`)}
           </div>
@@ -474,27 +490,30 @@
             </div>
             <label><input type="checkbox" id="ocultar-esquinas" checked=${s.ocultarEsquinas} onChange=${(e) => this.setState({ ocultarEsquinas: e.target.checked })} /> Ocultar barras de esquina</label>
           </div>
-          <${Seccion} sec=${col.seccion} w=${w} h=${h} modo="grapas" rotulos="filas" ocultarEsquinas=${s.ocultarEsquinas} zonaTraslapo=${s.zonaTraslapo}
-            seleccionada=${s.pieza} fantasma=${fantasma}
-            onMover=${(p, m) => this.setState({ encima: p ? this.barraBajo(p, m) : null })}
-            onSoltar=${(forma) => { this.poner(forma, s.encima); this.setState({ arrastrando: null }); }}
-            onBarra=${(b) => this.poner(s.herramienta, b)}
-            onPieza=${(i) => this.setState({ pieza: s.pieza === i ? null : i, herramienta: null, primero: null })} />
-          ${sel && sel.forma !== 'Cerrado' ? this.tiritas(col, sel, mapa) : null}
+          <${Ampliable} clave="grapas">${(z) => html`<div class="capa-zoom">
+            <${Seccion} sec=${col.seccion} w=${w} h=${h} modo="grapas" rotulos="filas" ocultarEsquinas=${s.ocultarEsquinas} zonaTraslapo=${s.zonaTraslapo}
+              seleccionada=${s.pieza} fantasma=${fantasma}
+              onMover=${(p, m) => this.setState({ encima: p ? this.barraBajo(p, m) : null })}
+              onSoltar=${(forma) => { this.poner(forma, s.encima); this.setState({ arrastrando: null }); }}
+              onBarra=${(b) => this.poner(s.herramienta, b)}
+              onPieza=${(i) => this.setState({ pieza: s.pieza === i ? null : i, herramienta: null, primero: null })} />
+            ${sel && sel.forma !== 'Cerrado' ? this.tiritas(col, sel, mapa, z) : null}
+          </div>`}</${Ampliable}>
           <span class="consejo">${consejo}</span>
         </div>
       </div>`;
     }
 
     // Las tiritas 90° · 135° · 180° junto a cada punta de la grapa elegida, como en la ventana de estribos menores.
-    tiritas(col, sel, mapa) {
+    // z: el zoom del dibujo (Ampliable); las tiritas van en la misma capa que el SVG agrandado.
+    tiritas(col, sel, mapa, z = 1) {
       const m = this.state.vista.opciones.longitudinal.estribosMenores[sel.indice];
       if (!sel.puntas) return null;
       const [ini, fin] = sel.puntas, fila = sel.eje === 'Fila';
       const tirita = (pt, punta, actual) => {
-        const x = mapa.X(pt[0]), y = mapa.Y(pt[1]);
+        const x = mapa.X(pt[0]) * z, y = mapa.Y(pt[1]) * z;
         // Afuera de la sección, frente a la barra de esa punta.
-        const dentro = (izq) => Math.max(4, Math.min(this.state.tam.w - 134, izq));
+        const dentro = (izq) => Math.max(4, Math.min(this.state.tam.w * z - 134, izq));
         const estilo = fila
           ? `left: ${dentro(punta === 'inicio' ? x - 196 : x + 70)}px; top: ${y - 14}px`
           : `left: ${dentro(x - 63)}px; top: ${punta === 'inicio' ? y + 46 : y - 74}px`;
@@ -509,8 +528,8 @@
 
     lienzoTraslapos(col) {
       const { w, h } = this.state.tam;
-      return html`<div class="lienzo"><div class="medida desplazable" ref=${(el) => this.medir(el)}>
-        <${Traslapos} col=${col} w=${w} h=${h} />
+      return html`<div class="lienzo"><div class="medida" ref=${(el) => this.medir(el)}>
+        <${Ampliable} clave="traslapos" abajo=${true}><${Traslapos} col=${col} w=${w} h=${h} /></${Ampliable}>
       </div></div>`;
     }
 
@@ -571,7 +590,7 @@
 
     pasoEstribos(v, col, o) {
       const s = this.state, E = o.estribos, T = E.tramosLibres;
-      const hayNudos = col.tramos.some((t) => t.tipo === 'DentroDeViga'), hayZapata = col.tramos.some((t) => t.tipo === 'ContraZapata');
+      const hayNudos = col.tramos.some((t) => t.tipo === 'DentroDeViga'), hayZapata = !!col.zapata;
       const libres = (c) => this.enviar({ tipo: 'cambiarEstribos', tramosLibres: c });
       const cambiarConfinado = (x) => {
         // Como hoy: el centro sigue al doble del confinado mientras nadie lo haya cambiado a mano.
@@ -607,7 +626,9 @@
         </div>
         ${hayZapata ? html`<div class="grupo">
           <h3>Zapata</h3>
-          <p class="nota" style="margin: 0">Sin estribos. Ahí solo pasa el acero longitudinal, que se ancla dentro de la zapata.</p>
+          <p class="nota" style="margin: 0">${'Los estribos arrancan en la cara de la zapata: adentro no van, cerca sí. ' +
+            (col.primerEstribo != null ? `El primero queda a ${Math.round((col.primerEstribo - col.zapata.zSup) * 1000) / 10} cm. ` : '') +
+            'Dentro de la zapata solo pasa el acero longitudinal, que se ancla ahí.'}</p>
         </div>` : null}
         <div class="grupo">
           <h3>Un tramo distinto <small>${distintos.length ? `${distintos.length} ${distintos.length === 1 ? 'distinto' : 'distintos'}` : ''}</small></h3>

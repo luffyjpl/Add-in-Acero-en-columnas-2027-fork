@@ -3,7 +3,7 @@
    izquierda, dibujo al centro y pasos a la derecha. */
 :root {
   --fondo: #EEF0F2; --panel: #FFFFFF; --hundido: #FAFBFC; --borde: #D9DDE2; --control: #C9CFD6;
-  --tinta: #16191D; --suave: #5E6670; --tenue: #8A94A0;
+  --tinta: #16191D; --suave: #3F4650; --tenue: #6B7480;
   --azul: #1F5FAF; --azul-hover: #174A8A; --azul-fondo: #E8F0FA;
   --verde: #1E7A46; --verde-fondo: #E6F4EC; --naranja: #9A5B00; --naranja-fondo: #FDF6EA; --naranja-borde: #E8C88F;
   --rojo: #B42318; --rojo-fondo: #FDECEA;
@@ -100,13 +100,29 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .lienzo .medida { flex: 1; min-width: 0; position: relative; }
 .lienzo .medida > svg { position: absolute; inset: 0; }
 .lienzo .medida.desplazable { overflow-x: auto; overflow-y: hidden; }
+/* Zoom de los dibujos (Ampliable, dibujos.js; plan 2026-11-03-vista-previa-estribos-legible.md). */
+.ampliable { position: absolute; inset: 0; }
+.zoom-area { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.zoom-area.movible { cursor: grab; }
+.zoom-area.arrastrando, .zoom-area.arrastrando * { cursor: grabbing !important; user-select: none; }
+.zoom-area > svg { display: block; }
+.capa-zoom { position: relative; width: max-content; }
+.capa-zoom > svg { display: block; }
+.zoom-barra { position: absolute; right: 12px; top: 10px; z-index: 4; display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--panel); border: 1px solid var(--borde); border-radius: 6px; box-shadow: 0 1px 3px rgba(22,25,29,.12); }
+.zoom-barra.abajo { top: auto; bottom: 18px; }
+.zoom-barra button { min-width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--tinta); font-size: 16px; line-height: 1; }
+.zoom-barra button:hover:not(:disabled) { background: var(--fondo); border-color: var(--borde); }
+.zoom-barra button:focus-visible { outline: 2px solid var(--azul); outline-offset: 1px; }
+.zoom-barra button:disabled { color: var(--tenue); }
+.zoom-barra .zoom-ajustar { padding: 0 8px; font-size: 12px; font-weight: 500; }
+.zoom-valor { min-width: 44px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--suave); }
 .lado-lienzo { width: 210px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-right: 1px solid var(--borde); background: var(--hundido); }
 .lado-lienzo.der { border-right: 0; border-left: 1px solid var(--borde); width: 190px; align-items: center; }
 .lado-lienzo h3 { margin: 0; font-size: 13px; }
 .forma { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px 8px; border: 1px solid var(--control); border-radius: 6px; background: var(--panel); cursor: grab; }
 .forma:hover { border-color: var(--tenue); }
 .forma[aria-pressed="true"] { border-color: var(--azul); box-shadow: 0 0 0 1px var(--azul) inset; background: var(--azul-fondo); }
-.opciones-lienzo { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; z-index: 2; }
+.opciones-lienzo { position: absolute; top: 10px; left: 14px; right: 210px; display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; z-index: 2; }
 .opciones-lienzo label { display: inline-flex; align-items: center; gap: 6px; }
 .consejo { position: absolute; left: 14px; bottom: 10px; right: 14px; color: var(--suave); font-size: 12px; z-index: 2; pointer-events: none; }
 .resumen { display: flex; align-items: center; gap: 16px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--borde); border-radius: 6px; white-space: nowrap; overflow: hidden; }

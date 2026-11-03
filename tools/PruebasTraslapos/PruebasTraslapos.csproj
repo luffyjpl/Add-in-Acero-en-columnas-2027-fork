@@ -33,6 +33,7 @@
     <Compile Include="..\..\addins\armado-columnas\Modelo\PaqueteEstribos.cs" Link="Modelo\PaqueteEstribos.cs" />
     <Compile Include="..\..\addins\armado-columnas\Modelo\TipoBarra.cs" Link="Modelo\TipoBarra.cs" />
     <Compile Include="..\..\addins\armado-columnas\Modelo\NombreEmpalme.cs" Link="Modelo\NombreEmpalme.cs" />
+    <Compile Include="..\..\addins\armado-columnas\Modelo\TramosColumna.cs" Link="Modelo\TramosColumna.cs" />
   </ItemGroup>
 
 </Project>

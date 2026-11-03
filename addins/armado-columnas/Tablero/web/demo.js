@@ -27,11 +27,16 @@
   // ---- Las columnas del modelo de ejemplo
 
   function edificio() {
-    // ColumnaEdificioWilliam: arranca 0.20 m sobre la zapata, 4 niveles con viga de 45 cm y un último tramo libre.
+    // ColumnaEdificioWilliam: un dado de 0.20 m sobre la zapata, 4 niveles con viga de 45 cm y un último tramo libre.
+    // El dado lleva estribos (Santiago, 3-nov: solo no van DENTRO de la zapata) y es más ancho que la columna, como
+    // el de 40×40 bajo una de 30×30 del modelo de referencia. lado: null = el de la columna.
     const tramos = [];
     let z = 0;
-    const agregar = (alto, tipo) => { tramos.push({ indice: tramos.length, tipo, zInf: r2(z), zSup: r2(z + alto) }); z += alto; };
-    agregar(0.20, 'ContraZapata');
+    const agregar = (alto, tipo, lado = null) => {
+      tramos.push({ indice: tramos.length, tipo, zInf: r2(z), zSup: r2(z + alto), ladoX: lado, ladoY: lado });
+      z += alto;
+    };
+    agregar(0.20, 'Libre', 0.55);
     for (let nivel = 1; nivel <= 4; nivel++) {
       agregar(3.20 - 0.45 - (nivel === 1 ? 0.20 : 0), 'Libre');
       agregar(0.45, 'DentroDeViga');
@@ -287,7 +292,12 @@
       if (h - 2 * l1 > 0.01) out.push({ indice: t.indice, zInf: r2(t.zInf + l1), zSup: r2(t.zSup - l1), zona: 'central', cada: c.espaciadoNoConfinado });
       out.push({ indice: t.indice, zInf: r2(t.zSup - l1), zSup: t.zSup, zona: 'confinada', cada: c.espaciadoConfinado });
     }
-    return out.map((z) => ({ ...z, cantidad: z.cada ? Math.max(1, Math.floor((z.zSup - z.zInf) / z.cada + 1e-6)) : 0 }));
+    // Alturas reales (como RepartoEstribos, simplificado): la primera a 5 cm del arranque de la zona, o a medio paso.
+    return out.map((z) => {
+      const alturas = [];
+      if (z.cada) for (let a = z.zInf + Math.min(0.05, (z.zSup - z.zInf) / 2); a <= z.zSup - 1e-6; a += z.cada) alturas.push(r2(a * 1000) / 1000);
+      return { ...z, cantidad: alturas.length, alturas };
+    });
   }
 
   // ---- Traslapos (PlanTraslapos): plan A y plan B, cada varilla a lo sumo del largo comercial
@@ -420,7 +430,24 @@
         columna = {
           id, marca: ctx.marca, ubicacion: ctx.ubicacion, baseX: ctx.ladoX, baseY: ctx.ladoY, recubrimiento: o.recubrimiento,
           zSuperior: ctx.zSuperior, zInferiorLongitudinal: ctx.zInferiorLongitudinal, zapata: ctx.zapata, niveles: ctx.niveles,
-          tramos: ctx.tramos.map((t) => ({ ...t, excepcion: !!o.estribos.excepciones[t.indice] })),
+          tramos: ctx.tramos.map((t) => ({
+            ...t, excepcion: !!o.estribos.excepciones[t.indice], ladoX: t.ladoX || ctx.ladoX, ladoY: t.ladoY || ctx.ladoY,
+            desdeX: t.ladoX ? r2((t.ladoX - ctx.ladoX) / 2) : 0, desdeY: t.ladoY ? r2((t.ladoY - ctx.ladoY) / 2) : 0,
+          })),
+          primerEstribo: (() => { const a = z.flatMap((k) => k.alturas); return a.length ? Math.min(...a) : null; })(),
+          seccionesTramo: ctx.tramos.filter((t) => t.ladoX && Math.abs(t.ladoX - ctx.ladoX) > 0.005).map((t) => {
+            // Como ArmadorVistaColumnas.SeccionesTramo: el hormigón y el estribo del tramo, las barras corridas.
+            const dx = ((t.ladoX - ctx.ladoX) / 2) * 100, dy = ((t.ladoY - ctx.ladoY) / 2) * 100, A = t.ladoX * 100, H = t.ladoY * 100;
+            const mover = ([x, y]) => [r2(x + dx), r2(y + dy)];
+            return { indice: t.indice, seccion: {
+              ...sec, ancho: A, alto: H,
+              // El estribo es el de la columna, corrido: GeneradorArmado arma todos con la zona común (decisión 10).
+              estribo: { ...sec.estribo, x1: r2(sec.estribo.x1 + dx), y1: r2(sec.estribo.y1 + dy), x2: r2(sec.estribo.x2 + dx), y2: r2(sec.estribo.y2 + dy),
+                puntos: sec.estribo.puntos ? sec.estribo.puntos.map(mover) : null },
+              barras: sec.barras.map((b) => ({ ...b, x: r2(b.x + dx), y: r2(b.y + dy) })),
+              menores: sec.menores.map((m) => ({ ...m, puntos: m.puntos.map(mover), puntas: m.puntas ? m.puntas.map(mover) : null })),
+            } };
+          }),
           seccion: sec, zonasEstribos: z, traslapos: traslapos(ctx, o), avisos: ctx.avisos,
           resumen: {
             barras: sec.barras.length,

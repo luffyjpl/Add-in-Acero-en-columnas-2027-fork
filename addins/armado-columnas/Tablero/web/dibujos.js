@@ -2,10 +2,10 @@
 // que trae la vista (VistaColumnas); no calculan acero. Medidas de la vista: elevación en m, sección en cm.
 (function () {
   'use strict';
-  const { html } = window.htmPreact;
+  const { html, Component } = window.htmPreact;
 
   const C = {
-    tinta: '#16191D', suave: '#5E6670', linea: '#C9CFD6', borde: '#D9DDE2', fondo: '#FAFBFC', azul: '#1F5FAF',
+    tinta: '#16191D', suave: '#3F4650', linea: '#C9CFD6', borde: '#D9DDE2', fondo: '#FAFBFC', azul: '#1F5FAF',
     hormigon: '#EEF1F4', hormigonBorde: '#8A94A0', estribo: '#6B7480', viga: '#D3DBE4', vigaBorde: '#9AA6B3',
     confinada: '#1F5FAF', central: '#86A9D6', uniforme: '#4F7FBF', nudo: '#7D8A99', naranja: '#C2620A', rojo: '#B42318', verde: '#1E7A46',
   };
@@ -32,7 +32,7 @@
           return html`<g>
             <line x1=${X(r.x1)} y1=${Y(r.y1)} x2=${X(r.x2)} y2=${Y(r.y2)} stroke=${C.linea} stroke-width="1" stroke-dasharray="6 4"></line>
             <circle cx=${bx} cy=${by} r="9" fill="#FFFFFF" stroke=${C.suave} stroke-width="1"></circle>
-            <text x=${bx} y=${by + 3.5} text-anchor="middle" font-size="10" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${r.nombre}</text>
+            <text x=${bx} y=${by + 3.5} text-anchor="middle" font-size="11" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${r.nombre}</text>
           </g>`;
         })}
         ${planta.columnas.map((c) => {
@@ -46,7 +46,7 @@
             ${el ? html`<rect x=${X(c.x) - lx / 2 - 4} y=${Y(c.y) - ly / 2 - 4} width=${lx + 8} height=${ly + 8} rx="3" fill="none" stroke=${fuera ? C.naranja : C.tinta} stroke-width="2" stroke-dasharray=${fuera ? '4 3' : null}></rect>` : null}
             <rect x=${X(c.x) - lx / 2} y=${Y(c.y) - ly / 2} width=${lx} height=${ly} fill=${e.relleno} stroke=${e.borde} stroke-width="1.6"></rect>
             ${c.estado === 'generada' ? html`<path d="M${X(c.x) - 4} ${Y(c.y)}l3 3 5-6" stroke=${C.verde} stroke-width="1.8" fill="none" stroke-linecap="round"></path>` : null}
-            <text x=${X(c.x)} y=${Y(c.y) + ly / 2 + 15} text-anchor="middle" font-size="11" font-weight=${el ? 600 : 400} fill=${C.tinta} font-family="IBM Plex Sans, sans-serif">${c.ubicacion || c.marca}</text>
+            <text x=${X(c.x)} y=${Y(c.y) + ly / 2 + 15} text-anchor="middle" font-size="12" font-weight=${el ? 600 : 400} fill=${C.tinta} font-family="IBM Plex Sans, sans-serif">${c.ubicacion || c.marca}</text>
           </g>`;
         })}
       </svg>`;
@@ -68,7 +68,11 @@
     const barrasVisibles = sec.barras.filter((b) => !(ocultarEsquinas && b.posicion === 'esquina'));
     const pts = (p) => p.map(([x, y]) => `${X(x)},${Y(y)}`).join(' ');
     const gancho = `M${X(E.x1) + 1} ${Y(E.y1 + 5)} l${3.6 * k} ${-3.6 * k} M${X(E.x1 + 5)} ${Y(E.y1) - 1} l${3.6 * k} ${-3.6 * k}`;
-    const posicionEnSvg = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
+    // En unidades del dibujo, no de pantalla: con zoom (Ampliable) el SVG se ve más grande que su viewBox.
+    const posicionEnSvg = (ev) => {
+      const r = ev.currentTarget.getBoundingClientRect(), e = r.width / w || 1;
+      return { x: (ev.clientX - r.left) / e, y: (ev.clientY - r.top) / e };
+    };
     return html`
       <svg width=${w} height=${h} viewBox="0 0 ${w} ${h}" class=${modo === 'grapas' ? 'seccion editable' : 'seccion'}
           onPointerMove=${onMover ? (ev) => onMover(posicionEnSvg(ev), { X, Y, k }) : null}
@@ -95,7 +99,7 @@
             onClick=${onBarra && b.eje ? (ev) => { ev.stopPropagation(); onBarra(b); } : null}></circle>
         </g>`)}
         ${chica ? null : html`
-          <g font-family="IBM Plex Mono, monospace" font-size="11" fill=${C.suave}>
+          <g font-family="IBM Plex Mono, monospace" font-size="12.5" fill=${C.suave}>
             <line x1=${ox} y1=${oy + sec.alto * k + 22} x2=${ox + sec.ancho * k} y2=${oy + sec.alto * k + 22} stroke=${C.suave}></line>
             <line x1=${ox} y1=${oy + sec.alto * k + 17} x2=${ox} y2=${oy + sec.alto * k + 27} stroke=${C.suave}></line>
             <line x1=${ox + sec.ancho * k} y1=${oy + sec.alto * k + 17} x2=${ox + sec.ancho * k} y2=${oy + sec.alto * k + 27} stroke=${C.suave}></line>
@@ -105,7 +109,7 @@
             <line x1=${ox + sec.ancho * k + 17} y1=${oy + sec.alto * k} x2=${ox + sec.ancho * k + 27} y2=${oy + sec.alto * k} stroke=${C.suave}></line>
             <text x=${ox + sec.ancho * k + 34} y=${oy + (sec.alto * k) / 2 + 4}>${sec.alto} cm</text>
           </g>`}
-        ${rotulos === 'filas' ? html`<g font-family="IBM Plex Sans, sans-serif" font-size="11" fill=${C.suave}>
+        ${rotulos === 'filas' ? html`<g font-family="IBM Plex Sans, sans-serif" font-size="12" fill=${C.suave}>
           ${sec.barras.filter((b) => b.posicion === 'izquierda').map((b) => html`<text x=${ox - 12} y=${Y(b.y) + 4} text-anchor="end">F${b.indice + 1}</text>`)}
           ${sec.barras.filter((b) => b.posicion === 'abajo').map((b) => html`<text x=${X(b.x)} y=${oy + sec.alto * k + 54} text-anchor="middle">C${b.indice + 1}</text>`)}
         </g>` : null}
@@ -149,11 +153,36 @@
     return { zMin: zMin - 0.15, zMax: zMax + 0.15 };
   }
 
-  function Elevacion({ col, w, h, seleccionado, onTramo, conEstribos }) {
+  // A escala real (plan 2026-11-03-vista-previa-estribos-legible.md, decisiones 9 y 10, regla de Carlos): una sola
+  // escala para el ancho y el alto. El hormigón de cada tramo con su medida (un dado más ancho se ve más ancho); las
+  // barras y los estribos, los de la zona común de la columna en toda su altura, como los genera GeneradorArmado.
+  // cara: 'X' de frente (se ve el lado X) o 'Y' de costado. zoom: el de Ampliable, para saber si los estribos se
+  // alcanzan a ver uno por uno.
+  function Elevacion({ col, w, h, seleccionado, onTramo, conEstribos, cara = 'X', zoom = 1 }) {
     const { zMin, zMax } = rango(col);
     const k = (h - 24) / (zMax - zMin);
     const Z = (z) => 12 + (zMax - z) * k;
-    const cw = 54, cx = Math.round(w * 0.36), x0 = cx - cw / 2, x1 = cx + cw / 2;
+    const deY = cara === 'Y';
+    const cx = Math.round(w * 0.36);
+    const base = (deY ? col.baseY : col.baseX) || 0.3;
+    const cl = cx - (base * k) / 2; // borde izquierdo de la zona común
+    const X = (m) => cl + m * k; // m: metros desde el borde izquierdo de la zona común
+    const bordes = (t) => {
+      const lado = (deY ? t.ladoY : t.ladoX) || base, desde = (deY ? t.desdeY : t.desdeX) || 0;
+      const a = X(-desde), ancho = Math.max(2, lado * k);
+      return { a, b: a + ancho, ancho };
+    };
+    // Estribo y barras de la sección (cm, en la zona común): los mismos en toda la columna.
+    const E = col.seccion.estribo, ex1 = X((deY ? E.y1 : E.x1) / 100), ex2 = X((deY ? E.y2 : E.x2) / 100);
+    const grosorEstribo = Math.max(0.6, (E.grosor / 100) * k);
+    const frente = new Map();
+    for (const b of col.seccion.barras) {
+      const p = deY ? b.y : b.x;
+      const clave = Math.round(p * 10);
+      if (!frente.has(clave)) frente.set(clave, { p, b });
+    }
+    const derecha = Math.max(...col.tramos.map((t) => bordes(t).b), ex2);
+    const hayNudos = col.tramos.some((t) => t.tipo === 'DentroDeViga');
     const largoViga = Math.min(80, cx - 90);
     const libres = col.tramos.filter((t) => t.tipo === 'Libre');
     const zonasDe = (t) => col.zonasEstribos.filter((z) => z.indice === t.indice);
@@ -165,62 +194,92 @@
       if (!conf) return { texto: `cada ${f2(zs[0].cada)}`, sub: `${zs[0].cantidad} estribos`, color: C.uniforme };
       return { texto: `puntas ${f2(conf.cada)} · centro ${cen ? f2(cen.cada) : '—'}`, sub: `L1 ${f2(conf.zSup - conf.zInf)} m en cada punta`, color: C.confinada };
     };
-    const xs = x1 + (col.tramos.some((t) => t.tipo === 'DentroDeViga') ? largoViga : 0) + 18;
+    const xs = derecha + (hayNudos ? largoViga : 0) + 18;
+    // Zapata: sin ancho conocido, más ancha que el tramo de abajo.
+    const t0 = col.tramos[0];
+    const zapataAncho = col.zapata ? (col.zapata.ancho > 0 ? col.zapata.ancho * k : Math.max(60, (t0 ? bordes(t0).ancho : base * k) * 2.6)) : 0;
+    const zapataX = cx - zapataAncho / 2;
+    // Con este zoom, ¿se ven los estribos uno por uno? Si dos quedan a menos de 3 px, la zona va como franja.
+    const conCada = col.zonasEstribos.filter((z) => z.cada);
+    const unoPorUno = conCada.length > 0 && Math.min(...conCada.map((z) => z.cada)) * k * zoom >= 3;
+    const alturasDe = (z) => {
+      if (z.alturas && z.alturas.length) return z.alturas;
+      const a = [];
+      for (let y = z.zInf + Math.min(0.05, z.cada / 2); y <= z.zSup - 1e-6; y += z.cada) a.push(y);
+      return a;
+    };
     return html`
-      <svg width=${w} height=${h} viewBox="0 0 ${w} ${h}" role="group" aria-label="Elevación de la columna: haz clic en un tramo para darle otros valores">
+      <svg width=${w} height=${h} viewBox="0 0 ${w} ${h}" role="group" aria-label="Elevación de la columna a escala: haz clic en un tramo para darle otros valores">
         <defs>
           <pattern id="rayado" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#B9C2CC" stroke-width="1.2"></line></pattern>
         </defs>
-        ${col.niveles.map((n) => html`<g font-family="IBM Plex Mono, monospace" font-size="11" fill=${C.suave}>
-          <line x1="8" y1=${Z(n.z)} x2=${x0 - 6} y2=${Z(n.z)} stroke=${C.linea} stroke-dasharray="3 3"></line>
-          <text x="8" y=${Z(n.z) - 4}>${n.nombre} · N+${f2(n.z)}</text>
+        ${col.niveles.map((n) => html`<g font-family="IBM Plex Mono, monospace" font-size="12" fill=${C.suave}>
+          <line x1="8" y1=${Z(n.z)} x2=${Math.min(cl, zapataX || cl) - 6} y2=${Z(n.z)} stroke=${C.linea} stroke-dasharray="3 3"></line>
+          <text x="8" y=${Z(n.z) - 4}>${n.nombre} · N${n.z < 0 ? '' : '+'}${f2(n.z)}</text>
         </g>`)}
-        ${col.zapata ? html`<rect x=${cx - Math.max(cw * 1.4, (col.zapata.ancho * k) / 2)} y=${Z(col.zapata.zSup)} width=${Math.max(cw * 2.8, col.zapata.ancho * k)} height=${(col.zapata.zSup - col.zapata.zInf) * k} fill="url(#rayado)" stroke=${C.hormigonBorde}></rect>
-          <text x=${cx - Math.max(cw * 1.4, (col.zapata.ancho * k) / 2) - 8} y=${Z((col.zapata.zSup + col.zapata.zInf) / 2) + 4} text-anchor="end" font-size="12" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">Zapata</text>` : null}
-        ${col.tramos.map((t) => {
-          const y = Z(t.zSup), alto = (t.zSup - t.zInf) * k;
-          if (t.tipo === 'DentroDeViga') return html`<g>
-            <rect x=${x0 - largoViga} y=${y} width=${largoViga * 2 + cw} height=${alto} fill=${C.viga} stroke=${C.vigaBorde}></rect>
-            <text x=${x0 - largoViga + 4} y=${y + alto / 2 + 4} font-size="10" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">viga</text>
+        ${col.zapata ? (() => {
+          const zm = Z((col.zapata.zSup + col.zapata.zInf) / 2);
+          // Santiago, 3-nov: los estribos no van DENTRO de la zapata; cerca sí.
+          return html`<g font-family="IBM Plex Sans, sans-serif">
+            <rect x=${zapataX} y=${Z(col.zapata.zSup)} width=${zapataAncho} height=${(col.zapata.zSup - col.zapata.zInf) * k} fill="url(#rayado)" stroke=${C.hormigonBorde}></rect>
+            <text x=${zapataX - 8} y=${zm} text-anchor="end" font-size="13" font-weight="600" fill=${C.tinta}>Zapata</text>
+            <text x=${zapataX - 8} y=${zm + 14} text-anchor="end" font-size="11.5" fill=${C.suave}>sin estribos adentro</text>
           </g>`;
-          return html`<rect x=${x0} y=${y} width=${cw} height=${alto} fill=${t.tipo === 'ContraZapata' ? 'url(#rayado)' : '#FFFFFF'} stroke=${C.hormigonBorde}></rect>`;
-        })}
-        ${conEstribos ? (() => {
-          // Con poca altura, los estribos reales quedarían a menos de 3 px y se verían como una banda llena: se dibujan
-          // todos más separados, en la misma proporción, para que las puntas confinadas se sigan viendo más juntas.
-          const conCada = col.zonasEstribos.filter((z) => z.cada);
-          const minimo = Math.min(...conCada.map((z) => z.cada * k));
-          const f = Math.max(1, 3.2 / minimo);
-          return conCada.map((z) => {
-            const zz = ZONA[z.zona], paso = z.cada * k * f, lineas = [];
-            for (let yy = Z(z.zInf) - paso / 2; yy > Z(z.zSup) + 0.5; yy -= paso) lineas.push(yy);
-            return html`<g>
-              <rect x=${x0 + 1} y=${Z(z.zSup)} width=${cw - 2} height=${(z.zSup - z.zInf) * k} fill=${zz.fondo}></rect>
-              ${lineas.map((yy) => html`<line x1=${x0 + 5} y1=${yy} x2=${x1 - 5} y2=${yy} stroke=${zz.color} stroke-width=${z.zona === 'confinada' ? 1.4 : 1.2}></line>`)}
-              ${z.zona === 'central' ? html`
-                <line x1=${x0 - 7} y1=${Z(z.zInf)} x2=${x1 + 7} y2=${Z(z.zInf)} stroke=${C.confinada} stroke-width="1" stroke-dasharray="3 2"></line>
-                <line x1=${x0 - 7} y1=${Z(z.zSup)} x2=${x1 + 7} y2=${Z(z.zSup)} stroke=${C.confinada} stroke-width="1" stroke-dasharray="3 2"></line>` : null}
-            </g>`;
-          });
         })() : null}
-        <line x1=${x0 + 8} y1=${Z(col.zInferiorLongitudinal)} x2=${x0 + 8} y2=${Z(col.zSuperior - col.recubrimiento)} stroke=${col.seccion.barras[0].color} stroke-width="2.4"></line>
-        <line x1=${x1 - 8} y1=${Z(col.zInferiorLongitudinal)} x2=${x1 - 8} y2=${Z(col.zSuperior - col.recubrimiento)} stroke=${col.seccion.barras[0].color} stroke-width="2.4"></line>
+        ${col.tramos.map((t) => {
+          const y = Z(t.zSup), alto = (t.zSup - t.zInf) * k, { a, ancho } = bordes(t);
+          if (t.tipo === 'DentroDeViga') return html`<g>
+            <rect x=${a - largoViga} y=${y} width=${largoViga * 2 + ancho} height=${alto} fill=${C.viga} stroke=${C.vigaBorde}></rect>
+            <text x=${a - largoViga + 4} y=${y + alto / 2 + 4} font-size="11.5" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">viga</text>
+          </g>`;
+          return html`<rect x=${a} y=${y} width=${ancho} height=${alto} fill=${t.tipo === 'ContraZapata' ? 'url(#rayado)' : '#FFFFFF'} stroke=${C.hormigonBorde} stroke-width="0.8"></rect>`;
+        })}
+        ${conEstribos ? conCada.map((z) => {
+          const zz = ZONA[z.zona];
+          return html`<g>
+            <rect x=${ex1} y=${Z(z.zSup)} width=${Math.max(1, ex2 - ex1)} height=${(z.zSup - z.zInf) * k} fill=${unoPorUno ? zz.fondo : zz.color} fill-opacity=${unoPorUno ? 1 : 0.45}></rect>
+            ${unoPorUno ? alturasDe(z).map((a) => html`<line x1=${ex1} y1=${Z(a)} x2=${ex2} y2=${Z(a)} stroke=${zz.color} stroke-width=${grosorEstribo}></line>`) : null}
+            ${z.zona === 'central' ? html`
+              <line x1=${ex1 - 7} y1=${Z(z.zInf)} x2=${ex2 + 7} y2=${Z(z.zInf)} stroke=${C.confinada} stroke-width="1" stroke-dasharray="3 2"></line>
+              <line x1=${ex1 - 7} y1=${Z(z.zSup)} x2=${ex2 + 7} y2=${Z(z.zSup)} stroke=${C.confinada} stroke-width="1" stroke-dasharray="3 2"></line>` : null}
+          </g>`;
+        }) : null}
+        ${[...frente.values()].map(({ p, b }) => html`<line x1=${X(p / 100)} y1=${Z(col.zInferiorLongitudinal)} x2=${X(p / 100)} y2=${Z(col.zSuperior - col.recubrimiento)}
+            stroke=${b.color} stroke-width=${Math.max(1, (b.diametroMm / 1000) * k)}></line>`)}
+        ${conEstribos && col.zapata && col.primerEstribo != null ? (() => {
+          // El primer estribo, en negro y en su altura real, con su distancia a la cara de la zapata: de ahí arrancan.
+          const yCara = Z(col.zapata.zSup), yPrimero = Z(col.primerEstribo);
+          const xCota = Math.max(zapataX + zapataAncho, derecha) + 10;
+          const cm = Math.round((col.primerEstribo - col.zapata.zSup) * 1000) / 10;
+          return html`<g font-family="IBM Plex Sans, sans-serif">
+            <line x1=${ex1} y1=${yPrimero} x2=${ex2} y2=${yPrimero} stroke=${C.tinta} stroke-width=${Math.max(1.2, grosorEstribo)}></line>
+            <line x1=${ex2 + 2} y1=${yCara} x2=${xCota + 4} y2=${yCara} stroke=${C.suave} stroke-width="0.8" stroke-dasharray="2 2"></line>
+            <line x1=${ex2 + 2} y1=${yPrimero} x2=${xCota + 4} y2=${yPrimero} stroke=${C.suave} stroke-width="0.8" stroke-dasharray="2 2"></line>
+            <line x1=${xCota} y1=${yCara} x2=${xCota} y2=${yPrimero} stroke=${C.tinta} stroke-width="1"></line>
+            <line x1=${xCota - 3} y1=${yCara} x2=${xCota + 3} y2=${yCara} stroke=${C.tinta} stroke-width="1"></line>
+            <line x1=${xCota - 3} y1=${yPrimero} x2=${xCota + 3} y2=${yPrimero} stroke=${C.tinta} stroke-width="1"></line>
+            <text x=${xCota + 8} y=${yCara + 14} font-size="12" fill=${C.suave}><tspan font-weight="600" fill=${C.tinta}>1.er estribo a ${cm.toLocaleString('es')} cm</tspan> de la zapata</text>
+          </g>`;
+        })() : null}
         ${col.tramos.map((t) => {
           const y = Z(t.zSup), alto = (t.zSup - t.zInf) * k, sel = seleccionado === t.indice, e = etiqueta(t);
-          const mid = y + alto / 2;
+          const mid = y + alto / 2, { a, b, ancho } = bordes(t);
+          // La zona de clic mide al menos 24 px aunque el tramo dibujado sea más angosto.
+          const anchoClic = Math.max(ancho + 6, 24), xClic = (a + b) / 2 - anchoClic / 2;
           return html`<g class="tramo-clic" tabindex=${onTramo ? 0 : -1} role=${onTramo ? 'button' : null}
               aria-label=${`Tramo ${t.indice + 1}: ${e.texto}`} aria-pressed=${sel ? 'true' : 'false'}
               onClick=${onTramo ? () => onTramo(t.indice) : null}
               onKeyDown=${onTramo ? (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onTramo(t.indice); } } : null}>
-            <rect x=${x0 - 3} y=${y} width=${cw + 6} height=${Math.max(alto, 6)} fill="transparent" stroke=${sel ? C.azul : t.excepcion ? C.naranja : 'transparent'} stroke-width=${sel ? 2.5 : 2} stroke-dasharray=${t.excepcion && !sel ? '4 3' : null}></rect>
-            ${conEstribos && (t.tipo !== 'DentroDeViga' || alto > 13) ? html`<g font-family="IBM Plex Mono, monospace">
-              <line x1=${x1 + (t.tipo === 'DentroDeViga' ? largoViga : 4)} y1=${mid} x2=${xs - 4} y2=${mid} stroke=${C.linea}></line>
-              <text x=${xs} y=${mid + (e.sub && alto > 34 ? -2 : 4)} font-size="12" fill=${e.color} font-weight=${sel ? 600 : 500}>${e.texto}${t.excepcion ? html`<tspan fill=${C.naranja} font-family="IBM Plex Sans, sans-serif" font-weight="600">  · distinto</tspan>` : null}</text>
-              ${e.sub && alto > 34 ? html`<text x=${xs} y=${mid + 13} font-size="10.5" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${e.sub}</text>` : null}
+            <title>${`Tramo ${t.indice + 1}: ${e.texto}${e.sub ? ` (${e.sub})` : ''}`}</title>
+            <rect x=${xClic} y=${y} width=${anchoClic} height=${Math.max(alto, 6)} fill="transparent" stroke=${sel ? C.azul : t.excepcion ? C.naranja : 'transparent'} stroke-width=${sel ? 2.5 : 2} stroke-dasharray=${t.excepcion && !sel ? '4 3' : null} vector-effect="non-scaling-stroke"></rect>
+            ${conEstribos && alto > 13 ? html`<g font-family="IBM Plex Mono, monospace">
+              <line x1=${(t.tipo === 'DentroDeViga' ? b + largoViga : Math.max(b, xClic + anchoClic)) + 4} y1=${mid} x2=${xs - 4} y2=${mid} stroke=${C.linea}></line>
+              <text x=${xs} y=${mid + (e.sub && alto > 34 ? -2 : 4)} font-size="13" fill=${e.color} font-weight=${sel ? 600 : 500}>${e.texto}${t.excepcion ? html`<tspan fill=${C.naranja} font-family="IBM Plex Sans, sans-serif" font-weight="600">  · distinto</tspan>` : null}</text>
+              ${e.sub && alto > 34 ? html`<text x=${xs} y=${mid + 14} font-size="12" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${e.sub}</text>` : null}
             </g>` : null}
           </g>`;
         })}
-        ${libres.length === 0 ? null : html`<text x=${cx} y=${Z(col.zSuperior) - 6} text-anchor="middle" font-size="11" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${col.marca}</text>`}
+        ${libres.length === 0 ? null : html`<text x=${cx} y=${Z(col.zSuperior) - 6} text-anchor="middle" font-size="12" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">${col.marca}</text>`}
       </svg>`;
   }
 
@@ -238,29 +297,29 @@
     const carril = (p, i) => {
       const xc = 250 + i * ancho + 50;
       return html`<g>
-        <text x=${xc - 6} y="16" font-size="13" font-weight="600" fill=${C.tinta} font-family="IBM Plex Sans, sans-serif">${p.nombre}</text>
+        <text x=${xc - 6} y="16" font-size="14" font-weight="600" fill=${C.tinta} font-family="IBM Plex Sans, sans-serif">${p.nombre}</text>
         <circle cx=${xc + 16} cy="12" r="4.5" fill=${p.color}></circle>
-        <text x=${xc + 25} y="16" font-size="12" fill=${C.suave} font-family="IBM Plex Mono, monospace">${p.barra} ×${p.cantidad}</text>
-        <text x=${xc - 6} y="30" font-size="10.5" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">solape ${f2(p.solape)}${p.enTramosDelOtro ? ' · en tramos del otro' : ''}</text>
+        <text x=${xc + 25} y="16" font-size="13" fill=${C.suave} font-family="IBM Plex Mono, monospace">${p.barra} ×${p.cantidad}</text>
+        <text x=${xc - 6} y="30" font-size="12" fill=${C.suave} font-family="IBM Plex Sans, sans-serif">solape ${f2(p.solape)}${p.enTramosDelOtro ? ' · en tramos del otro' : ''}</text>
         ${p.varillas.map((v, j) => {
           const x = xc + (j % 2) * 9;
           return html`<g>
             <line x1=${x} y1=${Z(v.zInf)} x2=${x} y2=${Z(v.zSup)} stroke=${p.color} stroke-width="4" stroke-linecap="round"></line>
-            <text x=${x + 14} y=${Z((v.zInf + v.zSup) / 2) + 4} font-size="12" fill=${C.tinta} font-family="IBM Plex Mono, monospace">${f2(v.largo)} m</text>
+            <text x=${x + 14} y=${Z((v.zInf + v.zSup) / 2) + 4} font-size="13" fill=${C.tinta} font-family="IBM Plex Mono, monospace">${f2(v.largo)} m</text>
           </g>`;
         })}
         ${p.traslapos.map((t) => html`<g>
           <rect x=${xc - 8} y=${Z(t.zSup)} width="25" height=${Math.max(3, (t.zSup - t.zInf) * k)} fill=${p.color} fill-opacity="0.16" stroke=${p.color} stroke-dasharray="3 2"></rect>
-          <text x=${xc - 12} y=${Z((t.zInf + t.zSup) / 2) + 4} text-anchor="end" font-size="11" fill=${C.suave} font-family="IBM Plex Mono, monospace">↕ ${f2(t.largo)}</text>
+          <text x=${xc - 12} y=${Z((t.zInf + t.zSup) / 2) + 4} text-anchor="end" font-size="12.5" fill=${C.suave} font-family="IBM Plex Mono, monospace">↕ ${f2(t.largo)}</text>
         </g>`)}
         ${p.sinSolucion ? html`<text x=${xc - 6} y=${h - 6} font-size="12" fill=${C.rojo} font-family="IBM Plex Sans, sans-serif">Sin solución con este largo comercial</text>` : null}
       </g>`;
     };
     return html`
       <svg width=${W} height=${h} viewBox="0 0 ${W} ${h}" role="img" aria-label="Varillas A y B de la columna con sus largos y traslapos">
-        ${col.niveles.map((n) => html`<g font-family="IBM Plex Mono, monospace" font-size="11" fill=${C.suave}>
+        ${col.niveles.map((n) => html`<g font-family="IBM Plex Mono, monospace" font-size="12" fill=${C.suave}>
           <line x1="8" y1=${Z(n.z)} x2=${W - 8} y2=${Z(n.z)} stroke="#E4E8EC"></line>
-          <text x="8" y=${Z(n.z) - 4}>${n.nombre} · N+${f2(n.z)}</text>
+          <text x="8" y=${Z(n.z) - 4}>${n.nombre} · N${n.z < 0 ? '' : '+'}${f2(n.z)}</text>
         </g>`)}
         ${col.zapata ? html`<rect x=${cx - 40} y=${Z(col.zapata.zSup)} width="80" height=${(col.zapata.zSup - col.zapata.zInf) * k} fill="#E9EDF1" stroke=${C.hormigonBorde}></rect>` : null}
         ${col.tramos.map((t) => html`<rect x=${t.tipo === 'DentroDeViga' ? x0 - 30 : x0} y=${Z(t.zSup)} width=${t.tipo === 'DentroDeViga' ? cw + 60 : cw} height=${(t.zSup - t.zInf) * k}
@@ -269,5 +328,136 @@
       </svg>`;
   }
 
-  window.DibujosColumnas = { Planta, Seccion, Elevacion, Traslapos, escalaSeccion, ESTADO, C };
+  // ---- Zoom de un dibujo (plan 2026-11-03-vista-previa-estribos-legible.md): el ingeniero no alcanzaba a leer los
+  // números. El SVG se agranda con el mismo viewBox (sigue nítido). Como en vigas (decisión 11): la rueda o el pellizco
+  // del touchpad acercan hacia donde está el mouse, y con zoom el dibujo se mueve arrastrando con clic, sin barras de
+  // desplazamiento. Botones − / + / «Ajustar». El zoom de cada dibujo (clave) se recuerda mientras la ventana está abierta.
+
+  const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_PASO = 0.25;
+  const UMBRAL_ARRASTRE = 4; // px: menos que esto es un clic, no un arrastre
+  const zoomPorDibujo = {};
+
+  class Ampliable extends Component {
+    constructor(props) {
+      super(props);
+      this.state = { z: zoomPorDibujo[props.clave] || 1, arrastrando: false };
+      this.area = null;
+      this.arrastre = null;
+      this.descartarClic = false;
+    }
+
+    componentDidMount() { this.escalar(); }
+
+    // El desplazamiento recién después de agrandar el SVG: antes, el navegador lo recorta al tamaño viejo.
+    componentDidUpdate() {
+      this.escalar();
+      if (this.desplazar && this.area) {
+        this.area.scrollLeft = this.desplazar.x;
+        this.area.scrollTop = this.desplazar.y;
+        this.desplazar = null;
+      }
+    }
+
+    // Cada SVG del dibujo, a su tamaño × zoom (el CSS manda sobre los atributos width/height; el viewBox no cambia).
+    escalar() {
+      if (!this.area) return;
+      const z = this.state.z;
+      for (const svg of this.area.querySelectorAll(':scope > svg, :scope > .capa-zoom > svg')) {
+        const w = parseFloat(svg.getAttribute('width')), h = parseFloat(svg.getAttribute('height'));
+        if (w && h) { svg.style.width = `${w * z}px`; svg.style.height = `${h * z}px`; }
+      }
+    }
+
+    // El zoom vigente, aunque React todavía no lo haya dibujado (varios pasos de rueda seguidos).
+    actual() { return zoomPorDibujo[this.props.clave] || this.state.z; }
+
+    poner(z, foco) {
+      const nuevo = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), viejo = this.actual();
+      if (Math.abs(nuevo - viejo) < 1e-4) return;
+      const a = this.area;
+      // Lo que está bajo el mouse (o en el centro) queda en el mismo lugar después del zoom.
+      const fx = foco ? foco.x : a ? a.clientWidth / 2 : 0, fy = foco ? foco.y : a ? a.clientHeight / 2 : 0;
+      const base = this.desplazar || (a ? { x: a.scrollLeft, y: a.scrollTop } : { x: 0, y: 0 });
+      this.desplazar = { x: Math.max(0, (base.x + fx) * nuevo / viejo - fx), y: Math.max(0, (base.y + fy) * nuevo / viejo - fy) };
+      zoomPorDibujo[this.props.clave] = nuevo;
+      this.setState({ z: nuevo });
+    }
+
+    // Botones: al múltiplo de 25 % siguiente o anterior.
+    paso(dir) {
+      const z = this.actual(), n = Math.round(z / ZOOM_PASO);
+      const destino = dir > 0 ? (n * ZOOM_PASO > z + 1e-4 ? n : n + 1) : (n * ZOOM_PASO < z - 1e-4 ? n : n - 1);
+      this.poner(destino * ZOOM_PASO);
+    }
+
+    // La rueda sola acerca o aleja; el pellizco del touchpad llega como rueda con Ctrl y saltos chicos.
+    rueda(e) {
+      if (!this.area) return;
+      e.preventDefault();
+      const r = this.area.getBoundingClientRect();
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      this.poner(this.actual() * factor, { x: e.clientX - r.left, y: e.clientY - r.top });
+    }
+
+    // Arrastre con el botón izquierdo o el del medio. La captura del puntero se toma recién al pasar el umbral, así un
+    // clic sin mover llega a lo que está debajo (tramos, barras, grapas).
+    bajar(e) {
+      if ((e.button !== 0 && e.button !== 1) || !this.area) return;
+      if (e.target.closest('button, input, select, textarea, a')) return;
+      if (e.button === 1) e.preventDefault();
+      this.descartarClic = false;
+      this.arrastre = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: this.area.scrollLeft, sy: this.area.scrollTop, movio: false };
+    }
+
+    mover(e) {
+      const d = this.arrastre;
+      if (!d || d.id !== e.pointerId || !this.area) return;
+      const dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (!d.movio) {
+        if (Math.hypot(dx, dy) < UMBRAL_ARRASTRE) return;
+        d.movio = true;
+        try { this.area.setPointerCapture(e.pointerId); } catch (_) { /* el puntero ya se soltó */ }
+        this.setState({ arrastrando: true });
+      }
+      this.area.scrollLeft = d.sx - dx;
+      this.area.scrollTop = d.sy - dy;
+    }
+
+    soltar(e) {
+      const d = this.arrastre;
+      if (!d || (e && d.id !== e.pointerId)) return;
+      this.arrastre = null;
+      if (d.movio) {
+        this.descartarClic = true; // el clic que dispara el navegador al soltar no elige nada
+        this.setState({ arrastrando: false });
+      }
+    }
+
+    clicCaptura(e) {
+      if (!this.descartarClic) return;
+      this.descartarClic = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
+    // abajo: la barra va abajo a la derecha, para dibujos que usan la franja de arriba (Traslapos: los títulos).
+    render({ children, abajo }, { z, arrastrando }) {
+      const contenido = typeof children === 'function' ? children(z) : children;
+      const clase = 'zoom-area' + (z > ZOOM_MIN + 1e-4 ? ' movible' : '') + (arrastrando ? ' arrastrando' : '');
+      return html`<div class="ampliable">
+        <div class=${clase} ref=${(el) => { this.area = el; }} onWheel=${(e) => this.rueda(e)}
+            onPointerDown=${(e) => this.bajar(e)} onPointerMove=${(e) => this.mover(e)}
+            onPointerUp=${(e) => this.soltar(e)} onPointerCancel=${(e) => this.soltar(e)}
+            onClickCapture=${(e) => this.clicCaptura(e)}>${contenido}</div>
+        <div class=${abajo ? 'zoom-barra abajo' : 'zoom-barra'} role="group" aria-label="Zoom del dibujo">
+          <button type="button" aria-label="Alejar" title="Alejar (rueda del mouse)" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.paso(-1)}>−</button>
+          <span class="zoom-valor" aria-live="polite">${Math.round(z * 100)} %</span>
+          <button type="button" aria-label="Acercar" title="Acercar (rueda del mouse)" disabled=${z >= ZOOM_MAX - 1e-4} onClick=${() => this.paso(1)}>+</button>
+          <button type="button" class="zoom-ajustar" title="Volver al tamaño de la ventana" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.poner(1)}>Ajustar</button>
+        </div>
+      </div>`;
+    }
+  }
+
+  window.DibujosColumnas = { Planta, Seccion, Elevacion, Traslapos, Ampliable, escalaSeccion, ESTADO, C };
 })();

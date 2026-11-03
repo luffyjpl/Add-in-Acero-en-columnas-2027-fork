@@ -43,11 +43,16 @@ public sealed record PlantaVista(IReadOnlyList<Rejilla> Rejillas, IReadOnlyList<
 /// <param name="Estado">«sinConfigurar», «lista» o «generada».</param>
 public sealed record ColumnaEnPlanta(string Id, string Marca, string Ubicacion, double X, double Y, double LadoX, double LadoY, string Estado);
 
+/// <param name="PrimerEstribo">
+/// Altura real (m) del primer estribo de la columna, la del reparto que usa el generador: la elevación la dibuja con
+/// su distancia a la zapata. <c>null</c> si ningún tramo lleva estribos (plan 2026-11-03-vista-previa-estribos-legible.md).
+/// </param>
 public sealed record ColumnaVista(
     string Id, string Marca, string Ubicacion, double BaseX, double BaseY, double Recubrimiento,
     double ZSuperior, double ZInferiorLongitudinal, ZapataVista? Zapata, IReadOnlyList<NivelVista> Niveles,
     IReadOnlyList<TramoVista> Tramos, SeccionVista Seccion, IReadOnlyList<ZonaVista> ZonasEstribos,
-    TraslaposVista Traslapos, IReadOnlyList<string> Avisos, ResumenVista Resumen, IReadOnlyList<double> RecubrimientosRevit);
+    TraslaposVista Traslapos, IReadOnlyList<string> Avisos, ResumenVista Resumen, IReadOnlyList<double> RecubrimientosRevit,
+    double? PrimerEstribo, IReadOnlyList<SeccionTramoVista> SeccionesTramo);
 
 /// <param name="Ancho">0 = no se conoce: la página dibuja una de ancho fijo.</param>
 public sealed record ZapataVista(double ZInf, double ZSup, double Ancho);
@@ -55,7 +60,13 @@ public sealed record ZapataVista(double ZInf, double ZSup, double Ancho);
 public sealed record NivelVista(string Nombre, double Z);
 
 /// <param name="Excepcion">El usuario marcó «Este tramo distinto».</param>
-public sealed record TramoVista(int Indice, TipoTramo Tipo, double ZInf, double ZSup, bool Excepcion);
+/// <param name="LadoX">
+/// Lados del hormigón de este tramo, en metros (un dado puede ser más ancho que la columna): la elevación dibuja cada
+/// tramo con su ancho. 0 = no se conoce.
+/// </param>
+/// <param name="DesdeX">Dónde empieza la zona común de la columna dentro de este tramo, en metros (0 si es la misma medida).</param>
+public sealed record TramoVista(
+    int Indice, TipoTramo Tipo, double ZInf, double ZSup, bool Excepcion, double LadoX, double LadoY, double DesdeX, double DesdeY);
 
 /// <summary>La sección desde arriba, en cm, con el origen abajo a la izquierda.</summary>
 public sealed record SeccionVista(
@@ -77,7 +88,14 @@ public sealed record MenorVista(
 
 /// <param name="Zona">«zapata», «nudo», «uniforme», «confinada» o «central».</param>
 /// <param name="Cada">El espaciado; null en la zapata, que no lleva estribos.</param>
-public sealed record ZonaVista(int Indice, double ZInf, double ZSup, string Zona, double? Cada, int Cantidad);
+/// <param name="Alturas">
+/// La altura real (m) de cada estribo de la zona, la del reparto del generador: con zoom, la elevación los dibuja en
+/// su lugar. Vacía si no se conoce (sin barra elegida).
+/// </param>
+public sealed record ZonaVista(int Indice, double ZInf, double ZSup, string Zona, double? Cada, int Cantidad, IReadOnlyList<double> Alturas);
+
+/// <summary>La sección de un tramo cuya medida no es la de la columna (un dado más ancho, por ejemplo).</summary>
+public sealed record SeccionTramoVista(int Indice, SeccionVista Seccion);
 
 public sealed record TraslaposVista(IReadOnlyList<PlanVista> Planes, double ZInicio, double ZFin);
 
