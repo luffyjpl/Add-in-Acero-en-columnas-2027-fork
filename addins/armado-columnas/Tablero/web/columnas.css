@@ -102,7 +102,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .lienzo .medida.desplazable { overflow-x: auto; overflow-y: hidden; }
 /* Zoom de los dibujos (Ampliable, dibujos.js; plan 2026-11-03-vista-previa-estribos-legible.md). */
 .ampliable { position: absolute; inset: 0; }
-.zoom-area { position: absolute; inset: 0; overflow: auto; }
+.zoom-area { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
+.zoom-area.movible { cursor: grab; }
+.zoom-area.arrastrando, .zoom-area.arrastrando * { cursor: grabbing !important; user-select: none; }
 .zoom-area > svg { display: block; }
 .capa-zoom { position: relative; width: max-content; }
 .capa-zoom > svg { display: block; }

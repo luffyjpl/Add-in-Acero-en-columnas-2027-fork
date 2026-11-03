@@ -329,18 +329,21 @@
   }
 
   // ---- Zoom de un dibujo (plan 2026-11-03-vista-previa-estribos-legible.md): el ingeniero no alcanzaba a leer los
-  // números. El SVG se agranda con el mismo viewBox (sigue nítido) y se recorre con las barras de desplazamiento.
-  // Botones − / + / «Ajustar» y Ctrl + rueda, que acerca hacia donde está el mouse. El zoom de cada dibujo (clave)
-  // se recuerda mientras la ventana está abierta.
+  // números. El SVG se agranda con el mismo viewBox (sigue nítido). Como en vigas (decisión 11): la rueda o el pellizco
+  // del touchpad acercan hacia donde está el mouse, y con zoom el dibujo se mueve arrastrando con clic, sin barras de
+  // desplazamiento. Botones − / + / «Ajustar». El zoom de cada dibujo (clave) se recuerda mientras la ventana está abierta.
 
   const ZOOM_MIN = 1, ZOOM_MAX = 4, ZOOM_PASO = 0.25;
+  const UMBRAL_ARRASTRE = 4; // px: menos que esto es un clic, no un arrastre
   const zoomPorDibujo = {};
 
   class Ampliable extends Component {
     constructor(props) {
       super(props);
-      this.state = { z: zoomPorDibujo[props.clave] || 1 };
+      this.state = { z: zoomPorDibujo[props.clave] || 1, arrastrando: false };
       this.area = null;
+      this.arrastre = null;
+      this.descartarClic = false;
     }
 
     componentDidMount() { this.escalar(); }
@@ -369,8 +372,8 @@
     actual() { return zoomPorDibujo[this.props.clave] || this.state.z; }
 
     poner(z, foco) {
-      const nuevo = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z / ZOOM_PASO) * ZOOM_PASO)), viejo = this.actual();
-      if (nuevo === viejo) return;
+      const nuevo = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), viejo = this.actual();
+      if (Math.abs(nuevo - viejo) < 1e-4) return;
       const a = this.area;
       // Lo que está bajo el mouse (o en el centro) queda en el mismo lugar después del zoom.
       const fx = foco ? foco.x : a ? a.clientWidth / 2 : 0, fy = foco ? foco.y : a ? a.clientHeight / 2 : 0;
@@ -380,23 +383,77 @@
       this.setState({ z: nuevo });
     }
 
+    // Botones: al múltiplo de 25 % siguiente o anterior.
+    paso(dir) {
+      const z = this.actual(), n = Math.round(z / ZOOM_PASO);
+      const destino = dir > 0 ? (n * ZOOM_PASO > z + 1e-4 ? n : n + 1) : (n * ZOOM_PASO < z - 1e-4 ? n : n - 1);
+      this.poner(destino * ZOOM_PASO);
+    }
+
+    // La rueda sola acerca o aleja; el pellizco del touchpad llega como rueda con Ctrl y saltos chicos.
     rueda(e) {
-      if (!e.ctrlKey || !this.area) return;
+      if (!this.area) return;
       e.preventDefault();
       const r = this.area.getBoundingClientRect();
-      this.poner(this.actual() * (e.deltaY < 0 ? 1.25 : 0.8), { x: e.clientX - r.left, y: e.clientY - r.top });
+      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015));
+      this.poner(this.actual() * factor, { x: e.clientX - r.left, y: e.clientY - r.top });
+    }
+
+    // Arrastre con el botón izquierdo o el del medio. La captura del puntero se toma recién al pasar el umbral, así un
+    // clic sin mover llega a lo que está debajo (tramos, barras, grapas).
+    bajar(e) {
+      if ((e.button !== 0 && e.button !== 1) || !this.area) return;
+      if (e.target.closest('button, input, select, textarea, a')) return;
+      if (e.button === 1) e.preventDefault();
+      this.descartarClic = false;
+      this.arrastre = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: this.area.scrollLeft, sy: this.area.scrollTop, movio: false };
+    }
+
+    mover(e) {
+      const d = this.arrastre;
+      if (!d || d.id !== e.pointerId || !this.area) return;
+      const dx = e.clientX - d.x, dy = e.clientY - d.y;
+      if (!d.movio) {
+        if (Math.hypot(dx, dy) < UMBRAL_ARRASTRE) return;
+        d.movio = true;
+        try { this.area.setPointerCapture(e.pointerId); } catch (_) { /* el puntero ya se soltó */ }
+        this.setState({ arrastrando: true });
+      }
+      this.area.scrollLeft = d.sx - dx;
+      this.area.scrollTop = d.sy - dy;
+    }
+
+    soltar(e) {
+      const d = this.arrastre;
+      if (!d || (e && d.id !== e.pointerId)) return;
+      this.arrastre = null;
+      if (d.movio) {
+        this.descartarClic = true; // el clic que dispara el navegador al soltar no elige nada
+        this.setState({ arrastrando: false });
+      }
+    }
+
+    clicCaptura(e) {
+      if (!this.descartarClic) return;
+      this.descartarClic = false;
+      e.stopPropagation();
+      e.preventDefault();
     }
 
     // abajo: la barra va abajo a la derecha, para dibujos que usan la franja de arriba (Traslapos: los títulos).
-    render({ children, abajo }, { z }) {
+    render({ children, abajo }, { z, arrastrando }) {
       const contenido = typeof children === 'function' ? children(z) : children;
+      const clase = 'zoom-area' + (z > ZOOM_MIN + 1e-4 ? ' movible' : '') + (arrastrando ? ' arrastrando' : '');
       return html`<div class="ampliable">
-        <div class="zoom-area" ref=${(el) => { this.area = el; }} onWheel=${(e) => this.rueda(e)}>${contenido}</div>
+        <div class=${clase} ref=${(el) => { this.area = el; }} onWheel=${(e) => this.rueda(e)}
+            onPointerDown=${(e) => this.bajar(e)} onPointerMove=${(e) => this.mover(e)}
+            onPointerUp=${(e) => this.soltar(e)} onPointerCancel=${(e) => this.soltar(e)}
+            onClickCapture=${(e) => this.clicCaptura(e)}>${contenido}</div>
         <div class=${abajo ? 'zoom-barra abajo' : 'zoom-barra'} role="group" aria-label="Zoom del dibujo">
-          <button type="button" aria-label="Alejar" title="Alejar (Ctrl + rueda)" disabled=${z <= ZOOM_MIN} onClick=${() => this.poner(z - ZOOM_PASO)}>−</button>
+          <button type="button" aria-label="Alejar" title="Alejar (rueda del mouse)" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.paso(-1)}>−</button>
           <span class="zoom-valor" aria-live="polite">${Math.round(z * 100)} %</span>
-          <button type="button" aria-label="Acercar" title="Acercar (Ctrl + rueda)" disabled=${z >= ZOOM_MAX} onClick=${() => this.poner(z + ZOOM_PASO)}>+</button>
-          <button type="button" class="zoom-ajustar" title="Volver al tamaño de la ventana" disabled=${z === 1} onClick=${() => this.poner(1)}>Ajustar</button>
+          <button type="button" aria-label="Acercar" title="Acercar (rueda del mouse)" disabled=${z >= ZOOM_MAX - 1e-4} onClick=${() => this.paso(1)}>+</button>
+          <button type="button" class="zoom-ajustar" title="Volver al tamaño de la ventana" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.poner(1)}>Ajustar</button>
         </div>
       </div>`;
     }

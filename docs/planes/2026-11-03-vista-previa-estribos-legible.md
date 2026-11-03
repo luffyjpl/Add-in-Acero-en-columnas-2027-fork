@@ -36,8 +36,10 @@
 - [ ] Los dibujos de los pasos Barras, Estribos, Grapas y Traslapos tienen
       zoom:
       - botones − / + / «Ajustar»;
-      - Ctrl + rueda del mouse;
-      - con zoom se puede recorrer el dibujo con las barras de desplazamiento.
+      - la rueda del mouse o pellizcar en el touchpad, hacia donde está el
+        mouse (decisión 11);
+      - con zoom el dibujo se mueve arrastrando con clic, sin barras de
+        desplazamiento (decisión 11).
 - [ ] Con zoom, poner y mover grapas en el paso «Grapas» sigue cayendo en la
       barra correcta.
 - [ ] `tools/PruebasTableroColumnas` y `tools/PruebasTraslapos` con 0 fallas,
@@ -206,6 +208,26 @@ Probando con la demo en Chrome (3-nov, `http://127.0.0.1:8765/index.html#normal`
     - En `SeccionesTramo`, el estribo es el de la columna corrido a su lugar
       dentro del tramo, no uno con la medida del tramo. Igual en `demo.js`.
 
+11. **El zoom como en vigas** (3-nov, Luciano, después de probar en Revit:
+    "sería mejor que el zoom fuera como en vigas, que con la rueda normal (o
+    expandiendo en touchpad) se hace el zoom y el movimiento no sea con
+    scroll sino moviendo con el clic"). Corrige la decisión 5:
+    - La rueda sola acerca o aleja hacia donde está el mouse, sin Ctrl. El
+      pellizco del touchpad llega como rueda con Ctrl y hace lo mismo. Sobre
+      el dibujo, la rueda ya no desplaza la página.
+    - El paso de la rueda es continuo (`exp(-deltaY · 0,0015)`, y 0,01 para
+      el pellizco, que manda saltos chicos), como en `despiece/web/pasos.js`.
+      Los botones − / + siguen en pasos de 25 %. El rango sigue de 1 a 4.
+    - Con zoom, el dibujo se mueve arrastrando con el botón izquierdo o el
+      del medio (cursor de mano). `.zoom-area` pasa a `overflow: hidden`: el
+      desplazamiento lo maneja el arrastre, no hay barras.
+    - Un clic sin mover (menos de 4 px) sigue eligiendo tramos, barras y
+      grapas. Si hubo arrastre, el clic que le sigue se descarta, para no
+      elegir algo al soltar. La captura del puntero se toma recién al pasar
+      los 4 px, así el clic normal llega a lo que está debajo.
+    - El arrastre de formas desde la paleta del paso «Grapas» es de HTML
+      (`draggable`), no pasa por el puntero, y no cambia.
+
 ## Plan paso a paso
 
 1. **Datos nuevos** — `Tablero/VistaColumnas.cs`, `Tablero/ArmadorVistaColumnas.cs`:
@@ -300,4 +322,20 @@ En Revit (pendiente): la columna del modelo de referencia en el paso
   pidió sumarlo a la misma rama del PR #240, así que la rama
   `columnas/vista-previa-legible` se juntó con ella y se borró. El PR #240
   ahora cubre los dos planes.
-- [ ] Probado en Revit (lo está probando Luciano).
+- [x] Probado en Revit por Luciano (3-nov): "Funciona bien". Pidió el zoom
+  como en vigas (decisión 11).
+- Decisión 11 implementada (3-nov), sin commit: `Ampliable` en `dibujos.js`
+  (rueda continua, arrastre con umbral de 4 px, clic descartado después de
+  un arrastre) y `.zoom-area` en `columnas.css` (`overflow: hidden`, cursor
+  de mano con zoom).
+  - Demo en Chrome (`index.html#normal`), paso «Estribos»: 5 pasos de rueda
+    llevaron a 212 %; arrastrar movió el dibujo sin elegir nada; un clic
+    quieto eligió el tramo 4; 5 pellizcos simulados (rueda con Ctrl,
+    deltaY −10) llevaron de 212 % a 349 %; «−» bajó a 325 % y a 300 %; la
+    rueda hacia abajo volvió a 100 %. En «Traslapos», la rueda también
+    acerca (182 %). Sin errores de consola.
+  - `dotnet test CQEING-Addins.sln`: 0 fallas.
+  - Luciano lo aprobó ("ya todo bien") y pidió commit y push (3-nov). No se
+    desplegó en Revit 2027 antes del commit porque Revit seguía abierto.
+  - [ ] Falta probar en Revit, con el mouse y con el touchpad (sobre todo
+    poner grapas con zoom).
