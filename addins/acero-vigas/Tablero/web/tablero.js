@@ -1018,20 +1018,23 @@
       };
 
       // Cada viga o vigueta es su rectángulo real en planta (ancho del modelo, con un mínimo para que se vea).
+      // Las vigas sin apoyos (Santiago, 3-nov) se ven en su nivel, punteadas, pero no se abren: no tienen pórtico.
       const items = esc ? (nivel.elementos || []).filter(fin).map((e, i) => {
-        const vig = e.tipo === 'vigueta', off = !ver[vig ? 'vigueta' : 'viga'], abierto = elegidos.includes(e);
-        const on = abierto || enSeleccion.has(e.portico), listo = terminados.has(e.portico);
+        const suelta = e.tipo === 'sinApoyos';
+        const vig = e.tipo === 'vigueta', off = !ver[vig ? 'vigueta' : 'viga'], abierto = !suelta && elegidos.includes(e);
+        const on = !suelta && (abierto || enSeleccion.has(e.portico)), listo = !suelta && terminados.has(e.portico);
         const ax = esc.X(e.x1), ay = esc.Y(e.y1), bx = esc.X(e.x2), by = esc.Y(e.y2);
         const L = Math.hypot(bx - ax, by - ay) || 1, nx = -(by - ay) / L, ny = (bx - ax) / L;
         const t = Math.max(vig ? 2.5 : 3.5, (e.ancho > 0 ? e.ancho : vig ? 0.1 : 0.3) * esc.s) / 2;
-        const por = porDe(e.portico);
-        return { key: i, off, on, vig, label: (por ? por.nombre : String(e.portico)) + (e.grupo ? ' (' + e.grupo + ')' : ''),
-          pick: (ev) => abrir(e, ev),
-          tecla: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.plArrastro = false; abrir(e, ev); } },
+        const por = suelta ? null : porDe(e.portico);
+        return { key: i, off, on, vig, suelta,
+          label: suelta ? 'Sin apoyos en el modelo · ' + e.portico : (por ? por.nombre : String(e.portico)) + (e.grupo ? ' (' + e.grupo + ')' : ''),
+          pick: suelta ? null : (ev) => abrir(e, ev),
+          tecla: suelta ? null : (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.plArrastro = false; abrir(e, ev); } },
           a: [ax, ay], b: [bx, by],
           pts: [[ax + nx * t, ay + ny * t], [bx + nx * t, by + ny * t], [bx - nx * t, by - ny * t], [ax - nx * t, ay - ny * t]].map((p) => f(p[0]) + ',' + f(p[1])).join(' '),
-          fill: off ? '#F1F3F5' : abierto ? '#1F5FAF' : on ? '#9DBBE3' : listo ? '#CDEBD5' : vig ? '#E4E7EB' : '#C9CFD6',
-          stroke: off ? '#D9DDE2' : on ? '#174A8A' : listo ? '#3B8A57' : vig ? '#7C8692' : '#5E6670' };
+          fill: off ? '#F1F3F5' : suelta ? '#F7F8FA' : abierto ? '#1F5FAF' : on ? '#9DBBE3' : listo ? '#CDEBD5' : vig ? '#E4E7EB' : '#C9CFD6',
+          stroke: off ? '#D9DDE2' : suelta ? '#8A939D' : on ? '#174A8A' : listo ? '#3B8A57' : vig ? '#7C8692' : '#5E6670' };
       }) : [];
       // los elegidos encima, para que no los tape otro
       items.sort((p, q) => (p.on ? 1 : 0) - (q.on ? 1 : 0) || (p.vig ? 1 : 0) - (q.vig ? 1 : 0));
@@ -1068,11 +1071,15 @@
         </div>
         <div onWheel=${(ev) => { ev.preventDefault(); const r = ev.currentTarget.getBoundingClientRect(); zoom(s.plZoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), ev.clientX - r.left - 1, ev.clientY - r.top - 1); }} style="position: relative; width: ${W}px; height: ${H}px; flex-shrink: 0; overflow: hidden; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px; box-sizing: border-box">
           <svg width=${iw} height=${ih} onPointerDown=${arrastrar} style="position: absolute; left: 0; top: 0; display: block; touch-action: none; user-select: none; cursor: ${s.plMoviendo ? 'grabbing' : 'grab'}">
-            <style>${'.pl-el{cursor:pointer;outline:none}.pl-el:hover .pl-cuerpo,.pl-el:focus-visible .pl-cuerpo{stroke:#1F5FAF;stroke-width:1.6}.pl-off{cursor:default;pointer-events:none}'}</style>
+            <style>${'.pl-el{cursor:pointer;outline:none}.pl-el:hover .pl-cuerpo,.pl-el:focus-visible .pl-cuerpo{stroke:#1F5FAF;stroke-width:1.6}.pl-off{cursor:default;pointer-events:none}.pl-suelta{cursor:help;outline:none}'}</style>
             <g aria-hidden="true">
               ${ejes.map((a) => html`<line key=${a.key} x1=${f(a.fx)} y1=${f(a.fy)} x2=${f(a.q[0])} y2=${f(a.q[1])} stroke="#B5BCC4" stroke-width="0.8" stroke-dasharray="10 3 2 3"></line>`)}
             </g>
-            ${items.map((e) => html`
+            ${items.map((e) => e.suelta ? html`
+              <g key=${e.key} class=${e.off ? 'pl-off' : 'pl-suelta'} role="img" aria-label=${e.label}>
+                <title>${e.label}</title>
+                <polygon points=${e.pts} fill=${e.fill} stroke=${e.stroke} stroke-width="0.8" stroke-dasharray="3 2" stroke-linejoin="round"></polygon>
+              </g>` : html`
               <g key=${e.key} class=${e.off ? 'pl-el pl-off' : 'pl-el'} role="button" tabindex=${e.off ? -1 : 0} aria-label=${e.label} aria-pressed=${e.on ? 'true' : 'false'} aria-disabled=${e.off ? 'true' : 'false'} onClick=${e.pick} onKeyDown=${e.tecla}>
                 <title>${e.label}</title>
                 <line x1=${f(e.a[0])} y1=${f(e.a[1])} x2=${f(e.b[0])} y2=${f(e.b[1])} stroke="transparent" stroke-width="12" stroke-linecap="round"></line>
@@ -1098,6 +1105,7 @@
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 6px; background: #C9CFD6; border: 1px solid #5E6670; box-sizing: border-box"></span>Viga</span>
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 4px; background: #E4E7EB; border: 1px solid #7C8692; box-sizing: border-box"></span>Vigueta</span>
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 8px; height: 8px; background: #3F4A57"></span>Columna</span>
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 6px; background: #F7F8FA; border: 1px dashed #8A939D; box-sizing: border-box"></span>Sin apoyos</span>
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 6px; background: #1F5FAF"></span>Abierto</span>
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 6px; background: #9DBBE3"></span>Seleccionado</span>
           <span style="display: flex; align-items: center; gap: 6px"><span style="width: 16px; height: 6px; background: #CDEBD5; border: 1px solid #3B8A57; box-sizing: border-box"></span>Terminado</span>

@@ -31,11 +31,19 @@ public enum TipoApoyo
 }
 
 /// <summary>
-/// Una columna o un muro de carga. <paramref name="Huella"/> son puntos de su contorno en planta;
+/// Una columna o un muro. <paramref name="Huella"/> son puntos de su contorno en planta;
 /// <paramref name="Direccion"/> es la de la línea del muro (null en columnas), para descartar los muros que van a lo
-/// largo de la viga.
+/// largo de la viga. <paramref name="DeCarga"/> = false es un muro divisorio: solo apoya a la viga que descansa en él y
+/// no llega a ninguna columna ni muro de carga, como la viga de amarre del cielo raso (Santiago, 3-nov).
 /// </summary>
-public sealed record ApoyoLeido(string Id, TipoApoyo Tipo, IReadOnlyList<Punto> Huella, double ZAbajo, double ZArriba, Punto? Direccion = null);
+public sealed record ApoyoLeido(string Id, TipoApoyo Tipo, IReadOnlyList<Punto> Huella, double ZAbajo, double ZArriba, Punto? Direccion = null,
+    bool DeCarga = true);
+
+/// <summary>
+/// Vigas seguidas que no descansan en nada y no arman pórtico: su nivel y su eje en planta, en mm, para dibujarlas en
+/// la planta y que se note que falta algo en el modelo.
+/// </summary>
+public sealed record VigasSinApoyos(IReadOnlyList<string> Vigas, NivelLeido? Nivel, Punto Desde, Punto Hasta, double Ancho, double ZArriba);
 
 /// <summary>Lo que el adaptador de Revit le pasa al agrupador (#81). Todo en mm.</summary>
 public sealed record ModeloLeido(IReadOnlyList<EjeLeido> Ejes, IReadOnlyList<VigaLeida> Vigas, IReadOnlyList<ApoyoLeido> Apoyos);
@@ -92,5 +100,10 @@ public sealed record AvisoLectura(TipoAvisoLectura Tipo, string Elemento);
 /// <summary>
 /// Lo que sale del agrupador. <paramref name="Modelo"/> es lo leído de Revit, para la vista en planta del tablero: ejes,
 /// columnas y el nivel y el tipo de cada viga (planta, 27-oct). Null = no se tiene (la planta va sin ejes ni columnas).
+/// <paramref name="SinApoyos"/>: las vigas que no armaron pórtico, para verlas en la planta.
 /// </summary>
-public sealed record ResultadoLectura(IReadOnlyList<PorticoLeido> Porticos, IReadOnlyList<AvisoLectura> Avisos, ModeloLeido? Modelo = null);
+public sealed record ResultadoLectura(IReadOnlyList<PorticoLeido> Porticos, IReadOnlyList<AvisoLectura> Avisos, ModeloLeido? Modelo = null,
+    IReadOnlyList<VigasSinApoyos>? SinApoyos = null)
+{
+    public IReadOnlyList<VigasSinApoyos> SinApoyos { get; init; } = SinApoyos ?? [];
+}
