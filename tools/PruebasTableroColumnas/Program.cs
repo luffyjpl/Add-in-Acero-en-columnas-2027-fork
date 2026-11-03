@@ -223,6 +223,66 @@ Probar("ElegirColumna_LaVistaTraeSuSeccionYSusTramos", () =>
     Cierto(col.Traslapos.Planes.Count > 0, "faltan los traslapos");
 });
 
+Probar("Elevacion_TraeElPrimerEstriboYLosLadosDeCadaTramo", () =>
+{
+    // Plan 2026-11-03-vista-previa-estribos-legible.md: la elevación dibuja el primer estribo en su altura real y cada
+    // tramo con su ancho.
+    ColumnaVista col = ConC12().Vista().Columna!;
+    for (int i = 0; i < col.Tramos.Count; i++)
+    {
+        // Sin medida propia, la de la columna (Tramo.Seccion).
+        var (ladoX, ladoY, desdeX, desdeY) = c12.Tramos[i].Seccion(c12);
+        Igual(Math.Round(ladoX, 3), col.Tramos[i].LadoX, $"lado X del tramo {i}");
+        Igual(Math.Round(ladoY, 3), col.Tramos[i].LadoY, $"lado Y del tramo {i}");
+        Igual(Math.Round(desdeX, 3), col.Tramos[i].DesdeX, $"zona común en X del tramo {i}");
+        Igual(Math.Round(desdeY, 3), col.Tramos[i].DesdeY, $"zona común en Y del tramo {i}");
+    }
+
+    double primero = col.PrimerEstribo ?? throw new Exception("no vino el primer estribo");
+    ZonaVista masBaja = col.ZonasEstribos.Where(z => z.Cada is not null && z.Cantidad > 0).OrderBy(z => z.ZInf).First();
+    Cierto(primero >= masBaja.ZInf - 1e-9 && primero <= masBaja.ZInf + masBaja.Cada!.Value + 1e-9,
+        $"el primer estribo ({primero}) tiene que caer al arrancar la zona más baja ({masBaja.ZInf}, cada {masBaja.Cada})");
+
+    // Decisión 6: las alturas reales, cada una en su zona y ninguna repetida.
+    List<double> todas = col.ZonasEstribos.SelectMany(z => z.Alturas).ToList();
+    Cierto(todas.Count > 0, "faltan las alturas reales de los estribos");
+    Cierto(todas.Distinct().Count() == todas.Count, "una altura quedó en dos zonas");
+    Igual(primero, todas.Min(), "el primer estribo es la altura más baja");
+    foreach (ZonaVista z in col.ZonasEstribos)
+        Cierto(z.Alturas.All(a => a >= z.ZInf - 1e-3 && a <= z.ZSup + 1e-3), $"una altura de la zona {z.Zona} cae fuera de ella");
+});
+
+Probar("SeccionTramo_ElDadoMasAnchoTraeSuSeccionCorrida", () =>
+{
+    // Decisión 8: un tramo con otra medida (dado de 60×60 bajo la columna de 40×40) trae su sección, con las barras
+    // corridas a la zona común dentro del dado.
+    var conDado = new ColumnaContexto
+    {
+        Marca = "C-D", BaseX = 0.40, BaseY = 0.40, Recubrimiento = 0.04, ZInferior = 0, ZInferiorLongitudinal = -0.4, ZSuperior = 3.5,
+        IdZapata = "1",
+        Tramos = new List<Tramo>
+        {
+            new() { Indice = 0, ZInferior = 0, ZSuperior = 0.5, Tipo = TipoTramo.Libre, LadoX = 0.60, LadoY = 0.60, ComunDesdeX = 0.10, ComunDesdeY = 0.10 },
+            new() { Indice = 1, ZInferior = 0.5, ZSuperior = 3.5, Tipo = TipoTramo.Libre, LadoX = 0.40, LadoY = 0.40 },
+        },
+    };
+    List<TipoBarra> barras = tipos.ListarBarras().ToList();
+    var opciones = new OpcionesColumna
+    {
+        Longitudinal = ValoresPorDefecto.Longitudinal(tipos),
+        Estribos = ConfigEstribosColumna.Desde(ValoresPorDefecto.Tramo(tipos)),
+    };
+    ColumnaVista col = ArmadorVistaColumnas.Columna("C-D", conDado, "A-1", opciones,
+        n => barras.FirstOrDefault(b => b.Nombre == n), Array.Empty<string>());
+    SeccionTramoVista s = col.SeccionesTramo.SingleOrDefault() ?? throw new Exception($"secciones de tramo: {col.SeccionesTramo.Count}");
+    Cierto(s.Indice == 0, $"es la del tramo {s.Indice}");
+    Igual(60, s.Seccion.Ancho, "ancho del dado (cm)");
+    // Decisión 10: el estribo es el mismo de la columna (GeneradorArmado usa la zona común), corrido 10 cm.
+    Igual(col.Seccion.Estribo.X2 - col.Seccion.Estribo.X1, s.Seccion.Estribo.X2 - s.Seccion.Estribo.X1, "el estribo del dado mide lo mismo");
+    Igual(col.Seccion.Estribo.X1 + 10, s.Seccion.Estribo.X1, "y se corre 10 cm");
+    Igual(col.Seccion.Barras[0].X + 10, s.Seccion.Barras[0].X, "las barras se corren 10 cm");
+});
+
 Probar("ArrancaConfinada_YLosNudosConElCentro", () =>
 {
     VistaColumnas v = ConC12().Vista();

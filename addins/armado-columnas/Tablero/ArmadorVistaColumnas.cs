@@ -31,7 +31,7 @@ public static class ArmadorVistaColumnas
         var avisos = columna.Avisos.Concat(avisosExtra).ToList();
 
         SeccionVista seccion = Seccion(columna, opciones, tramos, barraDe);
-        List<ZonaVista> zonas = Zonas(columna, tramos, opciones.Longitudinal, barraDe, avisos);
+        List<ZonaVista> zonas = Zonas(columna, tramos, opciones.Longitudinal, barraDe, avisos, out double? primerEstribo);
         List<EstriboMenor> menores = opciones.Longitudinal.EstribosMenores;
 
         bool conZapata = columna.IdZapata is not null || columna.ZInferiorLongitudinal < columna.ZInferior - 1e-6;
@@ -41,7 +41,8 @@ public static class ArmadorVistaColumnas
             conZapata ? new ZapataVista(M(columna.ZInferiorLongitudinal - SobreFondoZapata), M(columna.ZInferior), 0) : null,
             columna.Niveles.Select(n => new NivelVista(n.Nombre, M(n.Cota))).ToList(),
             columna.Tramos.Select(t => new TramoVista(
-                t.Indice, t.Tipo, M(t.ZInferior), M(t.ZSuperior), opciones.Estribos.Excepciones.ContainsKey(t.Indice))).ToList(),
+                t.Indice, t.Tipo, M(t.ZInferior), M(t.ZSuperior), opciones.Estribos.Excepciones.ContainsKey(t.Indice),
+                M(t.Seccion(columna).LadoX), M(t.Seccion(columna).LadoY), M(t.Seccion(columna).DesdeX), M(t.Seccion(columna).DesdeY))).ToList(),
             seccion,
             zonas,
             Traslapos(columna, opciones.Longitudinal, barraDe),
@@ -52,7 +53,9 @@ public static class ArmadorVistaColumnas
                 menores.Count(p => p.Forma != FormaMenor.Cerrado),
                 menores.Count(p => p.Forma == FormaMenor.Cerrado),
                 columna.Tramos.Count(t => t.Tipo == TipoTramo.Libre)),
-            RecubrimientosRevit(columna));
+            RecubrimientosRevit(columna),
+            primerEstribo is double z ? M(z) : null,
+            SeccionesTramo(columna, seccion, opciones, tramos, barraDe));
     }
 
     /// <summary>
@@ -71,6 +74,62 @@ public static class ArmadorVistaColumnas
 
     // ------------------------------------------------------------- sección
 
+    /// <summary>El estribo principal de una sección de <paramref name="ladoX"/> × <paramref name="ladoY"/> (m), en cm.</summary>
+    private static EstriboVista Estribo(double ladoX, double ladoY, double recubrimiento, TipoBarra? barraEstribo)
+    {
+        double dEstribo = barraEstribo?.DiametroMm ?? 0;
+        double doblez = barraEstribo is null ? 0 : PlantaArmado.Doblez(barraEstribo, dEstribo);
+        double e = recubrimiento + dEstribo / 2000;
+        return new EstriboVista(
+            Cm(e), Cm(e), Cm(ladoX - e), Cm(ladoY - e),
+            barraEstribo is null
+                ? Array.Empty<double[]>()
+                : Puntos(PlantaArmado.EstriboCerrado(recubrimiento, ladoX - recubrimiento, recubrimiento, ladoY - recubrimiento,
+                    dEstribo / 1000, doblez, PlantaArmado.Cola135(dEstribo))),
+            Color(dEstribo), Cm(dEstribo / 1000));
+    }
+
+    /// <summary>
+    /// Plan 2026-11-03-vista-previa-estribos-legible.md, decisiones 8 y 10: la sección de cada tramo cuya medida no es
+    /// la de la columna (un dado más ancho). El hormigón, con la medida del tramo; el estribo, las barras y las piezas,
+    /// los de la zona común corridos a su lugar dentro del tramo. Como GeneradorArmado, que en una pieza más ancha arma
+    /// el estribo con la zona común (8-oct): la misma medida en toda la columna, con la barra del tramo.
+    /// </summary>
+    private static List<SeccionTramoVista> SeccionesTramo(
+        ColumnaContexto columna, SeccionVista comun, OpcionesColumna opciones, List<ConfigTramo?> tramos,
+        Func<string?, TipoBarra?> barraDe)
+    {
+        var secciones = new List<SeccionTramoVista>();
+        foreach (Tramo t in columna.Tramos)
+        {
+            (double ladoX, double ladoY, double desdeX, double desdeY) = t.Seccion(columna);
+            if (Math.Abs(ladoX - columna.BaseX) < 0.005 && Math.Abs(ladoY - columna.BaseY) < 0.005) continue;
+
+            string? barra = tramos[t.Indice]?.TipoBarraNombre ?? opciones.Estribos.TramosLibres.TipoBarraNombre;
+            double dx = Cm(desdeX), dy = Cm(desdeY);
+            double[] Correr(double[] p) => new[] { Math.Round(p[0] + dx, 2), Math.Round(p[1] + dy, 2) };
+            EstriboVista delComun = Estribo(columna.BaseX, columna.BaseY, opciones.RecubrimientoElegido, barraDe(barra));
+            secciones.Add(new SeccionTramoVista(t.Indice, comun with
+            {
+                Ancho = Cm(ladoX),
+                Alto = Cm(ladoY),
+                Estribo = delComun with
+                {
+                    X1 = Math.Round(delComun.X1 + dx, 2), Y1 = Math.Round(delComun.Y1 + dy, 2),
+                    X2 = Math.Round(delComun.X2 + dx, 2), Y2 = Math.Round(delComun.Y2 + dy, 2),
+                    Puntos = delComun.Puntos.Select(Correr).ToList(),
+                },
+                Barras = comun.Barras.Select(b => b with { X = Math.Round(b.X + dx, 2), Y = Math.Round(b.Y + dy, 2) }).ToList(),
+                Menores = comun.Menores.Select(m => m with
+                {
+                    Puntos = m.Puntos.Select(Correr).ToList(),
+                    Puntas = m.Puntas?.Select(Correr).ToList(),
+                }).ToList(),
+            }));
+        }
+        return secciones;
+    }
+
     private static SeccionVista Seccion(
         ColumnaContexto columna, OpcionesColumna opciones, List<ConfigTramo?> tramos, Func<string?, TipoBarra?> barraDe)
     {
@@ -85,14 +144,7 @@ public static class ArmadorVistaColumnas
         // Las longitudinales se corren con el estribo más grueso de la columna, como en GeneradorLongitudinal.
         double estriboMasGrueso = tramos.Select(t => barraDe(t?.TipoBarraNombre)?.DiametroMm ?? 0).DefaultIfEmpty(0).Max();
 
-        double e = recubrimiento + dEstribo / 2000;
-        var vistaEstribo = new EstriboVista(
-            Cm(e), Cm(e), Cm(ladoX - e), Cm(ladoY - e),
-            barraEstribo is null
-                ? Array.Empty<double[]>()
-                : Puntos(PlantaArmado.EstriboCerrado(recubrimiento, ladoX - recubrimiento, recubrimiento, ladoY - recubrimiento,
-                    dEstribo / 1000, doblez, PlantaArmado.Cola135(dEstribo))),
-            Color(dEstribo), Cm(dEstribo / 1000));
+        EstriboVista vistaEstribo = Estribo(ladoX, ladoY, recubrimiento, barraEstribo);
 
         double? Diametro(PosicionBarra p) => barraDe(cfg.BarraDe(p))?.DiametroMm;
         if (Diametro(PosicionBarra.Esquina) is null || Diametro(PosicionBarra.CaraX) is null || Diametro(PosicionBarra.CaraY) is null)
@@ -166,23 +218,27 @@ public static class ArmadorVistaColumnas
 
     // ------------------------------------------------------------- estribos
 
+    /// <param name="primerEstribo">
+    /// La altura del estribo más bajo de toda la columna (la misma cuenta del generador), o <c>null</c> si ninguno.
+    /// </param>
     private static List<ZonaVista> Zonas(
         ColumnaContexto columna, List<ConfigTramo?> tramos, ConfigLongitudinal longitudinal,
-        Func<string?, TipoBarra?> barraDe, List<string> avisos)
+        Func<string?, TipoBarra?> barraDe, List<string> avisos, out double? primerEstribo)
     {
         var zonas = new List<ZonaVista>();
+        primerEstribo = null;
         foreach (Tramo tramo in columna.Tramos)
         {
             if (tramo.Tipo == TipoTramo.ContraZapata || tramos[tramo.Indice] is not ConfigTramo cfg)
             {
-                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), "zapata", null, 0));
+                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), "zapata", null, 0, Array.Empty<double>()));
                 continue;
             }
 
             double cadaPorDefecto = cfg.Modo == ModoEstribo.Uniforme ? cfg.EspaciadoUniforme : cfg.EspaciadoConfinado;
             if (barraDe(cfg.TipoBarraNombre)?.DiametroMm is not double d)
             {
-                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), Zona(tramo, "uniforme"), cadaPorDefecto, 0));
+                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), Zona(tramo, "uniforme"), cadaPorDefecto, 0, Array.Empty<double>()));
                 continue;
             }
 
@@ -191,11 +247,24 @@ public static class ArmadorVistaColumnas
             PaqueteEstribos.Paquete paquete = PaqueteEstribos.Calcular(piezas, d, p => barraDe(p.TipoBarraNombre)?.DiametroMm ?? d);
             RepartoEstribos.Resultado reparto = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete);
             if (reparto.Aviso is not null) avisos.Add($"Tramo {tramo.Indice + 1}: {reparto.Aviso}");
+            if (reparto.Alturas.Count > 0 && (primerEstribo is null || reparto.Alturas[0] < primerEstribo))
+                primerEstribo = reparto.Alturas[0];
 
             if (reparto.Zonas.Count == 0)
-                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), Zona(tramo, "uniforme"), cadaPorDefecto, 0));
+                zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), Zona(tramo, "uniforme"), cadaPorDefecto, 0,
+                    reparto.Alturas.Select(M).ToList()));
+
+            // Cada estribo en la primera zona que lo contiene (dos zonas vecinas comparten el borde).
+            var usadas = new HashSet<int>();
             foreach (RepartoEstribos.Zona z in reparto.Zonas)
-                zonas.Add(new ZonaVista(tramo.Indice, M(z.ZDesde), M(z.ZHasta), Zona(tramo, z.Nombre), z.Espaciado, z.Cantidad));
+            {
+                List<double> enZona = reparto.Alturas
+                    .Select((a, i) => (a, i))
+                    .Where(x => !usadas.Contains(x.i) && x.a >= z.ZDesde - 1e-6 && x.a <= z.ZHasta + 1e-6)
+                    .Select(x => { usadas.Add(x.i); return M(x.a); })
+                    .ToList();
+                zonas.Add(new ZonaVista(tramo.Indice, M(z.ZDesde), M(z.ZHasta), Zona(tramo, z.Nombre), z.Espaciado, z.Cantidad, enZona));
+            }
         }
         return zonas;
     }

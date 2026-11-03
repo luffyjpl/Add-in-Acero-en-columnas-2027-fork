@@ -103,70 +103,110 @@
         "tipo": "ContraZapata",
         "zInf": 0,
         "zSup": 0.2,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 1,
         "tipo": "Libre",
         "zInf": 0.2,
         "zSup": 2.75,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 2,
         "tipo": "DentroDeViga",
         "zInf": 2.75,
         "zSup": 3.2,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 3,
         "tipo": "Libre",
         "zInf": 3.2,
         "zSup": 5.95,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 4,
         "tipo": "DentroDeViga",
         "zInf": 5.95,
         "zSup": 6.4,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 5,
         "tipo": "Libre",
         "zInf": 6.4,
         "zSup": 9.15,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 6,
         "tipo": "DentroDeViga",
         "zInf": 9.15,
         "zSup": 9.6,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 7,
         "tipo": "Libre",
         "zInf": 9.6,
         "zSup": 12.35,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 8,
         "tipo": "DentroDeViga",
         "zInf": 12.35,
         "zSup": 12.8,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       },
       {
         "indice": 9,
         "tipo": "Libre",
         "zInf": 12.8,
         "zSup": 15.55,
-        "excepcion": false
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
       }
     ],
     "seccion": {
@@ -590,7 +630,8 @@
         "zSup": 0.2,
         "zona": "zapata",
         "cada": null,
-        "cantidad": 0
+        "cantidad": 0,
+        "alturas": []
       },
       {
         "indice": 1,
@@ -598,7 +639,18 @@
         "zSup": 0.755,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 8
+        "cantidad": 8,
+        "alturas": [
+          0.255,
+          0.317,
+          0.38,
+          0.442,
+          0.505,
+          0.567,
+          0.63,
+          0.692,
+          0.755
+        ]
       },
       {
         "indice": 1,
@@ -606,7 +658,20 @@
         "zSup": 2.195,
         "zona": "central",
         "cada": 0.14,
-        "cantidad": 11
+        "cantidad": 11,
+        "alturas": [
+          0.886,
+          1.017,
+          1.148,
+          1.279,
+          1.41,
+          1.54,
+          1.671,
+          1.802,
+          1.933,
+          2.064,
+          2.195
+        ]
       },
       {
         "indice": 1,
@@ -614,7 +679,17 @@
         "zSup": 2.695,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 9
+        "cantidad": 9,
+        "alturas": [
+          2.258,
+          2.32,
+          2.383,
+          2.445,
+          2.508,
+          2.57,
+          2.633,
+          2.695
+        ]
       },
       {
         "indice": 2,
@@ -622,7 +697,13 @@
         "zSup": 3.145,
         "zona": "nudo",
         "cada": 0.14,
-        "cantidad": 4
+        "cantidad": 4,
+        "alturas": [
+          2.805,
+          2.918,
+          3.032,
+          3.145
+        ]
       },
       {
         "indice": 3,
@@ -630,7 +711,18 @@
         "zSup": 3.755,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 8
+        "cantidad": 8,
+        "alturas": [
+          3.255,
+          3.317,
+          3.38,
+          3.442,
+          3.505,
+          3.567,
+          3.63,
+          3.692,
+          3.755
+        ]
       },
       {
         "indice": 3,
@@ -638,7 +730,21 @@
         "zSup": 5.395,
         "zona": "central",
         "cada": 0.14,
-        "cantidad": 12
+        "cantidad": 12,
+        "alturas": [
+          3.891,
+          4.028,
+          4.165,
+          4.302,
+          4.438,
+          4.575,
+          4.712,
+          4.848,
+          4.985,
+          5.122,
+          5.259,
+          5.395
+        ]
       },
       {
         "indice": 3,
@@ -646,7 +752,17 @@
         "zSup": 5.895,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 9
+        "cantidad": 9,
+        "alturas": [
+          5.458,
+          5.52,
+          5.583,
+          5.645,
+          5.708,
+          5.77,
+          5.833,
+          5.895
+        ]
       },
       {
         "indice": 4,
@@ -654,7 +770,13 @@
         "zSup": 6.345,
         "zona": "nudo",
         "cada": 0.14,
-        "cantidad": 4
+        "cantidad": 4,
+        "alturas": [
+          6.005,
+          6.118,
+          6.232,
+          6.345
+        ]
       },
       {
         "indice": 5,
@@ -662,7 +784,18 @@
         "zSup": 6.955,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 8
+        "cantidad": 8,
+        "alturas": [
+          6.455,
+          6.517,
+          6.58,
+          6.642,
+          6.705,
+          6.767,
+          6.83,
+          6.892,
+          6.955
+        ]
       },
       {
         "indice": 5,
@@ -670,7 +803,21 @@
         "zSup": 8.595,
         "zona": "central",
         "cada": 0.14,
-        "cantidad": 12
+        "cantidad": 12,
+        "alturas": [
+          7.091,
+          7.228,
+          7.365,
+          7.502,
+          7.638,
+          7.775,
+          7.912,
+          8.048,
+          8.185,
+          8.322,
+          8.459,
+          8.595
+        ]
       },
       {
         "indice": 5,
@@ -678,7 +825,17 @@
         "zSup": 9.095,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 9
+        "cantidad": 9,
+        "alturas": [
+          8.658,
+          8.72,
+          8.783,
+          8.845,
+          8.908,
+          8.97,
+          9.033,
+          9.095
+        ]
       },
       {
         "indice": 6,
@@ -686,7 +843,13 @@
         "zSup": 9.545,
         "zona": "nudo",
         "cada": 0.14,
-        "cantidad": 4
+        "cantidad": 4,
+        "alturas": [
+          9.205,
+          9.318,
+          9.432,
+          9.545
+        ]
       },
       {
         "indice": 7,
@@ -694,7 +857,18 @@
         "zSup": 10.155,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 8
+        "cantidad": 8,
+        "alturas": [
+          9.655,
+          9.717,
+          9.78,
+          9.842,
+          9.905,
+          9.967,
+          10.03,
+          10.092,
+          10.155
+        ]
       },
       {
         "indice": 7,
@@ -702,7 +876,21 @@
         "zSup": 11.795,
         "zona": "central",
         "cada": 0.14,
-        "cantidad": 12
+        "cantidad": 12,
+        "alturas": [
+          10.291,
+          10.428,
+          10.565,
+          10.702,
+          10.838,
+          10.975,
+          11.112,
+          11.248,
+          11.385,
+          11.522,
+          11.659,
+          11.795
+        ]
       },
       {
         "indice": 7,
@@ -710,7 +898,17 @@
         "zSup": 12.295,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 9
+        "cantidad": 9,
+        "alturas": [
+          11.858,
+          11.92,
+          11.983,
+          12.045,
+          12.108,
+          12.17,
+          12.233,
+          12.295
+        ]
       },
       {
         "indice": 8,
@@ -718,7 +916,13 @@
         "zSup": 12.745,
         "zona": "nudo",
         "cada": 0.14,
-        "cantidad": 4
+        "cantidad": 4,
+        "alturas": [
+          12.405,
+          12.518,
+          12.632,
+          12.745
+        ]
       },
       {
         "indice": 9,
@@ -726,7 +930,18 @@
         "zSup": 13.355,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 8
+        "cantidad": 8,
+        "alturas": [
+          12.855,
+          12.917,
+          12.98,
+          13.042,
+          13.105,
+          13.167,
+          13.23,
+          13.292,
+          13.355
+        ]
       },
       {
         "indice": 9,
@@ -734,7 +949,21 @@
         "zSup": 14.995,
         "zona": "central",
         "cada": 0.14,
-        "cantidad": 12
+        "cantidad": 12,
+        "alturas": [
+          13.491,
+          13.628,
+          13.765,
+          13.902,
+          14.038,
+          14.175,
+          14.312,
+          14.448,
+          14.585,
+          14.722,
+          14.859,
+          14.995
+        ]
       },
       {
         "indice": 9,
@@ -742,7 +971,17 @@
         "zSup": 15.495,
         "zona": "confinada",
         "cada": 0.07,
-        "cantidad": 9
+        "cantidad": 9,
+        "alturas": [
+          15.058,
+          15.12,
+          15.183,
+          15.245,
+          15.308,
+          15.37,
+          15.433,
+          15.495
+        ]
       }
     ],
     "traslapos": {
@@ -821,7 +1060,9 @@
     },
     "recubrimientosRevit": [
       0.04
-    ]
+    ],
+    "primerEstribo": 0.255,
+    "seccionesTramo": []
   },
   "opciones": {
     "recubrimiento": 0.04,
