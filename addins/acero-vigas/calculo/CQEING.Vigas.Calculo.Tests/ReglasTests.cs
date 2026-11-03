@@ -24,18 +24,62 @@ public class ReglasTests
     }
 
     /// <summary>
-    /// Juan, 26-oct: la pata del gancho respeta la cola E del cuadro. El tramo recto llega a la cara de afuera del doblez,
-    /// así que el gancho suma su arco por el eje más la cola, menos el radio y medio diámetro que el tramo ya cubre. #5:
-    /// radio 95 / 2 + 15.9 / 2 = 55.45. Antes sumaba la B entera (278) y Revit alargaba la cola a 256.
+    /// Juan, 30-oct: a 90° el gancho suma la B y la pata por fuera la mide, para que las cotas cierren en el múltiplo. Los
+    /// demás suman su arco por el eje más la cola, menos el radio y medio diámetro que el tramo ya cubre. #5:
+    /// radio 95 / 2 + 15.9 / 2 = 55.45.
     /// </summary>
     [Theory]
-    [InlineData(TipoGancho.De90, 215)]   // 55.45·π/2 + 191 − 63.4
+    [InlineData(TipoGancho.De90, 278)]   // la B
     [InlineData(TipoGancho.De135, 162)]  // 55.45·3π/4 + 95 − 63.4: el doblado de gancho, el de la barra en Revit
     [InlineData(TipoGancho.De180, 176)]  // 55.45·π + 65 − 63.4
     [InlineData(TipoGancho.Sin, 0)]
     public void ElGanchoSumaSuArcoYLaColaDelCuadro(TipoGancho t, int largo)
     {
         Assert.Equal(largo, Reglas.LargoGancho(Reglas.Generales.PorDiametro[5], t));
+    }
+
+    /// <summary>
+    /// Carlos, 29-oct: el largo total del gancho (B) se redondea hacia arriba para cortar y doblar con una medida estándar;
+    /// lo que crece va a la cola. #4 a 90°: B 222 → 250 con 5 cm (+28) y → 300 con 10 cm (+78). #5 a 90°: 278 → 300 (+22).
+    /// </summary>
+    [Theory]
+    [InlineData(4, 0, 0)]
+    [InlineData(4, 50, 28)]
+    [InlineData(4, 100, 78)]
+    [InlineData(5, 50, 22)]
+    public void ConRedondeo_ElLargoTotalDelGanchoSubeAlSiguienteMultiplo(int numero, int redondeo, int crece)
+    {
+        ReglaDiametro r = Reglas.Generales.PorDiametro[numero];
+
+        Assert.Equal(Reglas.LargoGancho(r, TipoGancho.De90) + crece, Reglas.LargoGancho(r, TipoGancho.De90, redondeo));
+    }
+
+    [Fact]
+    public void ConRedondeo_UnGanchoQueYaEsMultiploNoCambiaYSinGanchoSigueEnCero()
+    {
+        ReglaDiametro r = Reglas.Generales.PorDiametro[5] with { Gancho90 = new Gancho(300, 213, 95, 227) };
+
+        Assert.Equal(Reglas.LargoGancho(r, TipoGancho.De90), Reglas.LargoGancho(r, TipoGancho.De90, 50));
+        Assert.Equal(0, Reglas.LargoGancho(r, TipoGancho.Sin, 50));
+    }
+
+    [Fact]
+    public void PorDefectoLosGanchosSeRedondeanA5cm()
+    {
+        Assert.Equal(50, Reglas.Generales.RedondeoGancho);
+        ReglaDiametro r5 = Reglas.Generales.PorDiametro[5];
+        Assert.Equal(Reglas.LargoGancho(r5, TipoGancho.De90, 50), Reglas.Generales.LargoGanchoRedondeado(r5, TipoGancho.De90));
+    }
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(50, true)]
+    [InlineData(100, true)]
+    [InlineData(30, false)]
+    [InlineData(-50, false)]
+    public void ElRedondeoSoloPuedeSerSin5o10cm(int redondeo, bool valido)
+    {
+        Assert.Equal(valido, (Reglas.Generales with { RedondeoGancho = redondeo }).Validar().Count == 0);
     }
 
     [Fact]

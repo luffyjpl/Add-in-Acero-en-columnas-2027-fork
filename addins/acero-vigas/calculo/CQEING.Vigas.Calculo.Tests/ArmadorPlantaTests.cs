@@ -119,6 +119,58 @@ public sealed class ArmadorPlantaTests(ITestOutputHelper salida)
         Assert.Equal((0.0, -1.0, 0.0, 6.0), (p.Niveles[1].Ejes[1].X1, p.Niveles[1].Ejes[1].Y1, p.Niveles[1].Ejes[1].X2, p.Niveles[1].Ejes[1].Y2));
     }
 
+    /// <summary>
+    /// Los puntos de la huella llegan en el orden de las aristas del sólido, con puntos de adentro (vanos, varios sólidos).
+    /// Unidos así salían triángulos cruzados en la planta (Santiago, 3-nov): se dibuja su contorno, en orden.
+    /// </summary>
+    [Fact]
+    public void LaHuellaSeDibujaComoSuContornoEnOrden()
+    {
+        var revuelta = new ApoyoLeido("m1", TipoApoyo.Muro,
+            [new(1000, 0), new(0, 300), new(500, 150), new(0, 0), new(1000, 300), new(250, 0), new(500, 150)], 0, 3500);
+        (List<(string, PorticoLeido)> porticos, ModeloLeido modelo) = Datos();
+
+        PlantaVista p = ArmadorPlanta.Armar(porticos, modelo with { Apoyos = [revuelta] });
+
+        Assert.Equal([[0.0, 0.0], [1.0, 0.0], [1.0, 0.3], [0.0, 0.3]], p.Niveles[0].Columnas.Single().Puntos);
+    }
+
+    /// <summary>
+    /// Todos los niveles, pisos y cielos rasos, cada uno con lo suyo (Santiago, 3-nov): la viga sin apoyos se ve en su
+    /// nivel, aunque ese nivel no tenga pórticos, para que se note y se corrija en el modelo.
+    /// </summary>
+    [Fact]
+    public void LasVigasSinApoyosSeDibujanEnSuNivel()
+    {
+        var cielo = new NivelLeido("Cielo raso P2", 6200);
+        (List<(string, PorticoLeido)> porticos, ModeloLeido modelo) = Datos();
+        VigasSinApoyos[] sueltas =
+        [
+            new(["s1"], cielo, new Punto(500, 2000), new Punto(3000, 2000), 150, 6200),
+            new(["s2"], Nivel2, new Punto(0, 3000), new Punto(1000, 3000), 250, 3500),
+        ];
+
+        PlantaVista p = ArmadorPlanta.Armar(porticos, modelo, sueltas);
+
+        Assert.Equal(["Nivel 2", "Cielo raso P2", "Nivel 3", "Sin nivel"], p.Niveles.Select(n => n.Nombre));
+        NivelPlanta n = p.Niveles[1];
+        Assert.Equal(6.2, n.Elevacion);
+        ElementoPlanta s = Assert.Single(n.Elementos);
+        Assert.Equal(("s1", "sinApoyos", 0.5, 2.0, 3.0, 2.0, 0.15), (s.Portico, s.Tipo, s.X1, s.Y1, s.X2, s.Y2, s.Ancho));
+        Assert.Contains(p.Niveles[0].Elementos, e => e.Tipo == "sinApoyos" && e.Portico == "s2");
+    }
+
+    [Fact]
+    public void LosMurosDivisoriosNoSeDibujanComoColumnas()
+    {
+        (List<(string, PorticoLeido)> porticos, ModeloLeido modelo) = Datos();
+        var divisorio = new ApoyoLeido("m1", TipoApoyo.Muro, [new(0, 0), new(150, 0), new(150, 3000), new(0, 3000)], 0, 3500, new Punto(0, 1), DeCarga: false);
+
+        PlantaVista p = ArmadorPlanta.Armar(porticos, modelo with { Apoyos = [.. modelo.Apoyos, divisorio] });
+
+        Assert.Equal(2, p.Niveles[0].Columnas.Count);
+    }
+
     [Fact]
     public void LaPlantaViajaEnElContratoDeLaPagina()
     {
