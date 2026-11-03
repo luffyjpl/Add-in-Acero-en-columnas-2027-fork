@@ -19,6 +19,9 @@ internal static class GeneradorPlanta
     private const double MargenMarca = 1.0;
     private const double LargoMarca = 0.25;
 
+    /// <summary>Cuánto mira por debajo de su nivel una planta de piso: lo que cuelga la viga más alta.</summary>
+    private const double BajoElNivel = 1.0 * PiesPorMetro;
+
     public static PlantaGenerada Generar(Document doc, ViewPlan planta, string carpeta)
     {
         Registro.Paso("planta: empieza " + planta.Name);
@@ -30,6 +33,11 @@ internal static class GeneradorPlanta
             copia.Name = "CQEING temporal " + Guid.NewGuid().ToString("N");
             copia.ViewTemplateId = ElementId.InvalidElementId;
             copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
+            // Una planta de piso de arquitectura puede ocultar el armazón o no mirar por debajo del nivel, donde cuelgan las
+            // vigas. En la copia se muestran y se mira un metro abajo; la planta original no se toca.
+            copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_StructuralFraming), false);
+            if (copia.ViewType == ViewType.FloorPlan)
+                MirarBajoElNivel(copia);
 
             List<Element> vigas = new FilteredElementCollector(doc, copia.Id).OfCategory(BuiltInCategory.OST_StructuralFraming)
                 .WhereElementIsNotElementType().ToList();
@@ -61,6 +69,17 @@ internal static class GeneradorPlanta
             t.RollBack();
             Registro.Paso("planta: deshecha");
         }
+    }
+
+    private static void MirarBajoElNivel(ViewPlan copia)
+    {
+        PlanViewRange rango = copia.GetViewRange();
+        foreach (PlanViewPlane plano in new[] { PlanViewPlane.BottomClipPlane, PlanViewPlane.ViewDepthPlane })
+        {
+            rango.SetLevelId(plano, copia.GenLevel.Id);
+            rango.SetOffset(plano, -BajoElNivel);
+        }
+        copia.SetViewRange(rango);
     }
 
     private static PlantaGenerada Exportar(Document doc, View copia, string carpeta,

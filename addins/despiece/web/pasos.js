@@ -449,7 +449,7 @@
       const { modelo, plantaId, plantas, grupo, hechos } = this.state;
       const p = plantas[plantaId];
       if (!modelo) return html`<span style="color: #5E6670">Leyendo el modelo…</span>`;
-      if (modelo.plantas.length === 0) return html`<span style="color: #5E6670">El proyecto no tiene plantas estructurales.</span>`;
+      if (modelo.plantas.length === 0) return html`<span style="color: #5E6670">El proyecto no tiene plantas con vigas. Cree un plano estructural por nivel en Vista → Vistas de plano → Plano estructural y vuelva a abrir el despiece.</span>`;
       if (!p) return html`<span style="color: #5E6670">Generando la planta en Revit…</span>`;
       const elegidas = new Set(this.grupoElegido()?.vigas ?? []);
       return html`
