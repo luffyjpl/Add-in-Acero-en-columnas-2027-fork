@@ -878,21 +878,37 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>
-    /// El largo de la pata del gancho dentro del estribo aparte, como <c>0.08</c> en la captura de Santiago (#225): el
-    /// detalle de plegado no lo muestra con el gancho de 180°. Va donde el estribo tiene espacio, al otro lado de las patas.
+    /// El largo de la pata de cada gancho del estribo aparte, como los <c>0.08</c> de la captura de Juan (31-oct): el
+    /// detalle de plegado no los acota aunque su tipo lo pida (probado el 3-nov, ni en texto ni en cota). El gancho que se
+    /// queda dentro lleva su largo al otro lado de las patas, donde el estribo tiene espacio. El que Revit despliega con el
+    /// primer tramo (<see cref="BendingDetailSegmentsRepresentation.Unfold"/>) queda por fuera, junto a la esquina de las
+    /// patas, y su largo va al lado, fuera del estribo.
     /// </summary>
     private static void EtiquetarGancho(Document doc, View vista, Rebar estribo, XYZ centroDetalle, double centroZ, TiposPropios tipos)
     {
         IList<Curve> curvas = Curvas(estribo, false);
         if (curvas.Count == Curvas(estribo, true).Count)
             return;
-        double centroEstribo = (curvas.Min(c => c.GetEndPoint(0).Z) + curvas.Max(c => c.GetEndPoint(0).Z)) / 2;
-        List<double> puntas = new[] { curvas[0], curvas[^1] }.SelectMany(c => new[] { c.GetEndPoint(0).Z, c.GetEndPoint(1).Z }).ToList();
-        bool patasAbajo = puntas.Average() < centroEstribo;
-        double z = centroZ + (patasAbajo ? puntas.Max() - centroEstribo + BajaNota + AireNota : puntas.Min() - centroEstribo - SubeNota - AireNota);
+        XYZ derecha = vista.RightDirection;
+        List<XYZ> puntos = curvas.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
+        double minZ = puntos.Min(p => p.Z), maxZ = puntos.Max(p => p.Z), centroEstribo = (minZ + maxZ) / 2;
+        double minX = puntos.Min(p => p.DotProduct(derecha)), maxX = puntos.Max(p => p.DotProduct(derecha)), centroX = (minX + maxX) / 2;
+        List<XYZ> puntas = new[] { curvas[0], curvas[^1] }.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
+        bool patasAbajo = puntas.Average(p => p.Z) < centroEstribo;
         string texto = (Gancho(estribo) * 0.3048).ToString("0.00", CultureInfo.InvariantCulture);
-        TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, z), texto, tipos.Nota(HorizontalTextAlignment.Center));
-        Pintar(vista, nota.Id, estribo, null);
+
+        double z = centroZ + (patasAbajo ? puntas.Max(p => p.Z) - centroEstribo + BajaNota + AireNota : puntas.Min(p => p.Z) - centroEstribo - SubeNota - AireNota);
+        TextNote dentro = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, z), texto, tipos.Nota(HorizontalTextAlignment.Center));
+        Pintar(vista, dentro.Id, estribo, null);
+
+        if (new[] { 0, 1 }.Count(i => estribo.GetHookTypeId(i) != ElementId.InvalidElementId) < 2)
+            return;
+        bool patasDerecha = puntas.Average(p => p.DotProduct(derecha)) > centroX;
+        double x = (patasDerecha ? maxX - centroX + AireNota : minX - centroX - AireNota);
+        double zFuera = centroZ + (patasAbajo ? minZ - centroEstribo - SubeNota - AireNota : maxZ - centroEstribo + BajaNota + AireNota);
+        TextNote fuera = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, zFuera) + derecha * x, texto,
+            tipos.Nota(patasDerecha ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Right));
+        Pintar(vista, fuera.Id, estribo, null);
     }
 
     /// <summary>
@@ -1139,6 +1155,9 @@ internal sealed class TiposPropios
         RebarBendingDetailType original = todos.FirstOrDefault(t => !TieneEtiqueta(doc, t)) ?? todos.First();
         string nombreBarra = Nombre("CQ Despiece sin etiqueta");
         var barra = todos.FirstOrDefault(t => t.Name == nombreBarra) ?? (RebarBendingDetailType)original.Duplicate(nombreBarra);
+        // Desplegado, como dibuja el estribo Juan (31-oct): en "Estándar" los dos ganchos de 135° quedan encimados en la
+        // esquina y no se ve la forma. Se fija siempre: los proyectos que ya traen este tipo lo tienen en "Estándar".
+        barra.SegmentsRepresentation = BendingDetailSegmentsRepresentation.Unfold;
         DimensionType? metros = null;
         foreach (Parameter p in barra.Parameters)
         {
@@ -1172,6 +1191,8 @@ internal sealed class TiposPropios
         string nombreSinMedidas = Nombre("CQ Despiece sin etiqueta") + " sin medidas";
         var sinMedidas = todos.FirstOrDefault(t => t.Name == nombreSinMedidas) ?? (RebarBendingDetailType)barra.Duplicate(nombreSinMedidas);
         sinMedidas.SegmentLengthDimensionsEnabled = false;
+        // Sale del de estribos, pero las barras longitudinales se dibujan como en la viga.
+        sinMedidas.SegmentsRepresentation = BendingDetailSegmentsRepresentation.Standard;
         return new TiposPropios(barra, sinMedidas, metros, corta, nota.Id);
     }
 
