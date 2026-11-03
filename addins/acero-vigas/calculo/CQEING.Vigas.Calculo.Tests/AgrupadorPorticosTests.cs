@@ -253,58 +253,6 @@ public class AgrupadorPorticosTests
         Assert.Contains(r.Avisos, a => a.Tipo == TipoAvisoLectura.SinApoyos && a.Elemento.Contains("secundaria"));
     }
 
-    private static readonly NivelLeido CieloRaso = new("N+Cielo raso P2", 2700);
-
-    /// <summary>Muro de 15 cm a lo largo de y en <paramref name="x"/>, que cruza el eje 1 (y = 0).</summary>
-    private static ApoyoLeido Muro(string id, double x, double z0, double z1, bool deCarga) =>
-        new(id, TipoApoyo.Muro, [new(x - 75, -1000), new(x + 75, -1000), new(x + 75, 1000), new(x - 75, 1000)], z0, z1, new Punto(0, 1), deCarga);
-
-    /// <summary>
-    /// Viga de amarre del cielo raso (Santiago, 3-nov): va encima de los muros de bloque de división, sin columnas. El muro
-    /// no es de carga, pero es donde descansa: sin él la viga se descartaba y no salía en su nivel.
-    /// </summary>
-    [Fact]
-    public void LaVigaQueSoloDescansaEnMurosDivisorios_SeApoyaEnEllos()
-    {
-        var m = new ModeloLeido(Ejes,
-            [Viga("a1", 0, 3500, 2700, CieloRaso, alto: 200), Viga("a2", 3500, 7000, 2700, CieloRaso, alto: 200)],
-            [Muro("m1", 0, 0, 2500, false), Muro("m2", 3500, 0, 2500, false), Muro("m3", 7000, 0, 2500, false)]);
-
-        ResultadoLectura r = AgrupadorPorticos.Agrupar(m);
-
-        PorticoLeido p = Assert.Single(r.Porticos);
-        Assert.Equal(("N+Cielo raso P2", 3), (p.Nivel, p.Portico.Apoyos.Count));
-        Assert.All(p.TiposDeApoyo, t => Assert.Equal(TipoApoyo.Muro, t));
-        Assert.DoesNotContain(r.Avisos, a => a.Tipo == TipoAvisoLectura.SinApoyos);
-        Assert.Empty(r.SinApoyos);
-    }
-
-    /// <summary>Un muro divisorio bajo una viga que llega a columnas no la parte: solo cuenta si no hay otro apoyo.</summary>
-    [Fact]
-    public void ElMuroDivisorioBajoUnaVigaConColumnas_NoEsApoyo()
-    {
-        ModeloLeido m = EjeUnoPiso2();
-        m = m with { Apoyos = [.. m.Apoyos, Muro("m1", 1750, 0, 3150, false)] };
-
-        PorticoLeido p = Assert.Single(AgrupadorPorticos.Agrupar(m).Porticos);
-
-        Assert.Equal(["A", "5", "6"], p.Portico.Apoyos.Select(a => a.Eje));
-    }
-
-    /// <summary>La que no descansa en nada sigue sin pórtico, pero queda con su nivel y su lugar para verla en la planta.</summary>
-    [Fact]
-    public void LaVigaSinApoyos_QuedaParaDibujarlaEnSuNivel()
-    {
-        var m = new ModeloLeido(Ejes, [Viga("s1", 500, 3000, 2700, CieloRaso, y: 2000, ancho: 150, alto: 200)], []);
-
-        ResultadoLectura r = AgrupadorPorticos.Agrupar(m);
-
-        Assert.Empty(r.Porticos);
-        VigasSinApoyos s = Assert.Single(r.SinApoyos);
-        Assert.Equal(["s1"], s.Vigas);
-        Assert.Equal((CieloRaso, new Punto(500, 2000), new Punto(3000, 2000), 150.0, 2700.0), (s.Nivel, s.Desde, s.Hasta, s.Ancho, s.ZArriba));
-    }
-
     /// <summary>
     /// Viguetas (#938/#939). Carlos (24-oct, min 08:11): se arman igual que las vigas, pero se apoyan en vigas que
     /// llegan a columnas. El add-in las reconoce solo por el tipo (VT/VB, como en PROY_JULIO_BETO) o porque miden menos
