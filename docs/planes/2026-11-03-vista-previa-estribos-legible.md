@@ -296,4 +296,8 @@ En Revit (pendiente): la columna del modelo de referencia en el paso
   - Las tres herramientas de pruebas: 0 fallas. Build para 2027 y 2026: 0
     advertencias. `dotnet test CQEING-Addins.sln`: 0 fallas.
   - Desplegado de nuevo en Revit 2027 (Revit cerrado, comprobado).
+- Commit `9ac07cd` en `hotfix-contra-zapata-piso-entero` (3-nov). Luciano
+  pidió sumarlo a la misma rama del PR #240, así que la rama
+  `columnas/vista-previa-legible` se juntó con ella y se borró. El PR #240
+  ahora cubre los dos planes.
 - [ ] Probado en Revit (lo está probando Luciano).

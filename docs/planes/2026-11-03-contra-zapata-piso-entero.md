@@ -175,4 +175,10 @@ En Revit real (pendiente, cuando haya modelo):
     ventana puede avisar que la columna cambió desde que se generó.
   - Hay que volver a generarlas para que el dado tenga estribos.
 - Criterios: ⏳ todos pendientes de Revit real.
-- [ ] Probado en Revit (sin modelo por ahora; queda pendiente).
+- Commit `fb389e4` y PR #240 (3-nov).
+  - `origin/main` se mezcló en la rama (`ec9484d`, sin conflictos): la
+    rama había salido de un `main` local atrasado, sin la ventana web.
+  - La elevación y el zoom (plan `2026-11-03-vista-previa-estribos-legible.md`,
+    commit `9ac07cd`) van en el mismo PR.
+  - Desplegado en Revit 2027 local desde `C:/Proyecto/addins-240`.
+- [ ] Probado en Revit (lo está probando Luciano).
