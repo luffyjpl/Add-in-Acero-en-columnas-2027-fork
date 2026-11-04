@@ -86,11 +86,37 @@ public static class ArmadorPlanta
         foreach (ApoyoLeido a in modelo.Apoyos.Where(a => a.Tipo != TipoApoyo.Viga && a.Huella.Count > 0
             && a.ZAbajo - ToleranciaCota <= cota && cota <= a.ZArriba + ToleranciaCota))
         {
-            double[][] puntos = a.Huella.Select(p => new[] { M(p.X), M(p.Y) }).ToArray();
+            double[][] puntos = Contorno(a.Huella).Select(p => new[] { M(p.X), M(p.Y) }).ToArray();
             if (vistas.Add(string.Join(";", puntos.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p[0]},{p[1]}")))))
                 columnas.Add(new ColumnaPlanta(puntos));
         }
         return columnas;
+    }
+
+    /// <summary>
+    /// El contorno de la huella en orden antihorario, desde el punto de menor x (y menor y): su envolvente convexa. Los
+    /// puntos llegan en el orden de las aristas del sólido y con puntos de adentro; unidos tal cual salían triángulos
+    /// cruzados (Santiago, 3-nov). Un muro en L queda como su rectángulo envolvente, que en planta basta para ubicarlo.
+    /// </summary>
+    private static List<Punto> Contorno(IReadOnlyList<Punto> huella)
+    {
+        List<Punto> puntos = huella.Distinct().OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
+        if (puntos.Count < 3)
+            return puntos;
+        static double Giro(Punto o, Punto a, Punto b) => (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X);
+        var contorno = new List<Punto>();
+        foreach (IEnumerable<Punto> mitad in new[] { puntos, Enumerable.Reverse(puntos) })
+        {
+            int inicio = contorno.Count;
+            foreach (Punto p in mitad)
+            {
+                while (contorno.Count - inicio >= 2 && Giro(contorno[^2], contorno[^1], p) <= 0)
+                    contorno.RemoveAt(contorno.Count - 1);
+                contorno.Add(p);
+            }
+            contorno.RemoveAt(contorno.Count - 1);
+        }
+        return contorno;
     }
 
     /// <summary>Los elementos del nivel, con el sistema de cada vigueta que tiene al menos otra igual.</summary>

@@ -466,8 +466,9 @@ var lote = new List<TramoLindero>
 
 Probar("lindero_alcance_gancho_90", () =>
 {
-    Igual(0.222 + 2.5 * 0.0127, Lindero.AlcanceGancho90(12.7), "#4");
-    Igual(0.388 + 2.5 * 0.0222, Lindero.AlcanceGancho90(22.2), "#7");
+    // Desde #177 (28-oct) la pata mide el B del cuadro: alcance = B + medio diámetro de margen (antes, + 2,5 diámetros).
+    Igual(0.222 + 0.5 * 0.0127, Lindero.AlcanceGancho90(12.7), "#4");
+    Igual(0.388 + 0.5 * 0.0222, Lindero.AlcanceGancho90(22.2), "#7");
     Igual(16 * 0.0358, Lindero.AlcanceGancho90(35.8), "#11, fuera del cuadro");
 });
 

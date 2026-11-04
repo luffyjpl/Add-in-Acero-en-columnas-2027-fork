@@ -39,6 +39,13 @@ public sealed class LectorContexto : IProveedorContexto
     private static readonly double TramoMinimo = APies(0.01);
 
     /// <summary>
+    /// Cuánto puede quedar el pie de la columna por encima de la cara superior
+    /// de su zapata (o por debajo del fondo) y seguir contando como apoyado en
+    /// ella. Cubre la columna modelada a ras, con algún milímetro de diferencia.
+    /// </summary>
+    private static readonly double ToleranciaPieSobreZapata = APies(0.05);
+
+    /// <summary>
     /// Dos elementos de columna cuyo centro en planta cae a menos de esto se
     /// consideran la misma pila. Generoso a propósito (encaje de grilla,
     /// redondeos de modelado) pero corto para no fusionar dos columnas
@@ -106,7 +113,9 @@ public sealed class LectorContexto : IProveedorContexto
                 MarcaUbicacion(p.pila[0].Instancia),
                 // Los lados, para dibujarla a escala en el selector (#133).
                 p.LadoX,
-                p.LadoY))
+                p.LadoY,
+                // Todos los pisos: al elegir en una planta de arriba se selecciona ese elemento, no el de abajo.
+                p.pila.Select(e => IdTexto(e.Instancia.Id)).ToList()))
             .ToList();
 
     /// <summary>
@@ -168,10 +177,14 @@ public sealed class LectorContexto : IProveedorContexto
         // y dónde le cae esa zona, para dibujarlo como queda en Revit (22-oct).
         Huella comun = ZonaComun(pila, avisos);
 
+        // La zapata elegida en el elemento de abajo: no se vuelve a contar como
+        // nudo en ningún elemento de la pila.
+        ElementId? idElementoZapata = null;
+
         foreach (ElementoColumna el in pila)
         {
             double zArranque = el.ZInf;
-            bool sobreZapata = false;
+            List<(double Inf, double Sup, Element Elemento)> cimentaciones = CimentacionesQueTocan(el.Solido);
             Huella huella = HuellaPlanta(el.Solido);
             var seccion = (
                 LadoX: AMetros(huella.XMax - huella.XMin), LadoY: AMetros(huella.YMax - huella.YMin),
@@ -181,24 +194,29 @@ public sealed class LectorContexto : IProveedorContexto
             // más arriba no hay nada contra qué arrancar.
             if (primero)
             {
-                (double zZapata, double fondoZapata, Element? zapata) = TopeDeZapata(el.Solido);
+                // Su zapata es la cimentación que contiene el pie de la
+                // columna, no la de cara más alta: una viga de amarre
+                // modelada como cimentación ganaba, el arranque subía a su
+                // cara superior y el dado de abajo quedaba sin estribos (plan
+                // 2026-11-03-contra-zapata-piso-entero.md).
+                //
+                // Cuenta tanto la columna metida DENTRO de la zapata como la
+                // apoyada A RAS de su cara superior, que es el caso normal de
+                // modelado (confirmado sobre el modelo de prueba, columna de
+                // esquina, 3-sep): para eso está la tolerancia.
+                int? iZapata = TramosColumna.ElegirZapata(
+                    cimentaciones.Select(c => (c.Inf, c.Sup)).ToList(), el.ZInf, ToleranciaPieSobreZapata);
 
-                // Toca zapata en cuanto se encontró una -- no solo cuando el
-                // sólido de la columna se mete DENTRO de ella (zZapata bien
-                // por debajo de el.ZInf, el caso original). El caso normal de
-                // modelado es la columna apoyada A RAS de la cara superior de
-                // la zapata (zZapata ≈ el.ZInf, sin empotrar), y con la
-                // condición vieja (zZapata > el.ZInf + 1cm) eso nunca daba
-                // true: el tramo de abajo quedaba "libre" en vez de "contra
-                // zapata" en el caso más común, no en el raro. Confirmado
-                // sobre el modelo de prueba (columna de esquina, 3-sep).
-                sobreZapata = zZapata > double.MinValue;
-
-                if (sobreZapata)
+                // Los estribos arrancan en la cara superior de la zapata: nada
+                // queda dentro de ella, que es lo único que no puede llevar
+                // estribos (ingeniero Santiago, 3-nov).
+                if (iZapata is int iz)
                 {
+                    (double fondoZapata, double zZapata, Element zapata) = cimentaciones[iz];
+                    idElementoZapata = zapata.Id;
                     zArranque = Math.Max(el.ZInf, zZapata);
                     zInferiorLongitudinal = fondoZapata + APies(AnclajeSobreElFondo);
-                    idZapata = zapata is not null ? IdTexto(zapata.Id) : null;
+                    idZapata = IdTexto(zapata.Id);
                     avisos.Add($"Arranca sobre cimentación: el acero empieza en {AMetros(zArranque):0.00} m.");
                 }
             }
@@ -214,11 +232,19 @@ public sealed class LectorContexto : IProveedorContexto
                 continue;
             }
 
-            List<(double Inf, double Sup)> nudos = BandasDeViga(el.Solido, zArranque, el.ZSup);
+            // Las otras cimentaciones que cruzan la columna (vigas de amarre
+            // modeladas en esa categoría) hacen de nudo, como una viga.
+            IEnumerable<(double Inf, double Sup)> bandasCimentacion = cimentaciones
+                .Where(c => c.Elemento.Id != idElementoZapata)
+                .Select(c => (Inf: Math.Max(c.Inf, zArranque), Sup: Math.Min(c.Sup, el.ZSup)))
+                .Where(b => b.Sup - b.Inf > TramoMinimo);
+
+            List<(double Inf, double Sup)> nudos = TramosColumna.Fusionar(
+                BandasDeViga(el.Solido, zArranque, el.ZSup).Concat(bandasCimentacion), TramoMinimo);
             if (nudos.Count > 0) huboNudo = true;
 
             tramos.AddRange(ArmarTramos(
-                zArranque, el.ZSup, nudos, sobreZapata, IdTexto(el.Instancia.Id), tramos.Count,
+                zArranque, el.ZSup, nudos, IdTexto(el.Instancia.Id), tramos.Count,
                 AMetros(LeerRecubrimiento(el.Instancia) ?? 0), seccion));
 
             primero = false;
@@ -429,57 +455,33 @@ public sealed class LectorContexto : IProveedorContexto
 
     /// <summary>
     /// Cose las bandas de viga de UN elemento con lo que queda libre entre
-    /// ellas, de abajo hacia arriba y sin dejar huecos. El primer tramo de la
-    /// pila entera se marca contra zapata si corresponde: ese borde no admite
-    /// el mismo tratamiento que un extremo libre.
+    /// ellas, de abajo hacia arriba y sin dejar huecos. Solo libres y nudos:
+    /// ver por qué no hay contra zapata en <see cref="TramosColumna.Coser"/>.
     /// </summary>
     private static List<Tramo> ArmarTramos(
         double zArranque,
         double zTope,
         List<(double Inf, double Sup)> nudos,
-        bool sobreZapata,
         string idElementoHost,
         int indiceBase,
         double recubrimientoMetros,
         (double LadoX, double LadoY, double DesdeX, double DesdeY) seccion)
     {
-        var tramos = new List<Tramo>();
-        double cursor = zArranque;
+        List<TramosColumna.SubTramo> subTramos = TramosColumna.Coser(zArranque, zTope, nudos, TramoMinimo);
 
-        void Agregar(double inf, double sup, TipoTramo tipo)
+        return subTramos.Select((t, i) => new Tramo
         {
-            if (sup - inf <= TramoMinimo) return;
-
-            tramos.Add(new Tramo
-            {
-                Indice = indiceBase + tramos.Count,
-                ZInferior = AMetros(inf),
-                ZSuperior = AMetros(sup),
-                // Solo el primer sub-tramo de este elemento, y solo si es
-                // libre: si el elemento arrancara dentro de una viga, saber
-                // eso importa más.
-                Tipo = tramos.Count == 0 && sobreZapata && tipo == TipoTramo.Libre
-                    ? TipoTramo.ContraZapata
-                    : tipo,
-                IdElementoHost = idElementoHost,
-                Recubrimiento = recubrimientoMetros,
-                LadoX = seccion.LadoX,
-                LadoY = seccion.LadoY,
-                ComunDesdeX = seccion.DesdeX,
-                ComunDesdeY = seccion.DesdeY,
-            });
-        }
-
-        foreach ((double inf, double sup) in nudos)
-        {
-            Agregar(cursor, inf, TipoTramo.Libre);
-            Agregar(Math.Max(inf, cursor), sup, TipoTramo.DentroDeViga);
-            cursor = Math.Max(cursor, sup);
-        }
-
-        Agregar(cursor, zTope, TipoTramo.Libre);
-
-        return tramos;
+            Indice = indiceBase + i,
+            ZInferior = AMetros(t.Inf),
+            ZSuperior = AMetros(t.Sup),
+            Tipo = t.Tipo,
+            IdElementoHost = idElementoHost,
+            Recubrimiento = recubrimientoMetros,
+            LadoX = seccion.LadoX,
+            LadoY = seccion.LadoY,
+            ComunDesdeX = seccion.DesdeX,
+            ComunDesdeY = seccion.DesdeY,
+        }).ToList();
     }
 
     /// <summary>
@@ -530,76 +532,41 @@ public sealed class LectorContexto : IProveedorContexto
             if (sup - inf > TramoMinimo) crudas.Add((inf, sup));
         }
 
-        return Fusionar(crudas);
-    }
-
-    private static List<(double Inf, double Sup)> Fusionar(List<(double Inf, double Sup)> bandas)
-    {
-        var fusionadas = new List<(double Inf, double Sup)>();
-
-        foreach ((double inf, double sup) in bandas.OrderBy(b => b.Inf))
-        {
-            if (fusionadas.Count > 0 && inf <= fusionadas[^1].Sup + TramoMinimo)
-            {
-                (double antInf, double antSup) = fusionadas[^1];
-                fusionadas[^1] = (antInf, Math.Max(antSup, sup));
-            }
-            else
-            {
-                fusionadas.Add((inf, sup));
-            }
-        }
-
-        return fusionadas;
+        return TramosColumna.Fusionar(crudas, TramoMinimo);
     }
 
     /// <summary>
-    /// Cota superior e inferior de la zapata sobre la que arranca la columna
-    /// (<see cref="double.MinValue"/> en ambas si no hay ninguna). Solo lee --
-    /// el aviso y la decisión de qué hacer con el valor son de quien llama
-    /// (<see cref="Leer"/>), que es quien sabe si además hace falta subir
-    /// <c>zArranque</c>.
+    /// Las cimentaciones que tocan la columna en planta, con su cara inferior y
+    /// superior. Solo lee: cuál es la zapata lo decide
+    /// <see cref="TramosColumna.ElegirZapata"/> (la que contiene el pie de la
+    /// columna) y las demás, si cruzan la columna, hacen de nudo (vigas de
+    /// amarre modeladas en la categoría Cimentación).
     ///
-    /// Se leen las dos caras (no solo la superior, como antes) porque el
-    /// acero longitudinal SÍ entra en la zapata a anclarse -- a diferencia
-    /// del estribo, que arranca en la cara superior -- y para eso hace falta
-    /// saber dónde está el fondo (ver <see cref="ColumnaContexto.ZInferiorLongitudinal"/>).
-    ///
-    /// También devuelve el elemento de la zapata (la más profunda, si hay
-    /// más de una candidata) -- <see cref="ColumnaContexto.IdZapata"/> lo
-    /// necesita porque el tramo de anclaje del longitudinal se hostea en la
-    /// zapata, no en la columna (Revit no aloja un Rebar cuya curva se sale
-    /// del sólido de su host).
+    /// Se leen las dos caras porque el acero longitudinal SÍ entra en la
+    /// zapata a anclarse -- a diferencia del estribo, que arranca en la cara
+    /// superior -- y para eso hace falta saber dónde está el fondo (ver
+    /// <see cref="ColumnaContexto.ZInferiorLongitudinal"/>). Y el elemento,
+    /// porque <see cref="ColumnaContexto.IdZapata"/> lo necesita: el tramo de
+    /// anclaje del longitudinal se hostea en la zapata, no en la columna
+    /// (Revit no aloja un Rebar cuya curva se sale del sólido de su host).
     /// </summary>
-    private (double Sup, double Inf, Element? Zapata) TopeDeZapata(Solid columna)
+    private List<(double Inf, double Sup, Element Elemento)> CimentacionesQueTocan(Solid columna)
     {
-        double tope = double.MinValue;
-        double fondo = double.MinValue;
-        Element? elementoFondo = null;
+        var cimentaciones = new List<(double Inf, double Sup, Element Elemento)>();
         Huella huellaColumna = HuellaPlanta(columna);
 
-        foreach (Element zapata in CandidatasPorCaja(huellaColumna, BuiltInCategory.OST_StructuralFoundation))
+        foreach (Element cimentacion in CandidatasPorCaja(huellaColumna, BuiltInCategory.OST_StructuralFoundation))
         {
-            Solid? solidoZapata = SolidoMayor(
-                zapata.get_Geometry(new Options { DetailLevel = ViewDetailLevel.Fine }));
+            Solid? solido = SolidoMayor(
+                cimentacion.get_Geometry(new Options { DetailLevel = ViewDetailLevel.Fine }));
 
-            if (solidoZapata is null || !SeTocan(huellaColumna, HuellaPlanta(solidoZapata))) continue;
+            if (solido is null || !SeTocan(huellaColumna, HuellaPlanta(solido))) continue;
 
-            (double inf, double sup) = ExtensionZ(solidoZapata);
-
-            // Del lado del fondo, si hay más de una zapata candidata (no
-            // debería, pero por las dudas) nos quedamos con la MÁS PROFUNDA:
-            // el ZInferiorLongitudinal tiene que valer para cualquiera que
-            // esté ahí tocando, no solo la que dio el tope más alto.
-            if (sup > tope) tope = sup;
-            if (fondo == double.MinValue || inf < fondo)
-            {
-                fondo = inf;
-                elementoFondo = zapata;
-            }
+            (double inf, double sup) = ExtensionZ(solido);
+            cimentaciones.Add((inf, sup, cimentacion));
         }
 
-        return (tope, fondo, elementoFondo);
+        return cimentaciones;
     }
 
     /// <summary>Rectángulo en planta que envuelve al sólido: (xMin, xMax, yMin, yMax).</summary>
@@ -775,8 +742,10 @@ public sealed class LectorContexto : IProveedorContexto
 
             if (Math.Abs(recubrimientoMetros - RecubrimientoNormalMetros) > 0.001)
                 avisos.Add(
-                    $"Recubrimiento lateral de {recubrimientoMetros * 100:0.#} cm -- distinto del valor normal " +
-                    $"({RecubrimientoNormalMetros * 100:0} cm). Se usa igual, solo para que lo revisen.");
+                    // Vale para las dos ventanas: la nueva arranca con 4 cm y la vieja con el de Revit (decisión 15 de
+                    // docs/planes/2026-10-29-interfaz-web-columnas.md); en las dos manda el campo «Recubrimiento».
+                    $"En Revit tiene un recubrimiento lateral de {recubrimientoMetros * 100:0.#} cm, distinto del valor " +
+                    $"normal ({RecubrimientoNormalMetros * 100:0} cm). Revisa cuál corresponde: se usa el de «Recubrimiento».");
 
             return recubrimientoPies;
         }
@@ -812,10 +781,16 @@ public sealed class LectorContexto : IProveedorContexto
             .ToList();
     }
 
+    /// <summary>
+    /// La «Marca» de Revit; sin ella, la marca de ubicación («A-1»), que es como el equipo nombra las columnas, y
+    /// solo al final el Id (#205, hallazgo 13 del plan de la interfaz web). Solo se usa en textos.
+    /// </summary>
     private static string Marca(FamilyInstance columna) =>
         columna.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString() is { Length: > 0 } marca
             ? marca
-            : $"[{columna.Id}]";
+            : MarcaUbicacion(columna) is { Length: > 0 } ubicacion
+                ? ubicacion
+                : $"[{columna.Id}]";
 
     /// <summary>
     /// La "marca de ubicación del pilar": la coordenada de rejilla que Revit ya

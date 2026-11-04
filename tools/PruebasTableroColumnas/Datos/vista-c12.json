@@ -1,0 +1,1301 @@
+{
+  "modelo": "",
+  "planta": {
+    "rejillas": [
+      {
+        "nombre": "A",
+        "x1": -1,
+        "y1": -1,
+        "x2": -1,
+        "y2": 6
+      },
+      {
+        "nombre": "1",
+        "x1": -1,
+        "y1": -1,
+        "x2": 6,
+        "y2": -1
+      }
+    ],
+    "columnas": [
+      {
+        "id": "C-12",
+        "marca": "C-12",
+        "ubicacion": "A-1",
+        "x": 0,
+        "y": 0,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "estado": "sinConfigurar"
+      },
+      {
+        "id": "C-1",
+        "marca": "C-1",
+        "ubicacion": "B-1",
+        "x": 5,
+        "y": 0,
+        "ladoX": 0.3,
+        "ladoY": 0.3,
+        "estado": "sinConfigurar"
+      },
+      {
+        "id": "C-7",
+        "marca": "C-7",
+        "ubicacion": "A-2 (150, 0)",
+        "x": 0,
+        "y": 5,
+        "ladoX": 0.35,
+        "ladoY": 0.35,
+        "estado": "sinConfigurar"
+      }
+    ]
+  },
+  "elegidas": [
+    "C-12"
+  ],
+  "compatibles": [
+    "C-12"
+  ],
+  "descartadas": [],
+  "columna": {
+    "id": "C-12",
+    "marca": "C-12",
+    "ubicacion": "A-1",
+    "baseX": 0.4,
+    "baseY": 0.4,
+    "recubrimiento": 0.04,
+    "zSuperior": 15.55,
+    "zInferiorLongitudinal": -0.3,
+    "zapata": {
+      "zInf": -0.375,
+      "zSup": 0,
+      "ancho": 0
+    },
+    "niveles": [
+      {
+        "nombre": "PB",
+        "z": 0
+      },
+      {
+        "nombre": "P1",
+        "z": 3.2
+      },
+      {
+        "nombre": "P2",
+        "z": 6.4
+      },
+      {
+        "nombre": "P3",
+        "z": 9.6
+      },
+      {
+        "nombre": "P4",
+        "z": 12.8
+      },
+      {
+        "nombre": "Techo",
+        "z": 16
+      }
+    ],
+    "tramos": [
+      {
+        "indice": 0,
+        "tipo": "ContraZapata",
+        "zInf": 0,
+        "zSup": 0.2,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 1,
+        "tipo": "Libre",
+        "zInf": 0.2,
+        "zSup": 2.75,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 2,
+        "tipo": "DentroDeViga",
+        "zInf": 2.75,
+        "zSup": 3.2,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 3,
+        "tipo": "Libre",
+        "zInf": 3.2,
+        "zSup": 5.95,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 4,
+        "tipo": "DentroDeViga",
+        "zInf": 5.95,
+        "zSup": 6.4,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 5,
+        "tipo": "Libre",
+        "zInf": 6.4,
+        "zSup": 9.15,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 6,
+        "tipo": "DentroDeViga",
+        "zInf": 9.15,
+        "zSup": 9.6,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 7,
+        "tipo": "Libre",
+        "zInf": 9.6,
+        "zSup": 12.35,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 8,
+        "tipo": "DentroDeViga",
+        "zInf": 12.35,
+        "zSup": 12.8,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      },
+      {
+        "indice": 9,
+        "tipo": "Libre",
+        "zInf": 12.8,
+        "zSup": 15.55,
+        "excepcion": false,
+        "ladoX": 0.4,
+        "ladoY": 0.4,
+        "desdeX": 0,
+        "desdeY": 0
+      }
+    ],
+    "seccion": {
+      "ancho": 40,
+      "alto": 40,
+      "recubrimiento": 4,
+      "estribo": {
+        "x1": 4.47,
+        "y1": 4.47,
+        "x2": 35.52,
+        "y2": 35.52,
+        "puntos": [
+          [
+            9.2,
+            12.56
+          ],
+          [
+            5.17,
+            8.53
+          ],
+          [
+            4.97,
+            8.3
+          ],
+          [
+            4.79,
+            8.04
+          ],
+          [
+            4.66,
+            7.76
+          ],
+          [
+            4.56,
+            7.46
+          ],
+          [
+            4.5,
+            7.16
+          ],
+          [
+            4.48,
+            6.85
+          ],
+          [
+            4.5,
+            6.54
+          ],
+          [
+            4.56,
+            6.24
+          ],
+          [
+            4.66,
+            5.94
+          ],
+          [
+            4.79,
+            5.66
+          ],
+          [
+            4.97,
+            5.4
+          ],
+          [
+            5.17,
+            5.17
+          ],
+          [
+            5.4,
+            4.97
+          ],
+          [
+            5.66,
+            4.79
+          ],
+          [
+            5.94,
+            4.66
+          ],
+          [
+            6.24,
+            4.56
+          ],
+          [
+            6.54,
+            4.5
+          ],
+          [
+            6.85,
+            4.48
+          ],
+          [
+            33.15,
+            4.48
+          ],
+          [
+            33.46,
+            4.5
+          ],
+          [
+            33.76,
+            4.56
+          ],
+          [
+            34.06,
+            4.66
+          ],
+          [
+            34.34,
+            4.79
+          ],
+          [
+            34.6,
+            4.97
+          ],
+          [
+            34.83,
+            5.17
+          ],
+          [
+            35.03,
+            5.4
+          ],
+          [
+            35.21,
+            5.66
+          ],
+          [
+            35.34,
+            5.94
+          ],
+          [
+            35.44,
+            6.24
+          ],
+          [
+            35.5,
+            6.54
+          ],
+          [
+            35.53,
+            6.85
+          ],
+          [
+            35.53,
+            33.15
+          ],
+          [
+            35.5,
+            33.46
+          ],
+          [
+            35.44,
+            33.76
+          ],
+          [
+            35.34,
+            34.06
+          ],
+          [
+            35.21,
+            34.34
+          ],
+          [
+            35.03,
+            34.6
+          ],
+          [
+            34.83,
+            34.83
+          ],
+          [
+            34.6,
+            35.03
+          ],
+          [
+            34.34,
+            35.21
+          ],
+          [
+            34.06,
+            35.34
+          ],
+          [
+            33.76,
+            35.44
+          ],
+          [
+            33.46,
+            35.5
+          ],
+          [
+            33.15,
+            35.53
+          ],
+          [
+            6.85,
+            35.53
+          ],
+          [
+            6.54,
+            35.5
+          ],
+          [
+            6.24,
+            35.44
+          ],
+          [
+            5.94,
+            35.34
+          ],
+          [
+            5.66,
+            35.21
+          ],
+          [
+            5.4,
+            35.03
+          ],
+          [
+            5.17,
+            34.83
+          ],
+          [
+            4.97,
+            34.6
+          ],
+          [
+            4.79,
+            34.34
+          ],
+          [
+            4.66,
+            34.06
+          ],
+          [
+            4.56,
+            33.76
+          ],
+          [
+            4.5,
+            33.46
+          ],
+          [
+            4.48,
+            33.15
+          ],
+          [
+            4.48,
+            6.85
+          ],
+          [
+            4.5,
+            6.54
+          ],
+          [
+            4.56,
+            6.24
+          ],
+          [
+            4.66,
+            5.94
+          ],
+          [
+            4.79,
+            5.66
+          ],
+          [
+            4.97,
+            5.4
+          ],
+          [
+            5.17,
+            5.17
+          ],
+          [
+            5.4,
+            4.97
+          ],
+          [
+            5.66,
+            4.79
+          ],
+          [
+            5.94,
+            4.66
+          ],
+          [
+            6.24,
+            4.56
+          ],
+          [
+            6.54,
+            4.5
+          ],
+          [
+            6.85,
+            4.48
+          ],
+          [
+            7.16,
+            4.5
+          ],
+          [
+            7.46,
+            4.56
+          ],
+          [
+            7.76,
+            4.66
+          ],
+          [
+            8.04,
+            4.79
+          ],
+          [
+            8.3,
+            4.97
+          ],
+          [
+            8.53,
+            5.17
+          ],
+          [
+            12.56,
+            9.2
+          ]
+        ],
+        "color": "#FBBC04",
+        "grosor": 0.95
+      },
+      "barras": [
+        {
+          "x": 5.96,
+          "y": 5.96,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "esquina",
+          "eje": null,
+          "indice": null
+        },
+        {
+          "x": 20,
+          "y": 5.58,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "abajo",
+          "eje": "Columna",
+          "indice": 0
+        },
+        {
+          "x": 34.04,
+          "y": 5.96,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "esquina",
+          "eje": null,
+          "indice": null
+        },
+        {
+          "x": 34.42,
+          "y": 20,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "derecha",
+          "eje": "Fila",
+          "indice": 0
+        },
+        {
+          "x": 34.04,
+          "y": 34.04,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "esquina",
+          "eje": null,
+          "indice": null
+        },
+        {
+          "x": 20,
+          "y": 34.42,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "arriba",
+          "eje": "Columna",
+          "indice": 0
+        },
+        {
+          "x": 5.96,
+          "y": 34.04,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "esquina",
+          "eje": null,
+          "indice": null
+        },
+        {
+          "x": 5.58,
+          "y": 20,
+          "diametroMm": 12.7,
+          "color": "#4285F4",
+          "nombre": "#4",
+          "posicion": "izquierda",
+          "eje": "Fila",
+          "indice": 0
+        }
+      ],
+      "menores": []
+    },
+    "zonasEstribos": [
+      {
+        "indice": 0,
+        "zInf": 0,
+        "zSup": 0.2,
+        "zona": "zapata",
+        "cada": null,
+        "cantidad": 0,
+        "alturas": []
+      },
+      {
+        "indice": 1,
+        "zInf": 0.255,
+        "zSup": 0.755,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 8,
+        "alturas": [
+          0.255,
+          0.317,
+          0.38,
+          0.442,
+          0.505,
+          0.567,
+          0.63,
+          0.692,
+          0.755
+        ]
+      },
+      {
+        "indice": 1,
+        "zInf": 0.755,
+        "zSup": 2.195,
+        "zona": "central",
+        "cada": 0.14,
+        "cantidad": 11,
+        "alturas": [
+          0.886,
+          1.017,
+          1.148,
+          1.279,
+          1.41,
+          1.54,
+          1.671,
+          1.802,
+          1.933,
+          2.064,
+          2.195
+        ]
+      },
+      {
+        "indice": 1,
+        "zInf": 2.195,
+        "zSup": 2.695,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 9,
+        "alturas": [
+          2.258,
+          2.32,
+          2.383,
+          2.445,
+          2.508,
+          2.57,
+          2.633,
+          2.695
+        ]
+      },
+      {
+        "indice": 2,
+        "zInf": 2.805,
+        "zSup": 3.145,
+        "zona": "nudo",
+        "cada": 0.14,
+        "cantidad": 4,
+        "alturas": [
+          2.805,
+          2.918,
+          3.032,
+          3.145
+        ]
+      },
+      {
+        "indice": 3,
+        "zInf": 3.255,
+        "zSup": 3.755,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 8,
+        "alturas": [
+          3.255,
+          3.317,
+          3.38,
+          3.442,
+          3.505,
+          3.567,
+          3.63,
+          3.692,
+          3.755
+        ]
+      },
+      {
+        "indice": 3,
+        "zInf": 3.755,
+        "zSup": 5.395,
+        "zona": "central",
+        "cada": 0.14,
+        "cantidad": 12,
+        "alturas": [
+          3.891,
+          4.028,
+          4.165,
+          4.302,
+          4.438,
+          4.575,
+          4.712,
+          4.848,
+          4.985,
+          5.122,
+          5.259,
+          5.395
+        ]
+      },
+      {
+        "indice": 3,
+        "zInf": 5.395,
+        "zSup": 5.895,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 9,
+        "alturas": [
+          5.458,
+          5.52,
+          5.583,
+          5.645,
+          5.708,
+          5.77,
+          5.833,
+          5.895
+        ]
+      },
+      {
+        "indice": 4,
+        "zInf": 6.005,
+        "zSup": 6.345,
+        "zona": "nudo",
+        "cada": 0.14,
+        "cantidad": 4,
+        "alturas": [
+          6.005,
+          6.118,
+          6.232,
+          6.345
+        ]
+      },
+      {
+        "indice": 5,
+        "zInf": 6.455,
+        "zSup": 6.955,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 8,
+        "alturas": [
+          6.455,
+          6.517,
+          6.58,
+          6.642,
+          6.705,
+          6.767,
+          6.83,
+          6.892,
+          6.955
+        ]
+      },
+      {
+        "indice": 5,
+        "zInf": 6.955,
+        "zSup": 8.595,
+        "zona": "central",
+        "cada": 0.14,
+        "cantidad": 12,
+        "alturas": [
+          7.091,
+          7.228,
+          7.365,
+          7.502,
+          7.638,
+          7.775,
+          7.912,
+          8.048,
+          8.185,
+          8.322,
+          8.459,
+          8.595
+        ]
+      },
+      {
+        "indice": 5,
+        "zInf": 8.595,
+        "zSup": 9.095,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 9,
+        "alturas": [
+          8.658,
+          8.72,
+          8.783,
+          8.845,
+          8.908,
+          8.97,
+          9.033,
+          9.095
+        ]
+      },
+      {
+        "indice": 6,
+        "zInf": 9.205,
+        "zSup": 9.545,
+        "zona": "nudo",
+        "cada": 0.14,
+        "cantidad": 4,
+        "alturas": [
+          9.205,
+          9.318,
+          9.432,
+          9.545
+        ]
+      },
+      {
+        "indice": 7,
+        "zInf": 9.655,
+        "zSup": 10.155,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 8,
+        "alturas": [
+          9.655,
+          9.717,
+          9.78,
+          9.842,
+          9.905,
+          9.967,
+          10.03,
+          10.092,
+          10.155
+        ]
+      },
+      {
+        "indice": 7,
+        "zInf": 10.155,
+        "zSup": 11.795,
+        "zona": "central",
+        "cada": 0.14,
+        "cantidad": 12,
+        "alturas": [
+          10.291,
+          10.428,
+          10.565,
+          10.702,
+          10.838,
+          10.975,
+          11.112,
+          11.248,
+          11.385,
+          11.522,
+          11.659,
+          11.795
+        ]
+      },
+      {
+        "indice": 7,
+        "zInf": 11.795,
+        "zSup": 12.295,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 9,
+        "alturas": [
+          11.858,
+          11.92,
+          11.983,
+          12.045,
+          12.108,
+          12.17,
+          12.233,
+          12.295
+        ]
+      },
+      {
+        "indice": 8,
+        "zInf": 12.405,
+        "zSup": 12.745,
+        "zona": "nudo",
+        "cada": 0.14,
+        "cantidad": 4,
+        "alturas": [
+          12.405,
+          12.518,
+          12.632,
+          12.745
+        ]
+      },
+      {
+        "indice": 9,
+        "zInf": 12.855,
+        "zSup": 13.355,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 8,
+        "alturas": [
+          12.855,
+          12.917,
+          12.98,
+          13.042,
+          13.105,
+          13.167,
+          13.23,
+          13.292,
+          13.355
+        ]
+      },
+      {
+        "indice": 9,
+        "zInf": 13.355,
+        "zSup": 14.995,
+        "zona": "central",
+        "cada": 0.14,
+        "cantidad": 12,
+        "alturas": [
+          13.491,
+          13.628,
+          13.765,
+          13.902,
+          14.038,
+          14.175,
+          14.312,
+          14.448,
+          14.585,
+          14.722,
+          14.859,
+          14.995
+        ]
+      },
+      {
+        "indice": 9,
+        "zInf": 14.995,
+        "zSup": 15.495,
+        "zona": "confinada",
+        "cada": 0.07,
+        "cantidad": 9,
+        "alturas": [
+          15.058,
+          15.12,
+          15.183,
+          15.245,
+          15.308,
+          15.37,
+          15.433,
+          15.495
+        ]
+      }
+    ],
+    "traslapos": {
+      "planes": [
+        {
+          "nombre": "A",
+          "barra": "#4",
+          "color": "#4285F4",
+          "cantidad": 4,
+          "solape": 0.75,
+          "enTramosDelOtro": false,
+          "varillas": [
+            {
+              "zInf": -0.3,
+              "zSup": 8.01,
+              "largo": 8.5
+            },
+            {
+              "zInf": 7.24,
+              "zSup": 15.55,
+              "largo": 8.5
+            }
+          ],
+          "traslapos": [
+            {
+              "zInf": 7.24,
+              "zSup": 8.01,
+              "largo": 0.77
+            }
+          ],
+          "sinSolucion": false,
+          "motivo": null
+        },
+        {
+          "nombre": "B",
+          "barra": "#4",
+          "color": "#4285F4",
+          "cantidad": 4,
+          "solape": 0.75,
+          "enTramosDelOtro": false,
+          "varillas": [
+            {
+              "zInf": -0.3,
+              "zSup": 5.01,
+              "largo": 5.5
+            },
+            {
+              "zInf": 4.24,
+              "zSup": 15.55,
+              "largo": 11.5
+            }
+          ],
+          "traslapos": [
+            {
+              "zInf": 4.24,
+              "zSup": 5.01,
+              "largo": 0.77
+            }
+          ],
+          "sinSolucion": false,
+          "motivo": null
+        }
+      ],
+      "zInicio": -0.3,
+      "zFin": 15.55
+    },
+    "avisos": [
+      "Arranca sobre cimentaci\u00F3n: el acero empieza en 0.20 m."
+    ],
+    "resumen": {
+      "barras": 8,
+      "estribos": 160,
+      "grapas": 0,
+      "cerrados": 0,
+      "pisos": 5
+    },
+    "recubrimientosRevit": [
+      0.04
+    ],
+    "primerEstribo": 0.255,
+    "seccionesTramo": []
+  },
+  "opciones": {
+    "recubrimiento": 0.04,
+    "longitudinal": {
+      "barrasPorCaraX": 1,
+      "barrasPorCaraY": 1,
+      "tipoBarraEsquinasNombre": "#4 COL",
+      "tipoBarraCaraXNombre": "#4 COL",
+      "tipoBarraCaraYNombre": "#4 COL",
+      "longitudComercialBarra": 12,
+      "redondeoVarillas": 0.5,
+      "solapeMayorDeLosDos": false,
+      "estribosMenores": []
+    },
+    "estribos": {
+      "tramosLibres": {
+        "modo": "Confinado",
+        "tipoBarraNombre": "#3 COL",
+        "tipoGanchoNombre": "Stirrup/Tie - 135 deg.",
+        "espaciadoUniforme": 0.2,
+        "longitudConfinamiento": 0.5,
+        "espaciadoConfinado": 0.07,
+        "espaciadoNoConfinado": 0.14
+      },
+      "nudoEspaciado": 0.14,
+      "nudoBarraNombre": null,
+      "excepciones": {}
+    }
+  },
+  "catalogos": {
+    "barrasLongitudinales": [
+      {
+        "nombre": "#2 COL",
+        "diametroMm": 6.4,
+        "color": "#5E6670"
+      },
+      {
+        "nombre": "#3 COL",
+        "diametroMm": 9.5,
+        "color": "#FBBC04"
+      },
+      {
+        "nombre": "#4 COL",
+        "diametroMm": 12.7,
+        "color": "#4285F4"
+      },
+      {
+        "nombre": "#5 COL",
+        "diametroMm": 15.9,
+        "color": "#EA4335"
+      },
+      {
+        "nombre": "#6 COL",
+        "diametroMm": 19.1,
+        "color": "#34A853"
+      },
+      {
+        "nombre": "#7 COL",
+        "diametroMm": 22.2,
+        "color": "#9334E6"
+      },
+      {
+        "nombre": "#8 COL",
+        "diametroMm": 25.4,
+        "color": "#8B4513"
+      }
+    ],
+    "barrasEstribo": [
+      {
+        "nombre": "#3 COL",
+        "diametroMm": 9.5,
+        "color": "#FBBC04"
+      },
+      {
+        "nombre": "#4 COL",
+        "diametroMm": 12.7,
+        "color": "#4285F4"
+      },
+      {
+        "nombre": "#5 COL",
+        "diametroMm": 15.9,
+        "color": "#EA4335"
+      }
+    ],
+    "largosComerciales": [
+      6,
+      12
+    ],
+    "redondeos": [
+      0.1,
+      0.2,
+      0.25,
+      0.5,
+      1
+    ],
+    "cuadro": [
+      {
+        "n": 2,
+        "nombre": "#2",
+        "mm": 6.4,
+        "color": "#5E6670",
+        "traslapo": null,
+        "b90": 0.112,
+        "d90": 0.038,
+        "e180": 0.065,
+        "d180": 0.038,
+        "e135": 0.038,
+        "d135": 0.026,
+        "kg": 0.25
+      },
+      {
+        "n": 3,
+        "nombre": "#3",
+        "mm": 9.5,
+        "color": "#FBBC04",
+        "traslapo": 0.55,
+        "b90": 0.166,
+        "d90": 0.057,
+        "e180": 0.065,
+        "d180": 0.057,
+        "e135": 0.057,
+        "d135": 0.038,
+        "kg": 0.56
+      },
+      {
+        "n": 4,
+        "nombre": "#4",
+        "mm": 12.7,
+        "color": "#4285F4",
+        "traslapo": 0.75,
+        "b90": 0.222,
+        "d90": 0.076,
+        "e180": 0.065,
+        "d180": 0.076,
+        "e135": 0.076,
+        "d135": 0.051,
+        "kg": 0.994
+      },
+      {
+        "n": 5,
+        "nombre": "#5",
+        "mm": 15.9,
+        "color": "#EA4335",
+        "traslapo": 0.9,
+        "b90": 0.278,
+        "d90": 0.095,
+        "e180": 0.065,
+        "d180": 0.095,
+        "e135": 0.095,
+        "d135": 0.064,
+        "kg": 1.552
+      },
+      {
+        "n": 6,
+        "nombre": "#6",
+        "mm": 19.1,
+        "color": "#34A853",
+        "traslapo": 1.1,
+        "b90": 0.334,
+        "d90": 0.115,
+        "e180": 0.076,
+        "d180": 0.115,
+        "e135": null,
+        "d135": null,
+        "kg": 2.235
+      },
+      {
+        "n": 7,
+        "nombre": "#7",
+        "mm": 22.2,
+        "color": "#9334E6",
+        "traslapo": 1.35,
+        "b90": 0.388,
+        "d90": 0.133,
+        "e180": 0.089,
+        "d180": 0.133,
+        "e135": null,
+        "d135": null,
+        "kg": 3.042
+      },
+      {
+        "n": 8,
+        "nombre": "#8",
+        "mm": 25.4,
+        "color": "#8B4513",
+        "traslapo": 1.7,
+        "b90": 0.444,
+        "d90": 0.152,
+        "e180": 0.102,
+        "d180": 0.152,
+        "e135": null,
+        "d135": null,
+        "kg": 3.973
+      }
+    ],
+    "configuraciones": []
+  },
+  "configuracion": null,
+  "generacion": {
+    "choques": [],
+    "pendiente": false,
+    "resultado": null,
+    "error": null,
+    "listas": []
+  },
+  "vista3D": {
+    "abierta": false,
+    "filtro": {
+      "clases": [
+        "Longitudinal",
+        "Estribo",
+        "EstriboMenor"
+      ],
+      "grupos": [
+        "A",
+        "B"
+      ],
+      "posiciones": [
+        "Esquina",
+        "CaraX",
+        "CaraY"
+      ],
+      "zonas": [
+        "Confinada",
+        "NoConfinada"
+      ],
+      "numerosOcultos": [],
+      "partes": "Todo",
+      "soloTramo": null
+    },
+    "numeros": [],
+    "estado": null,
+    "fallo": false
+  },
+  "aviso": null
+}

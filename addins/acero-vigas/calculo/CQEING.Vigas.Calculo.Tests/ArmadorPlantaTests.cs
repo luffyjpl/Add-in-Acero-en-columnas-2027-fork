@@ -119,6 +119,22 @@ public sealed class ArmadorPlantaTests(ITestOutputHelper salida)
         Assert.Equal((0.0, -1.0, 0.0, 6.0), (p.Niveles[1].Ejes[1].X1, p.Niveles[1].Ejes[1].Y1, p.Niveles[1].Ejes[1].X2, p.Niveles[1].Ejes[1].Y2));
     }
 
+    /// <summary>
+    /// Los puntos de la huella llegan en el orden de las aristas del sólido, con puntos de adentro (vanos, varios sólidos).
+    /// Unidos así salían triángulos cruzados en la planta (Santiago, 3-nov): se dibuja su contorno, en orden.
+    /// </summary>
+    [Fact]
+    public void LaHuellaSeDibujaComoSuContornoEnOrden()
+    {
+        var revuelta = new ApoyoLeido("m1", TipoApoyo.Muro,
+            [new(1000, 0), new(0, 300), new(500, 150), new(0, 0), new(1000, 300), new(250, 0), new(500, 150)], 0, 3500);
+        (List<(string, PorticoLeido)> porticos, ModeloLeido modelo) = Datos();
+
+        PlantaVista p = ArmadorPlanta.Armar(porticos, modelo with { Apoyos = [revuelta] });
+
+        Assert.Equal([[0.0, 0.0], [1.0, 0.0], [1.0, 0.3], [0.0, 0.3]], p.Niveles[0].Columnas.Single().Puntos);
+    }
+
     [Fact]
     public void LaPlantaViajaEnElContratoDeLaPagina()
     {

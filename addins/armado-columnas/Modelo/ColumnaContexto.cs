@@ -101,7 +101,14 @@ public enum TipoTramo
     /// </summary>
     DentroDeViga,
 
-    /// <summary>El de más abajo cuando arranca sobre una zapata: el acero no entra en ella.</summary>
+    /// <summary>
+    /// Tramo sin estribos contra la zapata (el longitudinal sí pasa). Desde el
+    /// 3-nov <c>LectorContexto</c> ya no lo produce: los estribos solo no pueden
+    /// ir DENTRO de la zapata, y eso ya lo evita arrancar en su cara superior
+    /// (ingeniero Santiago; plan docs/planes/2026-11-03-contra-zapata-piso-entero.md).
+    /// Queda por <c>ProveedorContextoFalso</c> y por quien lo maneja en la
+    /// ventana y los generadores.
+    /// </summary>
     ContraZapata
 }
 

@@ -22,10 +22,22 @@ todos los tramos. Ya avisaba "Se usó la del tramo más bajo para toda la
 columna", pero no lo corregía.
 
 Esa medida la usaban solo las vistas de la ventana y los avisos de
-choque (#131). **El generador no**: cada estribo sale con la forma de su
-propio elemento, y las longitudinales van en la zona común a toda la
+choque (#131). **El generador no**: ~~cada estribo sale con la forma de su
+propio elemento~~, y las longitudinales van en la zona común a toda la
 pila (`GeneradorLongitudinal`, #42). El acero en Revit estaba bien; la
 ventana no lo mostraba igual.
+
+> **Corrección (3-nov, Luciano):** lo tachado era una equivocación. Desde
+> el 8-oct, `GeneradorArmado` arma **todos** los estribos de la columna
+> con la zona común de la pila (comentarios en las líneas ~156 y ~309):
+> - la misma medida, el mismo recubrimiento (por eso se elige uno solo
+>   para toda la columna) y la misma posición en planta que los de arriba;
+> - en una pieza más ancha, como el dado, el estribo no sigue el contorno
+>   de la pieza.
+>
+> Por eso el estribo del dibujo de un tramo más ancho también es el de la
+> zona común. Ver `2026-11-03-vista-previa-estribos-legible.md`, decisión
+> 10.
 
 ## Fix
 
@@ -50,10 +62,11 @@ ventana no lo mostraba igual.
 Supuesto: las secciones son rectangulares y alineadas con los ejes, como
 en el resto de la ventana.
 
-Limitación conocida: en la elevación de la vista previa, la línea del
+~~Limitación conocida: en la elevación de la vista previa, la línea del
 estribo va de barra a barra; en un tramo más ancho que la zona común con
 estribos (columna que se angosta arriba), el estribo real es más ancho
-que esa línea.
+que esa línea.~~ No era una limitación (corrección del 3-nov, arriba): el
+estribo real también va con la zona común.
 
 ## Estado
 
