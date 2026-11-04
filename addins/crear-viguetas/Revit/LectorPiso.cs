@@ -1,12 +1,12 @@
 using Autodesk.Revit.DB;
 using CQEING.Vigas.Calculo.Porticos;
-using CQEING.Vigas.Calculo.Viguetas;
+using CQEING.Viguetas.Calculo;
 
-namespace CQEING.Vigas.Revit;
+namespace CQEING.Viguetas.Revit;
 
 /// <summary>
 /// Adaptador de Revit para «Crear viguetas» (#948): los niveles que tienen armazón estructural y, por nivel, sus
-/// vigas y viguetas (eje por el centro de la geometría y ancho medido, como <see cref="LectorModelo"/>) y sus columnas.
+/// vigas y viguetas (eje por el centro de la geometría y ancho medido, como el lector del add-in de vigas) y sus columnas.
 /// Todo en mm.
 /// </summary>
 internal static class LectorPiso
@@ -20,7 +20,7 @@ internal static class LectorPiso
     public static List<PisoResumen> Pisos(Document doc) =>
         Armazon(doc).Select(NivelDe).OfType<Level>()
             .GroupBy(l => l.Id)
-            .Select(g => new PisoResumen(g.Key.ToString(), g.First().Name, LectorModelo.Mm(g.First().Elevation), g.Count()))
+            .Select(g => new PisoResumen(g.Key.ToString(), g.First().Name, Medidas.Mm(g.First().Elevation), g.Count()))
             .OrderBy(p => p.Cota)
             .ToList();
 
@@ -31,18 +31,18 @@ internal static class LectorPiso
             if (Leer(f) is ArmazonPiso a)
                 armazon.Add(a);
 
-        double cota = LectorModelo.Mm(nivel.Elevation);
+        double cota = Medidas.Mm(nivel.Elevation);
         var columnas = new List<ColumnaPiso>();
         foreach (FamilyInstance c in Instancias(doc, BuiltInCategory.OST_StructuralColumns))
         {
-            List<XYZ> puntos = LectorModelo.Puntos(c);
+            List<XYZ> puntos = Medidas.Puntos(c);
             if (puntos.Count == 0)
                 continue;
-            double abajo = LectorModelo.Mm(puntos.Min(p => p.Z)), arriba = LectorModelo.Mm(puntos.Max(p => p.Z));
+            double abajo = Medidas.Mm(puntos.Min(p => p.Z)), arriba = Medidas.Mm(puntos.Max(p => p.Z));
             if (abajo - ToleranciaColumna <= cota && cota <= arriba + ToleranciaColumna)
                 columnas.Add(new ColumnaPiso(c.Id.ToString(),
-                    new Punto(LectorModelo.Mm(puntos.Min(p => p.X)), LectorModelo.Mm(puntos.Min(p => p.Y))),
-                    new Punto(LectorModelo.Mm(puntos.Max(p => p.X)), LectorModelo.Mm(puntos.Max(p => p.Y)))));
+                    new Punto(Medidas.Mm(puntos.Min(p => p.X)), Medidas.Mm(puntos.Min(p => p.Y))),
+                    new Punto(Medidas.Mm(puntos.Max(p => p.X)), Medidas.Mm(puntos.Max(p => p.Y)))));
         }
         return new PisoLeido(nivel.Id.ToString(), nivel.Name, cota, armazon, columnas);
     }
@@ -74,7 +74,7 @@ internal static class LectorPiso
     {
         if (f.Location is not LocationCurve { Curve: Line linea })
             return null;
-        List<XYZ> puntos = LectorModelo.Puntos(f);
+        List<XYZ> puntos = Medidas.Puntos(f);
         if (puntos.Count == 0)
             return null;
         XYZ d = linea.Direction;
@@ -84,7 +84,7 @@ internal static class LectorPiso
         var centro = new XYZ((puntos.Min(p => p.X) + puntos.Max(p => p.X)) / 2, (puntos.Min(p => p.Y) + puntos.Max(p => p.Y)) / 2, 0);
         XYZ p0 = linea.GetEndPoint(0), p1 = linea.GetEndPoint(1);
         XYZ corrimiento = normal * (centro - new XYZ(p0.X, p0.Y, 0)).DotProduct(normal);
-        return new ArmazonPiso(f.Id.ToString(), Planta(p0 + corrimiento), Planta(p1 + corrimiento), LectorModelo.Mm(ancho),
+        return new ArmazonPiso(f.Id.ToString(), Planta(p0 + corrimiento), Planta(p1 + corrimiento), Medidas.Mm(ancho),
             f.Symbol.Name, EsCreada(f));
     }
 
@@ -97,5 +97,5 @@ internal static class LectorPiso
     private static IEnumerable<FamilyInstance> Instancias(Document doc, BuiltInCategory categoria) =>
         new FilteredElementCollector(doc).OfCategory(categoria).WhereElementIsNotElementType().OfType<FamilyInstance>();
 
-    private static Punto Planta(XYZ p) => new(LectorModelo.Mm(p.X), LectorModelo.Mm(p.Y));
+    private static Punto Planta(XYZ p) => new(Medidas.Mm(p.X), Medidas.Mm(p.Y));
 }

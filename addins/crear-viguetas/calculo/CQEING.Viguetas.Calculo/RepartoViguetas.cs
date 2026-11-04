@@ -1,4 +1,4 @@
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>
 /// Cuántas viguetas entran en un ancho libre y cuánto queda libre en cada extremo. <paramref name="LibreMaximo"/> es el

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CQEING.Viguetas.Calculo</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Enlazada, no copiada: qué es vigueta lo decide la misma regla que en los pórticos de acero en vigas (#939). -->
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Porticos\ReglaVigueta.cs" Link="ReglaVigueta.cs" />
+  </ItemGroup>
+
+</Project>

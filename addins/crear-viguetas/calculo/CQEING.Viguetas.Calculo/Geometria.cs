@@ -1,6 +1,4 @@
-using CQEING.Vigas.Calculo.Porticos;
-
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>Cuentas de polígonos en planta para los paneles (#949), en mm.</summary>
 public static class Geometria
@@ -29,6 +27,21 @@ public static class Geometria
             if ((p[i].Y > q.Y) != (p[j].Y > q.Y) && q.X < (p[j].X - p[i].X) * (q.Y - p[i].Y) / (p[j].Y - p[i].Y) + p[i].X)
                 dentro = !dentro;
         return dentro;
+    }
+
+    /// <summary>La distancia de <paramref name="q"/> al lado más cercano del polígono.</summary>
+    public static double DistanciaAlBorde(IReadOnlyList<Punto> p, Punto q)
+    {
+        double minimo = double.MaxValue;
+        for (int i = 0; i < p.Count; i++)
+        {
+            Punto a = p[i], b = p[(i + 1) % p.Count];
+            (double dx, double dy) = (b.X - a.X, b.Y - a.Y);
+            double largo2 = dx * dx + dy * dy;
+            double t = largo2 == 0 ? 0 : Math.Clamp(((q.X - a.X) * dx + (q.Y - a.Y) * dy) / largo2, 0, 1);
+            minimo = Math.Min(minimo, Distancia(q, new Punto(a.X + t * dx, a.Y + t * dy)));
+        }
+        return minimo;
     }
 
     /// <summary>Quita los vértices que están en línea recta entre sus vecinos (los cruces en T de un lado).</summary>
@@ -94,6 +107,36 @@ public static class Geometria
         var tramos = new List<(double, double)>();
         for (int i = 0; i + 1 < w.Count; i += 2)
             tramos.Add((w[i], w[i + 1]));
+        return tramos;
+    }
+
+    /// <summary>
+    /// Las partes del segmento <paramref name="a"/>–<paramref name="b"/> que caen dentro del polígono, como fracciones
+    /// [desde, hasta] de su largo (0 = a, 1 = b), ordenadas.
+    /// </summary>
+    public static List<(double Desde, double Hasta)> TramosDentro(Punto a, Punto b, IReadOnlyList<Punto> p)
+    {
+        var t = new List<double> { 0, 1 };
+        (double dx, double dy) = (b.X - a.X, b.Y - a.Y);
+        for (int i = 0; i < p.Count; i++)
+        {
+            Punto c = p[i], d = p[(i + 1) % p.Count];
+            (double ex, double ey) = (d.X - c.X, d.Y - c.Y);
+            double det = Cruz(dx, dy, ex, ey);
+            if (Math.Abs(det) < 1e-9)
+                continue;
+            double s = Cruz(c.X - a.X, c.Y - a.Y, ex, ey) / det, u = Cruz(c.X - a.X, c.Y - a.Y, dx, dy) / det;
+            if (s > 0 && s < 1 && u >= -1e-9 && u <= 1 + 1e-9)
+                t.Add(s);
+        }
+        t.Sort();
+        var tramos = new List<(double, double)>();
+        for (int i = 0; i + 1 < t.Count; i++)
+        {
+            double m = (t[i] + t[i + 1]) / 2;
+            if (t[i + 1] - t[i] > 1e-9 && Dentro(p, new Punto(a.X + dx * m, a.Y + dy * m)))
+                tramos.Add((t[i], t[i + 1]));
+        }
         return tramos;
     }
 
