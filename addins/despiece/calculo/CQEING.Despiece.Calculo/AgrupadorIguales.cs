@@ -5,8 +5,11 @@ namespace CQEING.Despiece.Calculo;
 /// <summary>Una barra de un elemento. <paramref name="PosicionMm"/>: dónde está su centro, desde un extremo del elemento. <paramref name="RectoMm"/>: su largo sin ganchos.</summary>
 public record BarraLeida(string Tipo, string Forma, int Cantidad, int LargoMm, int PosicionMm, int RectoMm = 0);
 
-/// <summary>Una viga continua (o una columna) leída del modelo, con su acero.</summary>
-public record ElementoLeido(string Id, string Ejes, int AnchoMm, int AltoMm, int LargoMm, IReadOnlyList<BarraLeida> Barras, string Nivel = "", bool EsVigueta = false);
+/// <summary>
+/// Una viga continua (o una columna) leída del modelo, con su acero. En una columna (<paramref name="EsColumna"/>) el largo es
+/// la altura, la posición de cada barra se mide desde abajo y los ejes son su marca de ubicación de Revit (<c>1-6</c>).
+/// </summary>
+public record ElementoLeido(string Id, string Ejes, int AnchoMm, int AltoMm, int LargoMm, IReadOnlyList<BarraLeida> Barras, string Nivel = "", bool EsVigueta = false, bool EsColumna = false);
 
 /// <summary>Los elementos con el mismo acero: llevan un solo despiece (#217).</summary>
 public record GrupoIguales(string Nombre, IReadOnlyList<ElementoLeido> Elementos)
@@ -45,8 +48,10 @@ public static class AgrupadorIguales
             return "sin acero " + e.Id;
         string ida = Barras(e, b => b.PosicionMm);
         string vuelta = Barras(e, b => e.LargoMm - b.PosicionMm);
-        string barras = string.CompareOrdinal(ida, vuelta) <= 0 ? ida : vuelta;
-        return $"{e.EsVigueta}|{e.AnchoMm}x{e.AltoMm}|{Redondear(e.LargoMm)}|{barras}";
+        // Una columna no se da vuelta: la barra con el gancho en la zapata no es la de la cubierta.
+        string barras = e.EsColumna || string.CompareOrdinal(ida, vuelta) <= 0 ? ida : vuelta;
+        string firma = $"{e.EsVigueta}|{e.AnchoMm}x{e.AltoMm}|{Redondear(e.LargoMm)}|{barras}";
+        return e.EsColumna ? "columna|" + firma : firma;
     }
 
     private static string Barras(ElementoLeido e, Func<BarraLeida, int> posicion) => string.Join(";", e.Barras
@@ -57,12 +62,13 @@ public static class AgrupadorIguales
 
     private static string Nombre(IReadOnlyList<ElementoLeido> elementos, bool conNivel)
     {
-        string Unidos(IEnumerable<string> partes) => string.Join("-", partes.Where(p => p.Length > 0).Distinct().Order(StringComparer.Ordinal));
-        string ejes = Unidos(elementos.Select(e => e.Ejes));
+        // Una columna ya trae guion en su nombre (`1-6`, como la marca de Revit): varias se separan con coma (decisión 15).
+        string Unidos(IEnumerable<string> partes, string separador = "-") => string.Join(separador, partes.Where(p => p.Length > 0).Distinct().Order(StringComparer.Ordinal));
+        string ejes = Unidos(elementos.Select(e => e.Ejes), elementos[0].EsColumna ? ", " : "-");
         string niveles = conNivel ? Unidos(elementos.Select(e => e.Nivel)) : "";
         string seccion = string.Format(CultureInfo.InvariantCulture, "({0:0.00}x{1:0.00})", elementos[0].AnchoMm / 1000.0, elementos[0].AltoMm / 1000.0);
         string donde = string.Join(" ", new[] { niveles, ejes }.Where(p => p.Length > 0));
-        string prefijo = elementos[0].EsVigueta ? "Vigueta" : "V";
+        string prefijo = elementos[0].EsColumna ? "Col" : elementos[0].EsVigueta ? "Vigueta" : "V";
         return donde.Length > 0 ? $"{prefijo} {donde} - {seccion}" : $"{prefijo} - {seccion}";
     }
 }
