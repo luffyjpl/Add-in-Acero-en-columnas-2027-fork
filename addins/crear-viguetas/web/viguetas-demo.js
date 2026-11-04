@@ -16,12 +16,13 @@ window.DEMO_VIGUETAS = () => {
     const [x0, x1, y0, y1] = [xs[i], xs[i + 1], ys[j], ys[j + 1]], m = anchoViga / 2;
     paneles.push({ id: `P${k + 1}`, eje: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], libre: [[x0 + m, y0 + m], [x1 - m, y0 + m], [x1 - m, y1 - m], [x0 + m, y1 - m]], creadas: 0 });
   });
+  let perimetros = [];
   const piso = { tipo: 'piso', id: '1', nombre: 'N+3.70', cota: 3700, viguetasComoBorde: false, armazon, columnas, paneles };
   const dentro = (pan, p) => p[0] > pan.eje[0][0] && p[0] < pan.eje[1][0] && p[1] > pan.eje[0][1] && p[1] < pan.eje[2][1];
 
   function propuesta(m) {
     const enY = m.direccion === 'X', d = m.ejeAEje, b = m.ancho, repartos = [], viguetas = [];
-    const elegidos = m.paneles.map((id) => paneles.find((p) => p.id === id));
+    const elegidos = m.paneles.map((id) => [...paneles, ...perimetros].find((p) => p.id === id));
     const guias = armazon.filter((a) => a.esVigueta && (enY ? a.desde[1] === a.hasta[1] : a.desde[0] === a.hasta[0])
       && !elegidos.some((p) => dentro(p, [(a.desde[0] + a.hasta[0]) / 2, (a.desde[1] + a.hasta[1]) / 2]))).map((a) => (enY ? a.desde[1] : a.desde[0]));
     let hayGuias = false;
@@ -50,7 +51,9 @@ window.DEMO_VIGUETAS = () => {
         const partes = cruza ? [[w0, 1900, 'a'], [2100, w1, 'b']] : [[w0, w1, '']];
         partes.forEach(([a, z, s]) => {
           const vid = `${pan.id}:${i + 1}${s}`;
-          viguetas.push({ id: vid, panel: pan.id, cota: c, desde: punto(c, a), hasta: punto(c, z), largo: z - a, tipo: 1, borrada: m.borradas.includes(vid) });
+          // De eje a eje: hasta la mitad de la viga del borde (150 mm) o de la viga corta (100 mm).
+          const ejeDesde = punto(c, a === w0 ? w0 - 150 : a - 100), ejeHasta = punto(c, z === w1 ? w1 + 150 : z + 100);
+          viguetas.push({ id: vid, panel: pan.id, cota: c, desde: punto(c, a), hasta: punto(c, z), ejeDesde, ejeHasta, largo: z - a, tipo: 1, borrada: m.borradas.includes(vid) });
         });
       });
     });
@@ -69,6 +72,17 @@ window.DEMO_VIGUETAS = () => {
     if (m.tipo === 'listo') return [{ tipo: 'pisos', documento: 'Ejemplo (fuera de Revit)', pisos: [{ id: '1', nombre: 'N+3.70', cota: 3700, armazon: armazon.length }], tipos: [{ id: '10', nombre: 'Vigueta : VT_10X35', sugerido: true }] }];
     if (m.tipo === 'piso') return [piso];
     if (m.tipo === 'propuesta') return [propuesta(m)];
+    if (m.tipo === 'perimetro') {
+      // Ejemplo simple: con dos vigas horizontales y dos verticales elegidas, el perímetro es el rectángulo entre ellas.
+      const elegidas = armazon.filter((a) => m.ids.includes(a.id));
+      const xs2 = elegidas.filter((a) => a.desde[0] === a.hasta[0]).map((a) => a.desde[0]);
+      const ys2 = elegidas.filter((a) => a.desde[1] === a.hasta[1]).map((a) => a.desde[1]);
+      if (xs2.length < 2 || ys2.length < 2) return [{ tipo: 'perimetro', ids: m.ids, paneles: [] }];
+      const [x0, x1, y0, y1] = [Math.min(...xs2), Math.max(...xs2), Math.min(...ys2), Math.max(...ys2)], k = anchoViga / 2;
+      const z = { id: 'Z1', eje: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], libre: [[x0 + k, y0 + k], [x1 - k, y0 + k], [x1 - k, y1 - k], [x0 + k, y1 - k]], creadas: 0 };
+      perimetros = [z];
+      return [{ tipo: 'perimetro', ids: m.ids, paneles: [z] }];
+    }
     if (m.tipo === 'crear') return [{ tipo: 'aviso', texto: 'Ejemplo: en Revit aquí se crearían las viguetas.', bien: true }];
     return [];
   };

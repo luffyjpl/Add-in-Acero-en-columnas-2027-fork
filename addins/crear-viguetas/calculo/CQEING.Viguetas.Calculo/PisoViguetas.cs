@@ -1,6 +1,6 @@
 using CQEING.Vigas.Calculo.Porticos;
 
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>
 /// Un elemento de armazón del piso, en mm. <paramref name="Creada"/>: la creó «Crear viguetas» (tiene la marca en
@@ -47,7 +47,23 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         .Where(a => !a.Creada && (viguetasComoBorde || !a.EsVigueta))
         .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)));
 
-    public Panel? Panel(string id) => Paneles.FirstOrDefault(p => p.Id == id);
+    public Panel? Panel(string id) => Paneles.FirstOrDefault(p => p.Id == id) ?? perimetros.FirstOrDefault(p => p.Id == id);
+
+    private List<Panel> perimetros = [];
+
+    /// <summary>
+    /// Arma el perímetro de trabajo con los elementos de armazón que eligió el usuario (decisión 24): vigas, viguetas de
+    /// borde o voladizos, menos los creados por el add-in. Cada cara cerrada es un perímetro (Z1, Z2…) y reemplaza a los
+    /// anteriores. Vacío si no cierran.
+    /// </summary>
+    public IReadOnlyList<Panel> Perimetro(IEnumerable<string> ids)
+    {
+        HashSet<string> elegidos = ids.ToHashSet();
+        perimetros = DetectorPaneles.Detectar(Piso.Armazon.Where(a => elegidos.Contains(a.Id) && !a.Creada)
+                .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)))
+            .Select((p, i) => p with { Id = $"Z{i + 1}" }).ToList();
+        return perimetros;
+    }
 
     /// <summary>
     /// Lo que puede atravesar una vigueta (decisión 14): todo el armazón del piso menos lo que creó el add-in. Los bordes
@@ -61,17 +77,14 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
 
     /// <summary>
     /// Las cotas de las viguetas que ya están (del modelo o creadas por el add-in), paralelas a
-    /// <paramref name="direccion"/> y fuera de <paramref name="elegidos"/>: las viguetas nuevas pueden seguirlas
-    /// (decisión 16). El planificador usa solo las que caen dentro de cada panel.
+    /// <paramref name="direccion"/>, dentro o fuera de lo elegido (decisiones 16 y 28): las viguetas nuevas van en esas
+    /// mismas líneas. El planificador usa solo las que caen dentro de cada panel.
     /// </summary>
-    /// <remarks><paramref name="sinEstas"/>: elementos de los que se quita alguna pieza (decisión 22); no son guía.</remarks>
-    public List<double> Guias(Direccion direccion, IEnumerable<Panel> elegidos, IEnumerable<string>? sinEstas = null)
+    public List<double> Guias(Direccion direccion)
     {
         bool enX = direccion == Direccion.X;
-        List<Panel> paneles = elegidos.ToList();
-        HashSet<string> quitar = sinEstas?.ToHashSet() ?? [];
         List<double> cotas = Piso.Armazon
-            .Where(a => (a.EsVigueta || a.Creada) && !quitar.Contains(a.Id) && Paralela(a, enX) && !paneles.Any(p => Geometria.Dentro(p.Eje, a.En(0.5))))
+            .Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX))
             .Select(a => enX ? a.En(0.5).Y : a.En(0.5).X)
             .OrderBy(c => c).ToList();
         var juntas = new List<double>();

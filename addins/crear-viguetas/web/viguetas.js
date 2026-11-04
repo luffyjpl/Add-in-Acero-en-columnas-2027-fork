@@ -2,27 +2,29 @@
 // Carlos) se calculan en C# (Calculo/Viguetas). Mensajes: ProtocoloViguetas.cs. Medidas en mm; en pantalla, en m.
 (() => {
   const $ = (id) => document.getElementById(id);
-  const CLAVE = 'cqeing-viguetas';
+  const CLAVE = 'cqeing-viguetas-2';
   const CHK = '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="Listo"><path d="M2.6 6.3l2.2 2.2 4.6-4.9"/></svg>';
   const ICO_BORRAR = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M7 7v4M9 7v4"/></svg>';
-  // Cómo se eligen los paneles (decisiones 12 y 18 del plan): uno, la columna o fila entera, o varios con clic.
+  // Cómo se eligen los paneles (decisiones 12, 18 y 24 del plan): el perímetro con los elementos que lo forman, uno, la
+  // columna o fila entera, o varios con clic.
   const linea = () => (S.dir === 'Y' ? 'columna' : 'fila');
   const MODOS = () => [
+    ['perimetro', 'Perímetro', 'Clic en las vigas, viguetas de borde o voladizos que forman el perímetro'],
     ['uno', 'Un panel', 'Un clic elige un panel'],
     ['linea', `${linea()[0].toUpperCase()}${linea().slice(1)} entera`, `Un clic elige todos los paneles de la ${linea()}`],
     ['varios', 'Varios', 'Cada clic suma o quita un panel'],
   ];
 
   const S = {
-    doc: '', pisos: [], tipos: [], piso: null, comoBorde: false, modo: 'uno', paneles: [],
+    doc: '', pisos: [], tipos: [], piso: null, comoBorde: false, modo: 'perimetro', paneles: [], bordes: [], perimetro: [],
     dir: 'X', sep: '0,80', anc: '0,10', tipo: '', continuas: true, seguir: true, borradas: [], quitar: [], editar: false, propuesta: null, vista: null,
   };
   try {
     const m = JSON.parse(localStorage.getItem(CLAVE) || 'null');
-    if (m) Object.assign(S, { sep: m.sep || S.sep, anc: m.anc || S.anc, tipo: m.tipo || '', dir: m.dir || S.dir, modo: m.modo || S.modo, continuas: m.continuas !== false, seguir: m.seguir !== false });
+    if (m) Object.assign(S, { sep: m.sep || S.sep, anc: m.anc || S.anc, tipo: m.tipo || '', dir: m.dir || S.dir, modo: m.modo || S.modo, seguir: m.seguir !== false });
   } catch (e) { /* sin almacenamiento se usan los valores por defecto */ }
   const guardar = () => {
-    try { localStorage.setItem(CLAVE, JSON.stringify({ sep: S.sep, anc: S.anc, tipo: S.tipo, dir: S.dir, modo: S.modo, continuas: S.continuas, seguir: S.seguir })); } catch (e) { /* nada */ }
+    try { localStorage.setItem(CLAVE, JSON.stringify({ sep: S.sep, anc: S.anc, tipo: S.tipo, dir: S.dir, modo: S.modo, seguir: S.seguir })); } catch (e) { /* nada */ }
   };
 
   const fmt = (mm) => (mm / 1000).toFixed(2).replace('.', ',');
@@ -41,7 +43,9 @@
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
     return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
   };
-  const elegidos = () => (S.piso ? S.paneles.map((id) => S.piso.paneles.find((p) => p.id === id)).filter(Boolean) : []);
+  const elegidos = () => (S.piso ? S.paneles.map((id) => [...S.piso.paneles, ...S.perimetro].find((p) => p.id === id)).filter(Boolean) : []);
+  const perimetral = () => S.modo === 'perimetro';
+  function armar() { enviar({ tipo: 'perimetro', ids: S.bordes }); }
   /** El primer panel elegido: de él salen las cotas y el ancho libre que se muestra. */
   const principal = () => elegidos()[0] || null;
   const vivas = () => (S.propuesta ? S.propuesta.viguetas.filter((v) => !v.borrada) : []);
@@ -82,7 +86,14 @@
     } else if (m.tipo === 'piso') {
       const mismo = S.piso && S.piso.id === m.id;
       S.piso = m; S.comoBorde = m.viguetasComoBorde;
-      if (!mismo) { S.vista = null; S.paneles = []; }
+      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; }
+      if (perimetral()) {
+        S.bordes = S.bordes.filter((id) => m.armazon.some((a) => a.id === id));
+        $('modal').hidden = true;
+        todo();
+        if (S.bordes.length) armar();
+        return;
+      }
       const quedan = S.paneles.filter((id) => m.paneles.some((p) => p.id === id));
       if (quedan.length !== S.paneles.length) { S.paneles = quedan; S.borradas = []; S.quitar = []; }
       // Las del modelo que se quitaron al crear ya no están en el piso.
@@ -91,6 +102,10 @@
       $('modal').hidden = true;
       todo();
       if (S.paneles.length) pedir();
+    } else if (m.tipo === 'perimetro') {
+      if (m.ids.join() !== S.bordes.join()) return;
+      S.perimetro = m.paneles;
+      elegir(m.paneles.map((p) => p.id));
     } else if (m.tipo === 'propuesta') {
       if (m.paneles.join() === S.paneles.join()) { S.propuesta = m.propuesta; pintar(); }
     } else if (m.tipo === 'aviso') {
@@ -112,7 +127,7 @@
     const sel = elegidos(), pan = principal(), V = valores();
     const n = (k, ok, extra = '') => `<span class="n ${ok ? 'done' : ''}" ${extra}>${ok ? CHK : k}</span>`;
     const campo = (id, k, lab) => `<label class="fld ${V.e[k] ? 'bad' : ''}" id="w-${k}" for="${id}"><span class="fl">${lab}</span><span class="inp"><input id="${id}" inputmode="decimal" autocomplete="off" value="${esc(S[k])}"><em>m</em></span><span class="err" id="e-${k}">${V.e[k] || ''}</span></label>`;
-    let infoPanel = `<span class="info">${S.modo === 'varios' ? 'Haz clic en los paneles que quieras.' : 'Haz clic en un panel de la planta.'}</span>`;
+    let infoPanel = `<span class="info">${perimetral() ? (S.bordes.length ? `<b>${S.bordes.length}</b> elementos elegidos · todavía no cierran un perímetro.` : 'Haz clic en las vigas que forman el perímetro.') : S.modo === 'varios' ? 'Haz clic en los paneles que quieras.' : 'Haz clic en un panel de la planta.'}</span>`;
     if (pan) {
       const c = caja(pan.libre);
       infoPanel = (sel.length > 1
@@ -135,8 +150,7 @@
         <div class="campos">${campo('f-sep', 'sep', 'Eje a eje')}${campo('f-anc', 'anc', 'Ancho de vigueta')}</div>
         <label class="fld" for="f-tipo"><span class="fl">Tipo de vigueta en Revit</span>
           <select class="sel" id="f-tipo">${S.tipos.map((t) => `<option value="${esc(t.id)}" ${t.id === S.tipo ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
-        <div id="ubic"></div>
-        <label class="chk" title="Las viguetas en la misma línea que se tocan en una viga se crean como una sola, de punta a punta"><input type="checkbox" id="f-continuas" ${S.continuas ? 'checked' : ''}>Viguetas continuas a través de las vigas</label></div>
+        <div id="ubic"></div></div>
       <div class="sum" id="sum"></div>`;
   }
 
@@ -165,7 +179,10 @@
     if (b.dataset.act === 'editar') { S.editar = !S.editar; lateral(); pintar(); return; }
     if (b.dataset.act === 'seguir') { S.seguir = v === 'true'; S.borradas = []; guardar(); ubicacion(); pedir(); return; }
     if (b.dataset.act === 'modo' && S.modo !== v) {
+      const antes = S.modo;
       S.modo = v; guardar();
+      S.bordes = []; S.perimetro = [];
+      if (v === 'perimetro' || antes === 'perimetro') return elegir([]);
       const pan = principal();
       return elegir(!pan ? [] : v === 'linea' ? enLinea(pan.id) : v === 'uno' ? [pan.id] : S.paneles);
     }
@@ -180,7 +197,6 @@
     if (e.target.id === 'f-piso' && e.target.value) abrirPiso(e.target.value);
     if (e.target.id === 'f-borde') { S.comoBorde = e.target.checked; abrirPiso(S.piso.id); }
     if (e.target.id === 'f-tipo') { S.tipo = e.target.value; guardar(); pie(); }
-    if (e.target.id === 'f-continuas') { S.continuas = e.target.checked; guardar(); pedir(); }
   });
   $('side').addEventListener('input', (e) => {
     const k = { 'f-sep': 'sep', 'f-anc': 'anc' }[e.target.id]; if (!k) return;
@@ -225,10 +241,19 @@
       const sel = S.paneles.includes(x.id);
       h += `<polygon class="pn ${sel ? 'sel' : ''} ${x.creadas ? 'con' : ''}" data-panel="${esc(x.id)}" points="${x.libre.map(pt).join(' ')}" ${ns}><title>${esc(x.id)}${x.creadas ? ` · ${x.creadas} viguetas creadas` : ''}</title></polygon>`;
     });
+    S.perimetro.forEach((x) => {
+      h += `<polygon class="pn sel" points="${x.libre.map(pt).join(' ')}" ${ns}><title>${esc(x.id)}</title></polygon>`;
+    });
     const clase = (a) => (a.creada ? 'creada' : a.esVigueta ? 'existente' : 'viga');
-    S.piso.armazon.forEach((a) => { h += barra(a.desde, a.hasta, a.ancho, `class="${clase(a)}"`, a.tipo || ''); });
+    // En el modo perímetro, todo el armazón (menos lo creado) se puede elegir: vigas, viguetas de borde y voladizos.
+    S.piso.armazon.forEach((a) => {
+      const elegible = perimetral() && !S.editar && !a.creada;
+      const titulo = elegible ? `${a.tipo || ''} · clic para ${S.bordes.includes(a.id) ? 'sacarlo del' : 'sumarlo al'} perímetro` : a.tipo || '';
+      h += barra(a.desde, a.hasta, a.ancho, `class="${clase(a)} ${elegible ? 'elegible' : ''} ${S.bordes.includes(a.id) ? 'borde' : ''}" ${elegible ? `data-b="${esc(a.id)}"` : ''}`, titulo);
+    });
     // Decisión 22: las viguetas del modelo dentro de los paneles elegidos van por piezas, partidas donde las cruza una
-    // viga; cada una se quita por separado. Las vigas se dibujan otra vez encima, para que se vea dónde cortan.
+    // viga; cada una se quita por separado. Van encima de las vigas, de eje a eje, para que se vean pasar (decisión 29):
+    // al pasar el mouse se ve hasta dónde llega cada pieza.
     if (p && p.modelo && p.modelo.length) {
       p.modelo.forEach((m) => {
         const a = S.piso.armazon.find((x) => x.id === m.elemento), ancho = a ? a.ancho : 100;
@@ -236,7 +261,6 @@
           ? barra(m.desde, m.hasta, ancho * 1.6, `class="ghost corte" data-a="${esc(m.id)}" ${ns}`, 'Este tramo se quita al crear · clic para dejarlo')
           : barra(m.desde, m.hasta, ancho, `class="existente quitable" data-a="${esc(m.id)}"`, 'Vigueta del modelo · con Eliminar viguetas, clic para quitar este tramo');
       });
-      S.piso.armazon.filter((a) => !a.esVigueta && !a.creada).forEach((a) => { h += barra(a.desde, a.hasta, a.ancho, 'class="viga"'); });
     }
     S.piso.columnas.forEach((c) => { h += `<rect class="colm" x="${c.min[0]}" y="${-c.max[1]}" width="${c.max[0] - c.min[0]}" height="${c.max[1] - c.min[1]}"/>`; });
 
@@ -244,8 +268,8 @@
       const enX = p.direccion === 'X';
       p.viguetas.forEach((g) => {
         h += g.borrada
-          ? barra(g.desde, g.hasta, p.ancho, `class="ghost" data-v="${esc(g.id)}" ${ns}`, 'Eliminada · clic para restaurar')
-          : barra(g.desde, g.hasta, p.ancho, `class="vg" data-v="${esc(g.id)}"`, `Vigueta ${g.id} · Tipo ${g.tipo} · ${fmt(g.largo)} m`);
+          ? barra(g.ejeDesde, g.ejeHasta, p.ancho, `class="ghost" data-v="${esc(g.id)}" ${ns}`, 'Eliminada · clic para restaurar')
+          : barra(g.ejeDesde, g.ejeHasta, p.ancho, `class="vg" data-v="${esc(g.id)}"`, `Vigueta ${g.id} · Tipo ${g.tipo} · ${fmt(g.largo)} m libres`);
         if (!g.borrada && fs < 260) {
           h += `<text class="vt halo" x="${g.desde[0] + (enX ? fs * 0.4 : p.ancho)}" y="${-g.desde[1] - (enX ? p.ancho : fs * 0.4)}" font-size="${fs * 0.62}" stroke-width="${fs * 0.25}">T${g.tipo}</text>`;
         }
@@ -325,6 +349,12 @@
       const id = vg.dataset.v;
       S.borradas = S.borradas.includes(id) ? S.borradas.filter((x) => x !== id) : [...S.borradas, id];
       lateral(); pedir();
+    } else if (!S.editar && perimetral()) {
+      const b = e.target.closest('[data-b]');
+      if (!b) return;
+      const id = b.dataset.b;
+      S.bordes = S.bordes.includes(id) ? S.bordes.filter((x) => x !== id) : [...S.bordes, id];
+      armar(); lateral(); pintar();
     } else if (!S.editar && pn) {
       const id = pn.dataset.panel;
       if (S.modo === 'varios' || e.ctrlKey || e.shiftKey || e.metaKey) elegir(S.paneles.includes(id) ? S.paneles.filter((x) => x !== id) : [...S.paneles, id]);
@@ -348,13 +378,16 @@
     $('b-panel').disabled = !sel.length;
     $('b-panel').textContent = sel.length > 1 ? 'Acercar a los paneles' : 'Acercar al panel';
     const partidas = p && p.viguetas.some((g) => /[a-z]$/.test(g.id));
-    const vecinos = sel.length === 1 && S.modo !== 'varios' && S.sinAviso !== sel[0].id ? enLinea(sel[0].id) : [];
+    const vecinos = sel.length === 1 && S.modo !== 'varios' && !perimetral() && S.sinAviso !== sel[0].id ? enLinea(sel[0].id) : [];
+    const avisoPerimetro = perimetral() && !S.editar && S.piso
+      ? `<div class="banner hint"><span>${sel.length ? `<b>${esc(lista(S.paneles))}</b>: perímetro cerrado con ${S.bordes.length} elementos. Clic en otro elemento para cambiarlo.` : `Haz clic en las <b>vigas, viguetas de borde o voladizos</b> que forman el perímetro${S.bordes.length ? ` · llevas ${S.bordes.length}, todavía no cierran` : ''}.`}</span>${S.bordes.length ? '<button class="bb" data-act="limpiar">Empezar de nuevo</button>' : ''}</div>`
+      : '';
     const enColumna = vecinos.length > 1
       ? `<div class="banner hint"><span><b>${esc(sel[0].id)}</b> está en una ${linea()} con ${esc(lista(vecinos.filter((x) => x !== sel[0].id)))}. ¿Las viguetas van seguidas?</span><button class="bb" data-act="solo">Solo ${esc(sel[0].id)}</button><button class="bb azul" data-act="toda">Toda la ${linea()} (${vecinos.length} paneles)</button></div>`
       : '';
     $('msg').innerHTML = S.editar
       ? `<div class="banner"><span><b>Eliminar viguetas:</b> clic sobre una vigueta para quitarla o restaurarla. Las del modelo (azul oscuro) también se quitan por tramos, de cada lado de la viga que las cruza${partidas ? '. Las que cruzan una viga están partidas: quita el lado que no va' : ''}.</span><button class="bb" data-act="deshacer" ${S.borradas.length + S.quitar.length ? '' : 'disabled'}>Deshacer</button><button class="bb solid" data-act="listo">Listo</button></div>`
-      : (S.piso && !sel.length ? `<div class="banner hint"><span>${S.modo === 'linea' ? 'Haz clic en un panel: se elige toda su ' + (S.dir === 'Y' ? 'columna' : 'fila') + '.' : S.modo === 'varios' ? 'Haz clic en los paneles que quieras.' : 'Haz clic en un panel de la planta para ver sus viguetas.'}</span></div>`
+      : avisoPerimetro || (S.piso && !sel.length ? `<div class="banner hint"><span>${S.modo === 'linea' ? 'Haz clic en un panel: se elige toda su ' + (S.dir === 'Y' ? 'columna' : 'fila') + '.' : S.modo === 'varios' ? 'Haz clic en los paneles que quieras.' : 'Haz clic en un panel de la planta para ver sus viguetas.'}</span></div>`
         : (enColumna || (partidas ? '<div class="banner hint"><span>Hay viguetas que cruzan una viga. Con <b>Eliminar viguetas</b> puedes quitar solo uno de los lados.</span></div>' : '')));
     const m = (l, v) => `<div class="m"><span class="m-l">${l}</span><span class="m-v">${v}</span></div>`;
     let ext = '—';
@@ -390,6 +423,7 @@
     if (b.dataset.act === 'listo') S.editar = false;
     if (b.dataset.act === 'toda') return elegir(enLinea(S.paneles[0]));
     if (b.dataset.act === 'solo') { S.sinAviso = S.paneles[0]; pintar(); return; }
+    if (b.dataset.act === 'limpiar') { S.bordes = []; S.perimetro = []; return elegir([]); }
     lateral(); pintar();
   });
 

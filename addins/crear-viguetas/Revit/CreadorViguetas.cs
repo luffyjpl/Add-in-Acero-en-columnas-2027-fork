@@ -1,8 +1,8 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
-using CQEING.Vigas.Calculo.Porticos;
+using CQEING.Viguetas.Calculo;
 
-namespace CQEING.Vigas.Revit;
+namespace CQEING.Viguetas.Revit;
 
 /// <summary>
 /// Crea y quita en Revit las viguetas de un panel (#952). Cada operación es una transacción: Ctrl+Z la deshace entera.
@@ -10,7 +10,7 @@ namespace CQEING.Vigas.Revit;
 internal static class CreadorViguetas
 {
     /// <summary>
-    /// Crea una vigueta por línea (<see cref="Calculo.Viguetas.PropuestaViguetas.Lineas"/>, de eje a eje de viga) con
+    /// Crea una vigueta por línea (<see cref="PropuestaViguetas.Lineas"/>, de eje a eje de viga) con
     /// <paramref name="tipo"/>, en <paramref name="nivel"/> y a la cota de las vigas del piso. Antes quita las que el
     /// add-in ya había creado en esos paneles (<paramref name="anteriores"/>), así repetir no las duplica, y recorta las
     /// viguetas del modelo que el usuario marcó (<paramref name="recortes"/>, decisiones 19 y 21). Devuelve cuántas creó y

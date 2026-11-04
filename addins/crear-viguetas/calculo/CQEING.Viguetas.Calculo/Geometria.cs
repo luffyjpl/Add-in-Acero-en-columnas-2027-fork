@@ -1,6 +1,4 @@
-using CQEING.Vigas.Calculo.Porticos;
-
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>Cuentas de polígonos en planta para los paneles (#949), en mm.</summary>
 public static class Geometria
@@ -29,6 +27,21 @@ public static class Geometria
             if ((p[i].Y > q.Y) != (p[j].Y > q.Y) && q.X < (p[j].X - p[i].X) * (q.Y - p[i].Y) / (p[j].Y - p[i].Y) + p[i].X)
                 dentro = !dentro;
         return dentro;
+    }
+
+    /// <summary>La distancia de <paramref name="q"/> al lado más cercano del polígono.</summary>
+    public static double DistanciaAlBorde(IReadOnlyList<Punto> p, Punto q)
+    {
+        double minimo = double.MaxValue;
+        for (int i = 0; i < p.Count; i++)
+        {
+            Punto a = p[i], b = p[(i + 1) % p.Count];
+            (double dx, double dy) = (b.X - a.X, b.Y - a.Y);
+            double largo2 = dx * dx + dy * dy;
+            double t = largo2 == 0 ? 0 : Math.Clamp(((q.X - a.X) * dx + (q.Y - a.Y) * dy) / largo2, 0, 1);
+            minimo = Math.Min(minimo, Distancia(q, new Punto(a.X + t * dx, a.Y + t * dy)));
+        }
+        return minimo;
     }
 
     /// <summary>Quita los vértices que están en línea recta entre sus vecinos (los cruces en T de un lado).</summary>

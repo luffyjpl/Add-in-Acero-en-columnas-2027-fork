@@ -1,7 +1,6 @@
-using CQEING.Vigas.Calculo.Porticos;
-using CQEING.Vigas.Calculo.Viguetas;
+using CQEING.Viguetas.Calculo;
 
-namespace CQEING.Vigas.Calculo.Tests;
+namespace CQEING.Viguetas.Calculo.Tests;
 
 /// <summary>«Crear viguetas» (#947): reparto del Excel, paneles del piso y viguetas de un panel.</summary>
 public class ViguetasTests
@@ -162,9 +161,24 @@ public class ViguetasTests
         Vigueta a = p.Viguetas[0], b = p.Viguetas[1];
         Assert.Equal((150.0, 1900.0, 0.0, 2000.0), (a.Desde, a.Hasta, a.EjeDesde, a.EjeHasta));
         Assert.Equal((2100.0, 3720.0, 2000.0, 3870.0), (b.Desde, b.Hasta, b.EjeDesde, b.EjeHasta));
-        // Continuas: los dos lados van en una sola vigueta; sin continuas, en dos.
-        Assert.Equal(2, p.Lineas(continuas: true).Count);
+        // La viga corta termina dentro del panel (decisión 30): cada lado llega a su eje y no se unen, también al crearlas
+        // todas de nuevo.
+        Assert.True(a.TopeHasta && b.TopeDesde);
+        Assert.Equal(3, p.Lineas(continuas: true).Count);
         Assert.Equal(3, p.Lineas(continuas: false).Count);
+    }
+
+    [Fact]
+    public void LaVigaQueCruzaElPanelDeLadoALadoNoParaLasViguetas()
+    {
+        // La misma viga, pero de borde a borde del panel: las viguetas la atraviesan y se crean de punta a punta.
+        var deLadoALado = new BordePanel("entera", new(2000, 0), new(2000, 2300), 200);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([PanelMaqueta()], Direccion.X, 800, 100, new HashSet<string>(), [deLadoALado])!;
+
+        Assert.All(p.Viguetas, v => Assert.False(v.TopeDesde || v.TopeHasta));
+        Assert.Equal(4, p.Viguetas.Count);
+        Assert.Equal(2, p.Lineas(continuas: true).Count);
     }
 
     [Fact]
@@ -231,7 +245,7 @@ public class ViguetasTests
         List<ArmazonPiso> armazon = [new("vt1", new(1000, 3000), new(1000, 6000), 100, "VT_10X35", false), new("vt2", new(2200, 3000), new(2200, 6000), 100, "VT_10X35", false)];
         var piso = new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
 
-        List<double> guias = piso.Guias(Direccion.Y, [abajo]);
+        List<double> guias = piso.Guias(Direccion.Y);
         PropuestaViguetas p = PlanificadorViguetas.Planificar([abajo], Direccion.Y, 800, 100, new HashSet<string>(), guias: guias)!;
 
         Assert.Equal([1000.0, 2200.0], guias);
@@ -240,11 +254,11 @@ public class ViguetasTests
         Assert.Equal([1000.0, 2200.0], p.Viguetas.Select(v => v.Cota));
         Assert.Equal(1200, r.Reparto.EjeAEje);
         // Una vigueta horizontal no es guía de viguetas en ↕ Y.
-        Assert.Empty(piso.Guias(Direccion.X, [abajo]));
+        Assert.Empty(piso.Guias(Direccion.X));
     }
 
     [Fact]
-    public void LasViguetasDelModeloConPiezasQuitadasNoSonGuiaYLasVigasNoSonPiezas()
+    public void LasViguetasDelModeloSonGuiaYLasVigasNoSonPiezas()
     {
         List<Panel> columna = ColumnaDistinta();
         Panel arriba = columna.Single(p => Geometria.Centro(p.Libre).Y > 3000), abajo = columna.Single(p => p != arriba);
@@ -256,7 +270,8 @@ public class ViguetasTests
         ];
         var piso = new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
 
-        Assert.Equal([2200.0], piso.Guias(Direccion.Y, [abajo], ["vt1"]));
+        // Las de adentro de lo elegido también son guía (decisión 28).
+        Assert.Equal([1000.0, 2200.0], piso.Guias(Direccion.Y));
         Assert.Equal(["vt1#1", "vt2#1"], piso.PiezasDelModelo([arriba]).Select(x => x.Id));
         Assert.Equal("vt1", PisoViguetas.ElementoDe("vt1#1"));
     }
@@ -285,6 +300,95 @@ public class ViguetasTests
         // Quitar las dos: quedan los tramos de los otros paneles; quitar todas las del piso: no queda nada.
         Assert.Equal(2, PisoViguetas.Restos(vigueta, piezas.Select(x => (x.Desde, x.Hasta))).Count);
         Assert.Empty(PisoViguetas.Restos(vigueta, piso.PiezasDelModelo(piso.Paneles).Select(x => (x.Desde, x.Hasta))));
+    }
+
+    /// <summary>Columna de tres paneles de 4,00 × 3,00 m entre ejes (vigas de 30 cm), como piso.</summary>
+    private static PisoViguetas ColumnaDeTres()
+    {
+        List<ArmazonPiso> armazon =
+        [
+            new("izq", new(0, 0), new(0, 9000), 300, "V30X40", false),
+            new("der", new(4000, 0), new(4000, 9000), 300, "V30X40", false),
+        ];
+        armazon.AddRange(new[] { 0, 3000, 6000, 9000 }.Select(y => new ArmazonPiso($"h{y}", new(0, y), new(4000, y), 300, "V30X40", false)));
+        return new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
+    }
+
+    [Fact]
+    public void ElPerimetroConLasVigasDeAfueraEsUnoYLasDeAdentroSoloPartenLasViguetas()
+    {
+        PisoViguetas piso = ColumnaDeTres();
+
+        Panel z = Assert.Single(piso.Perimetro(["izq", "der", "h0", "h9000"]));
+        Assert.Equal("Z1", z.Id);
+        Assert.Same(z, piso.Panel("Z1"));
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces)!;
+
+        // Cada vigueta se parte en las dos vigas de adentro (tres piezas, una por P), pero se crea entera, de eje a eje.
+        int n = p.Paneles[0].Reparto.Cantidad;
+        Assert.Equal(3 * n, p.Viguetas.Count);
+        Assert.Contains(p.Viguetas, v => v.Id == "Z1:1b");
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal(n, lineas.Count);
+        Assert.All(lineas, l => Assert.Equal((0.0, 9000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+    }
+
+    [Fact]
+    public void QuitarUnaViguetaEnUnSoloPDejaLasQueSiguenHastaElEje()
+    {
+        PisoViguetas piso = ColumnaDeTres();
+        Panel z = Assert.Single(piso.Perimetro(["izq", "der", "h0", "h9000"]));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string> { "Z1:1b" }, piso.Cruces)!;
+
+        // La vigueta 1 pierde solo el tramo del P del medio: quedan dos, de 0 a 3,00 m y de 6,00 a 9,00 m, en el eje.
+        double cota = p.Viguetas.First(v => v.Id == "Z1:1a").Cota;
+        List<(double, double)> linea1 = p.Lineas(continuas: true).Where(l => Math.Abs(l.Desde.X - cota) < 1)
+            .Select(l => (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))).ToList();
+        Assert.Equal([(0.0, 3000.0), (6000.0, 9000.0)], linea1);
+    }
+
+    [Fact]
+    public void ElPerimetroPuedeCerrarseConVoladizosYUnaViguetaDeBorde()
+    {
+        List<ArmazonPiso> armazon =
+        [
+            new("viga", new(0, 0), new(4000, 0), 300, "V30X40", false),
+            new("vol1", new(0, 0), new(0, -1500), 250, "V25X40", false),
+            new("vol2", new(4000, 0), new(4000, -1500), 250, "V25X40", false),
+            new("borde", new(0, -1500), new(4000, -1500), 100, "VB_10X35", false),
+        ];
+        var piso = new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
+
+        // Sin elegirlo, el voladizo no es panel (la vigueta de borde no cierra); eligiéndolo, sí.
+        Assert.Empty(piso.Paneles);
+        Panel z = Assert.Single(piso.Perimetro(["viga", "vol1", "vol2", "borde"]));
+        Assert.Equal(1500 - 150 - 50, Geometria.Cortes(z.Libre, false, 2000).Single() is var t ? t.Hasta - t.Desde : 0, 3);
+        Assert.Empty(piso.Perimetro(["viga", "vol1", "vol2"]));
+    }
+
+    [Fact]
+    public void EnElPerimetroLasNuevasSiguenLasDelModeloYSoloRellenanLosTramosQueFaltan()
+    {
+        // Columna de tres paneles con dos viguetas del modelo solo en el de arriba (x = 1,00 y 1,80 m), y el perímetro de
+        // la columna entera: como en P1-P4-P6, las nuevas tienen que quedar en esas líneas y no encima de las que están.
+        PisoViguetas piso = ColumnaDeTres();
+        var conModelo = new PisoViguetas(piso.Piso with
+        {
+            Armazon = piso.Piso.Armazon.Concat(new[] { 1000, 1800 }.Select(x => new ArmazonPiso($"vt{x}", new(x, 6000), new(x, 9000), 100, "VT_10X35", false))).ToList(),
+        }, false);
+        Panel z = Assert.Single(conModelo.Perimetro(["izq", "der", "h0", "h9000"]));
+        List<(Punto, Punto)> ocupadas = conModelo.PiezasDelModelo([z]).Select(x => (x.Inicio, x.Fin)).ToList();
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), conModelo.Cruces,
+            conModelo.Guias(Direccion.Y), ocupadas)!;
+
+        Assert.Equal(OrigenReparto.Existentes, Assert.Single(p.Paneles).Origen);
+        Assert.Equal([1000.0, 1800.0], p.Viguetas.Select(v => Math.Round(v.Cota)).Distinct());
+        // Arriba ya están: solo se crean de 0 a 6,00 m, en las dos líneas.
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal(2, lineas.Count);
+        Assert.All(lineas, l => Assert.Equal((0.0, 6000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
     }
 
     [Fact]

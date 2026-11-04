@@ -120,6 +120,50 @@ encontraba cómo elegir varios paneles.
     cada vigueta del modelo se parte donde la cruza otro elemento de armazón (una viga), y cada pieza se marca por
     separado: se puede quitar solo la de arriba o la de abajo de la viga. Al crear, el elemento queda con lo que no se
     marcó (decisión 21: se acorta y, si hacen falta más tramos, se copia). Ids de pieza: `<id del elemento>#<n>`.
+### Correcciones de la reunión del 03-nov
+
+23. **La vigueta llega al eje de la viga y no se corta en cada viga.** Se dibuja y se crea de eje a eje (hasta la mitad
+    de la viga de apoyo). Las piezas en la misma línea siempre se unen al crear, a través de las vigas que cruzan: se
+    quita la casilla «Viguetas continuas» (~~decisión 13, se podía apagar~~). Solo se corta donde el usuario quita una
+    pieza.
+24. **Seleccionar por perímetro** (modo nuevo, el primero y el que viene marcado): el usuario hace clic en los elementos
+    de armazón de la planta (vigas, viguetas de borde y **voladizos**) y con ellos se arma el perímetro de trabajo
+    (`PisoViguetas.Perimetro`, con `DetectorPaneles` sobre solo esos elementos). Las vigas de adentro que no se
+    eligieron no parten el perímetro: cruzan las viguetas, que se parten ahí en piezas (decisión 14) para poder quitar
+    de un solo P, y se crean continuas. Los perímetros se llaman Z1, Z2…
+25. **Quitar para el vacío en un solo P**: al quitar una pieza (propuesta o del modelo) solo se quita la de ese P; lo que
+    sigue en la misma línea se queda y termina en el eje de la viga. Con prueba.
+28. **Las viguetas del modelo de adentro también son guía** (03-nov, prueba en Revit con el perímetro Z1 de la
+    columna P1-P4-P6: las nuevas no quedaban en línea con las que ya estaban en P1 y P6). Cambia la decisión 16:
+    - Guías: todas las viguetas paralelas del modelo y las creadas, estén dentro o fuera de lo elegido.
+    - Donde ya hay una vigueta del modelo (una pieza de `PiezasDelModelo`, quitada o no) no se propone otra encima: la
+      pieza propuesta que cae sobre ella, en la misma línea, se omite. Así las nuevas solo rellenan los tramos que faltan,
+      y donde el usuario quitó una del modelo para el vacío tampoco aparece una nueva.
+29. **Las viguetas se ven pasar las vigas** (03-nov): en la planta, las piezas de las viguetas del modelo ya no llevan
+    las vigas dibujadas encima; van de eje a eje, como las propuestas, y se ven continuas. Cuando se quita una pieza de
+    un panel, las que quedan terminan en el eje de la viga, porque cada pieza llega justo hasta ahí. Solo cambia el
+    dibujo (`viguetas.js`); el cálculo y lo que se crea en Revit siguen igual.
+30. **Las viguetas terminan en las vigas que acaban dentro del panel** (03-nov, P4: al borrar todas y crearlas de
+    nuevo, pasaban por encima de la viga corta, y al crear solo las que faltaban quedaban pegadas a ella). Cambia la
+    decisión 23 solo para esas vigas:
+    - Viga que cruza el panel o el perímetro de lado a lado (sus dos puntas en el borde): las viguetas la atraviesan y
+      se crean continuas.
+    - Viga que termina dentro del panel (alguna punta adentro, a más de 50 mm del borde, como la viga corta de P4): la
+      vigueta se parte ahí, cada pieza llega a su eje y al crear no se unen (`Vigueta.TopeDesde` / `TopeHasta`).
+26. ~~**Release**: publicar `acero-vigas-v1.5.0`.~~ Ver la decisión 27.
+27. **Add-in propio, `crear-viguetas`** (03-nov, pedido del usuario: «que sea libre, que aparezca en el gestor para
+    descargar y no se descargue junto con otro»). Cambia la decisión 1: deja de ser un botón de «Acero en vigas».
+    - Carpeta `addins/crear-viguetas/` como `despiece`: `addin.json` (id `crear-viguetas`), `CQEING.Viguetas.csproj`,
+      `CQEING.Viguetas.addin` con su propio ClientId, `AppViguetas.cs` (licencia y bloqueo por versión, panel
+      «Viguetas»), `Interfaz/` (comando, puente, ventana WebView2 con host `viguetas.cqeing` y su cola de Revit),
+      `Revit/` (lector del piso y creador), `web/` (la página) y `calculo/` (`CQEING.Viguetas.Calculo` en net8.0 puro,
+      con sus pruebas).
+    - Los archivos de viguetas se mueven desde «Acero en vigas» (con `git mv`, para no perder la historia). Se enlazan,
+      sin copiarlos, `ReglaVigueta.cs` y `CalculadoraZoom.cs` del cálculo de vigas, como hace `despiece`.
+    - «Acero en vigas» vuelve a quedar como antes de #947: sin el botón y sin el parámetro de página de su ventana. La
+      regla de vigueta pública (`ReglaVigueta.cs`) se queda allí, porque la usan los pórticos.
+    - Release: `crear-viguetas-v1.0.0` (add-in nuevo) y `acero-vigas-v1.5.0` (se le quita el botón, para que no
+      aparezca dos veces). Las dos etiquetas van de a una, sobre `main` y después de unir el PR.
 20. **Aviso de libre grande**: si un panel queda con un libre de extremo mayor que el máximo (eje a eje − ancho), por
     ejemplo al seguir pocas viguetas existentes, se avisa debajo del dibujo.
 
@@ -219,6 +263,29 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin acero-
 - [x] Probado en Revit con PROY_JULIO_BETO (02-nov, prueba del usuario): en P4 se quita solo el tramo de un lado de la
       viga corta y el resto de la vigueta del modelo se queda. Todas las correcciones del 30-oct y del 02-nov
       (decisiones 12 a 22) quedan probadas en Revit.
+
+### Correcciones del 03-nov (decisiones 23 a 27)
+
+- [x] Viguetas de eje a eje y siempre continuas; modo Perímetro (por defecto) con vigas, viguetas de borde y voladizos;
+      quitar en un solo P. Pruebas nuevas: `ElPerimetroConLasVigasDeAfueraEsUnoYLasDeAdentroSoloPartenLasViguetas`,
+      `QuitarUnaViguetaEnUnSoloPDejaLasQueSiguenHastaElEje`, `ElPerimetroPuedeCerrarseConVoladizosYUnaViguetaDeBorde`.
+- [x] Página revisada con el piso de ejemplo: el perímetro con cuatro vigas arma Z1, los elementos elegidos se ven en
+      naranja y las viguetas van de eje a eje.
+- [x] Add-in propio `addins/crear-viguetas/` (decisión 27). «Acero en vigas» vuelve a como estaba antes de #947.
+      `dotnet test CQEING-Addins.sln` sin fallos (Viguetas.Calculo 26, Vigas.Calculo 1051, Gestor.Core 256 con
+      `TodosLosAddinsExigenLicenciaTests`, Gestor 37, Publicador 8). Los dos compilan para 2027 sin advertencias y
+      están desplegados con `desplegar-local.ps1`.
+- [x] Probado en Revit por el usuario (03-nov): todo bien, salvo que las nuevas no quedaban en línea con las del modelo
+      dentro del perímetro. Corregido con la decisión 28, con prueba
+      `EnElPerimetroLasNuevasSiguenLasDelModeloYSoloRellenanLosTramosQueFaltan`; `dotnet test` sin fallos
+      (Viguetas.Calculo 27).
+- [x] Decisión 28 desplegada para Revit 2027 (03-nov). El usuario la probó: todo bien.
+- [x] Decisiones 29 (las viguetas se ven pasar las vigas en la planta) y 30 (terminan en las vigas que acaban dentro
+      del panel, también al crearlas todas de nuevo). Pruebas nuevas o cambiadas: `UnaVigaQueCruzaParteLaViguetaEnDosLados`
+      y `LaVigaQueCruzaElPanelDeLadoALadoNoParaLasViguetas`; `dotnet test` sin fallos (Viguetas.Calculo 28). Desplegado
+      para Revit 2027.
+- [ ] Probar la decisión 30 en Revit, en P4: falta.
+- [ ] Unir `main` en la rama, commit, PR, y publicar `crear-viguetas-v1.0.0` y `acero-vigas-v1.5.0`.
 
 Pendiente: commit, PR y versión (`acero-vigas` 1.2.0) cuando el usuario lo pida; detectar vacíos desde el modelo
 queda fuera de esta tarea.

@@ -1,6 +1,4 @@
-using CQEING.Vigas.Calculo.Porticos;
-
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>Una viga que cierra paneles: su eje en planta y su ancho, en mm.</summary>
 public sealed record BordePanel(string Id, Punto Desde, Punto Hasta, double Ancho);

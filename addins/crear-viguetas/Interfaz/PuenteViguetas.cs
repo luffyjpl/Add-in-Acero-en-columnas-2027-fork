@@ -1,11 +1,10 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using CQEING.Vigas.Calculo.Viguetas;
-using CQEING.Vigas.Revit;
-using CQEING.Vigas.Tablero;
-using Panel = CQEING.Vigas.Calculo.Viguetas.Panel;
+using CQEING.Viguetas.Calculo;
+using CQEING.Viguetas.Revit;
+using Panel = CQEING.Viguetas.Calculo.Panel;
 
-namespace CQEING.Vigas.Viguetas;
+namespace CQEING.Viguetas.Interfaz;
 
 /// <summary>
 /// Une la página de «Crear viguetas» (#951) con Revit. Leer el piso, crear y quitar van al hilo de Revit por
@@ -13,12 +12,12 @@ namespace CQEING.Vigas.Viguetas;
 /// </summary>
 internal sealed class PuenteViguetas
 {
-    private readonly VentanaTablero ventana;
+    private readonly VentanaViguetas ventana;
     private readonly Document doc;
     private readonly AccionesRevit acciones = new();
     private PisoViguetas? piso;
 
-    public PuenteViguetas(VentanaTablero ventana, Document doc)
+    public PuenteViguetas(VentanaViguetas ventana, Document doc)
     {
         this.ventana = ventana;
         this.doc = doc;
@@ -38,6 +37,9 @@ internal sealed class PuenteViguetas
                 ventana.Enviar(ProtocoloViguetas.Propuesta(propuesta, p.Paneles, p.Continuas, hayGuias, Modelo(p)));
                 break;
             }
+            case ArmarPerimetro a:
+                ventana.Enviar(ProtocoloViguetas.Perimetro(a.Ids, piso is null ? [] : piso.Perimetro(a.Ids).Select(z => (z, piso.CreadasEn(z).Count))));
+                break;
             case CerrarViguetas:
                 ventana.Close();
                 break;
@@ -124,9 +126,11 @@ internal sealed class PuenteViguetas
             return (null, false);
         List<Panel> paneles = piso.PanelesDe(p.Paneles);
         HashSet<string> borradas = p.Borradas.ToHashSet();
+        // Donde ya hay una vigueta del modelo, quitada o no, no se propone otra (decisión 28).
+        List<(Punto Desde, Punto Hasta)> ocupadas = piso.PiezasDelModelo(paneles).Select(x => (x.Inicio, x.Fin)).ToList();
         PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
-            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias);
-        PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion, paneles, p.DelModelo.Select(PisoViguetas.ElementoDe)));
+            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas);
+        PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion));
         bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
         return (p.Seguir || !hay ? siguiendo : Con(null), hay);
     }

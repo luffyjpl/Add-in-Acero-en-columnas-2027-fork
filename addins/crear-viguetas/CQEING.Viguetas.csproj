@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Año de Revit, framework, API por NuGet y salida bin/<config>/<año>/: addins/Directory.Build.props. -->
+  <PropertyGroup>
+    <AssemblyName>CQEING.Viguetas</AssemblyName>
+    <RootNamespace>CQEING.Viguetas</RootNamespace>
+    <Company>CQEING</Company>
+    <Product>CQEING - Crear viguetas</Product>
+    <Copyright>© CQEING</Copyright>
+    <!-- El cálculo vive en calculo/ como proyecto aparte (sin Revit): no se compila dos veces. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);calculo\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="calculo\CQEING.Viguetas.Calculo\CQEING.Viguetas.Calculo.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Solo para compilar: Revit ya trae WebView2 (Core, Wpf y WebView2Loader); no se copian a la salida. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="$(WebView2Version)" ExcludeAssets="runtime;native;build;buildTransitive" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Enlazado, no copiado (decisión 27 del plan de #947), como en despiece: el zoom y el encaje del tablero de vigas. -->
+    <Compile Include="..\acero-vigas\calculo\CQEING.Vigas.Calculo\Tablero\CalculadoraZoom.cs" Link="Interfaz\CalculadoraZoom.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="CQEING.Viguetas.addin" CopyToOutputDirectory="PreserveNewest" />
+    <!-- La página: se sirve desde bin\...\web con un host virtual de WebView2. -->
+    <Content Include="web\**" CopyToOutputDirectory="PreserveNewest" Link="web\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

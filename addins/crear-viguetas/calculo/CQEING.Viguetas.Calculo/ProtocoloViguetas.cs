@@ -1,9 +1,8 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using CQEING.Vigas.Calculo.Porticos;
-using CQEING.Vigas.Calculo.Tablero;
 
-namespace CQEING.Vigas.Calculo.Viguetas;
+namespace CQEING.Viguetas.Calculo;
 
 /// <summary>Un mensaje de la página de «Crear viguetas» (#951).</summary>
 public abstract record MensajeViguetas;
@@ -28,23 +27,35 @@ public sealed record CrearViguetas(PedirPropuesta Propuesta, string Tipo) : Mens
 
 public sealed record QuitarCreadas(IReadOnlyList<string> Paneles) : MensajeViguetas;
 
+/// <summary>Arma el perímetro con estos elementos de armazón (decisión 24).</summary>
+public sealed record ArmarPerimetro(IReadOnlyList<string> Ids) : MensajeViguetas;
+
 public sealed record CerrarViguetas : MensajeViguetas;
 
 public sealed record DesconocidoViguetas : MensajeViguetas;
 
 /// <summary>
-/// Lee y escribe los mensajes de «Crear viguetas», con las mismas opciones de JSON que el tablero
-/// (<see cref="ProtocoloTablero.Json"/>). Los puntos viajan como [x, y] en mm.
+/// Lee y escribe los mensajes de «Crear viguetas». JSON en camelCase con los enums como texto, como el tablero de
+/// vigas; los textos van sin escapar los acentos (viajan por <c>PostWebMessageAsJson</c>). Los puntos viajan como
+/// [x, y] en mm.
 /// </summary>
 public static class ProtocoloViguetas
 {
+    public static JsonSerializerOptions Json { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
     /// <summary>Nunca lanza: un JSON roto da <see cref="DesconocidoViguetas"/>.</summary>
     public static MensajeViguetas Leer(string json)
     {
         Entrada? e;
         try
         {
-            e = JsonSerializer.Deserialize<Entrada>(json, ProtocoloTablero.Json);
+            e = JsonSerializer.Deserialize<Entrada>(json, Json);
         }
         catch (JsonException)
         {
@@ -62,6 +73,7 @@ public static class ProtocoloViguetas
             "propuesta" when paneles.Count > 0 => Pedido(),
             "crear" when paneles.Count > 0 && e.TipoVigueta is not null => new CrearViguetas(Pedido(), e.TipoVigueta),
             "quitar" when paneles.Count > 0 => new QuitarCreadas(paneles),
+            "perimetro" => new ArmarPerimetro(e.Ids ?? []),
             "cerrar" => new CerrarViguetas(),
             _ => new DesconocidoViguetas(),
         };
@@ -111,17 +123,26 @@ public static class ProtocoloViguetas
                 viguetas = p.Viguetas.Select(v => new
                 {
                     id = v.Id, panel = v.Panel, cota = v.Cota, desde = Xy(p.Punto(v.Cota, v.Desde)), hasta = Xy(p.Punto(v.Cota, v.Hasta)),
+                    ejeDesde = Xy(p.Punto(v.Cota, v.EjeDesde)), ejeHasta = Xy(p.Punto(v.Cota, v.EjeHasta)),
                     largo = v.Largo, tipo = v.Tipo, borrada = v.Borrada,
                 }),
                 tipos = p.Tipos,
             },
         });
 
+    /// <summary>Los perímetros armados con <paramref name="ids"/>: vacío si los elementos no cierran.</summary>
+    public static string Perimetro(IReadOnlyList<string> ids, IEnumerable<(Panel Panel, int Creadas)> perimetros) => Escribir(new
+    {
+        tipo = "perimetro",
+        ids,
+        paneles = perimetros.Select(x => new { id = x.Panel.Id, eje = x.Panel.Eje.Select(Xy), libre = x.Panel.Libre.Select(Xy), creadas = x.Creadas }),
+    });
+
     public static string Aviso(string texto, bool bien = false) => Escribir(new { tipo = "aviso", texto, bien });
 
     private static double[] Xy(Punto p) => [Math.Round(p.X, 1), Math.Round(p.Y, 1)];
 
-    private static string Escribir(object o) => JsonSerializer.Serialize(o, ProtocoloTablero.Json);
+    private static string Escribir(object o) => JsonSerializer.Serialize(o, Json);
 
     private sealed class Entrada
     {
@@ -132,6 +153,7 @@ public static class ProtocoloViguetas
         public bool? Continuas { get; set; }
         public bool? Seguir { get; set; }
         public List<string>? QuitarModelo { get; set; }
+        public List<string>? Ids { get; set; }
         public Direccion? Direccion { get; set; }
         public double? EjeAEje { get; set; }
         public double? Ancho { get; set; }
