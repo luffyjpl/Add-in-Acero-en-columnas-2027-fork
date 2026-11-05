@@ -20,8 +20,13 @@ public sealed record Recubrimientos(double Inferior, double Lateral, double Supe
 /// <summary>El acero de una dirección: número de barra, separación máxima en mm y terminación.</summary>
 public sealed record ConfigDireccion(int Numero, double Separacion, Terminacion Terminacion = Terminacion.Pata90);
 
-/// <summary>Lo que elige el modelador. La parrilla superior repite esta configuración (Carlos, reunión del 04-nov).</summary>
-public sealed record ConfigParrillas(ConfigDireccion X, ConfigDireccion Y, Recubrimientos Recubrimientos, bool IncluirSuperior = true);
+/// <summary>
+/// Lo que elige el modelador. La parrilla superior repite esta configuración (Carlos, reunión del 04-nov).
+/// <paramref name="Doblados"/>: diámetro de doblado por número de barra, en mm, del tipo de barra del proyecto; sin él, el del
+/// cuadro. Revit dobla con el del tipo, que puede ser mayor (decisión 26 del plan de #246).
+/// </summary>
+public sealed record ConfigParrillas(ConfigDireccion X, ConfigDireccion Y, Recubrimientos Recubrimientos, bool IncluirSuperior = true,
+    IReadOnlyDictionary<int, double>? Doblados = null);
 
 /// <summary>Una zapata en sus propios ejes: contorno en mm, altura y centros de las columnas que se apoyan.</summary>
 public sealed record ZapataEntrada(IReadOnlyList<Punto> Contorno, double Altura, IReadOnlyList<Punto> Columnas);

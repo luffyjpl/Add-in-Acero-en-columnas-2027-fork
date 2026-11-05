@@ -95,7 +95,8 @@ internal sealed class PuenteTablero
         var errores = new List<string>();
         if (Grupos(elegidas).Count > 1)
             errores.Add("Las zapatas elegidas no son iguales: la misma configuración no se puede aplicar a todas. Elija un solo grupo.");
-        ResultadoZapata r = MotorParrillas.Calcular(elegidas[0].Entrada, c.Config, reglas);
+        ConfigParrillas config = c.Config with { Doblados = catalogo.Barras.ToDictionary(b => b.Numero, b => b.Doblado) };
+        ResultadoZapata r = MotorParrillas.Calcular(elegidas[0].Entrada, config, reglas);
         avisos.AddRange(r.Avisos);
         errores.AddRange(r.Errores);
         foreach ((string nombre, ConfigDireccion d) in new[] { ("X", c.Config.X), ("Y", c.Config.Y) })

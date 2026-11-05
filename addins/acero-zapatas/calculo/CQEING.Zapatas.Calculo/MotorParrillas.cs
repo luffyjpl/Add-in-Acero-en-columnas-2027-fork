@@ -5,7 +5,7 @@ namespace CQEING.Zapatas.Calculo;
 /// <summary>
 /// Calcula las parrillas de una zapata, sin Revit (#251). Todo en mm y en los ejes de la zapata. Reglas de los planes de
 /// #247 y #246: la principal va hacia afuera en cada parrilla (decisión 10), la superior corre media separación (11 y 21),
-/// las patas llegan al recubrimiento opuesto (12 y 16) y las barras corridas no entran en la franja de patas (17).
+/// las patas llegan al recubrimiento opuesto (12 y 16) y las barras corridas no entran en la franja de patas (17 y 26).
 /// </summary>
 public static class MotorParrillas
 {
@@ -57,6 +57,11 @@ public static class MotorParrillas
         var conjuntos = new List<ConjuntoBarras>();
         var avisos = new List<string>();
         Direccion otra = principal == Direccion.X ? Direccion.Y : Direccion.X;
+        // Choques medidos en Revit y sin resolver (decisión 27 del plan de #246): se avisa, no se bloquea.
+        if (!Geometria.EsRectangular(z.Contorno))
+            avisos.Add("Forma atípica: las patas pueden cruzar barras en las esquinas entrantes o en lados inclinados. Revíselo en una sección.");
+        if (c.X.Terminacion is Terminacion.Gancho135 or Terminacion.Gancho180 || c.Y.Terminacion is Terminacion.Gancho135 or Terminacion.Gancho180)
+            avisos.Add("Ganchos de 135° o 180°: pueden cruzar la barra del borde de la otra dirección. Revíselo en una sección.");
         foreach (Parrilla parrilla in c.IncluirSuperior ? new[] { Parrilla.Inferior, Parrilla.Superior } : new[] { Parrilla.Inferior })
         {
             conjuntos.AddRange(Capa(parrilla, principal, 1, 0));
@@ -80,7 +85,7 @@ public static class MotorParrillas
                 Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: la pata de {pata:0} mm queda por debajo de 12 diámetros ({ReglasZapata.DiametrosMinimosPata * diametro:0} mm). Debe revisarlo el diseñador.");
             int largoGancho = ReglasZapata.LargoGancho(reglas, config.Numero, config.Terminacion);
 
-            List<double> posiciones = Posiciones(direccion, config, parrilla);
+            List<double> posiciones = Posiciones(direccion, config, parrilla, capa);
             // Una línea paralela a X para las barras en X; para las de Y, el contorno se gira con los ejes intercambiados.
             IReadOnlyList<Punto> figura = direccion == Direccion.X ? dentro : dentro.Select(p => new Punto(p.Y, p.X)).ToList();
             var barras = new List<(double Posicion, double Desde, double Hasta)>();
@@ -103,6 +108,26 @@ public static class MotorParrillas
                 });
         }
 
+        // Cuánto deja libre la otra dirección. La capa pegada al recubrimiento pasa por fuera de los dobleces de la otra, que
+        // salen hacia adentro; la de encima tiene que entrar en la curva de la capa vecina: su eje queda en
+        // recubrimiento + d de la pata + D / 2 (decisión 26).
+        double Franja(ConfigDireccion cruzada, int capa, double d)
+        {
+            if (cruzada.Terminacion == Terminacion.Recta)
+                return 0;
+            ReglaDiametro regla = reglas.PorDiametro[cruzada.Numero];
+            if (capa == 1)
+                return regla.Diametro;
+            TipoGancho tipo = cruzada.Terminacion switch
+            {
+                Terminacion.Gancho135 => TipoGancho.De135,
+                Terminacion.Gancho180 => TipoGancho.De180,
+                _ => TipoGancho.De90,
+            };
+            double doblado = c.Doblados?.GetValueOrDefault(cruzada.Numero) is > 0 and double delTipo ? delTipo : Reglas.DobladoGancho(regla, tipo);
+            return regla.Diametro + doblado / 2 - d / 2;
+        }
+
         void Avisar(string texto)
         {
             if (!avisos.Contains(texto))
@@ -110,11 +135,11 @@ public static class MotorParrillas
         }
 
         // Las coordenadas transversales: entre las franjas de patas de la otra dirección, sin pasarse de la separación pedida.
-        List<double> Posiciones(Direccion direccion, ConfigDireccion config, Parrilla parrilla)
+        List<double> Posiciones(Direccion direccion, ConfigDireccion config, Parrilla parrilla, int capa)
         {
             ConfigDireccion cruzada = Config(direccion == Direccion.X ? Direccion.Y : Direccion.X);
-            double franja = cruzada.Terminacion == Terminacion.Recta ? 0 : reglas.PorDiametro[cruzada.Numero].Diametro;
             double d = reglas.PorDiametro[config.Numero].Diametro;
+            double franja = Franja(cruzada, capa, d);
             IEnumerable<double> coordenadas = dentro.Select(p => direccion == Direccion.X ? p.Y : p.X);
             double inicio = coordenadas.Min() + franja + d / 2, fin = coordenadas.Max() - franja - d / 2;
             if (fin < inicio)

@@ -72,8 +72,53 @@ public class MotorParrillasTests
     {
         ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), Config(), R);
 
-        // Recubrimiento 75, franja de 15.9 y medio diámetro.
-        Assert.All(r.Conjuntos.Where(b => b.Parrilla == Parrilla.Inferior), b => Assert.Equal(98.85, b.Posiciones[0], 3));
+        // La capa pegada al recubrimiento: 75, franja de 15.9 y medio diámetro.
+        Assert.Equal(98.85, r.Conjuntos.First(b => b.Parrilla == Parrilla.Inferior && b.Capa == 1).Posiciones[0], 3);
+        // La de encima entra en la curva del doblez: 75 + 15.9 + 95 / 2.
+        Assert.Equal(138.4, r.Conjuntos.First(b => b.Parrilla == Parrilla.Inferior && b.Capa == 2).Posiciones[0], 3);
+    }
+
+    [Fact]
+    public void El_doblez_de_la_capa_vecina_no_cruza_la_barra_de_borde()
+    {
+        // Eje del arco: a un radio R de la pata y del tramo recto, con R = D / 2 + d / 2.
+        ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), Config(superior: false), R);
+        ConjuntoBarras abajo = r.Conjuntos.First(b => b.Capa == 1), encima = r.Conjuntos.First(b => b.Capa == 2);
+        double radio = 95.0 / 2 + 15.9 / 2;
+        double cx = abajo.Desde + 15.9 / 2 + radio, cz = abajo.Z + radio;
+        double distancia = Math.Sqrt(Math.Pow(encima.Posiciones[0] - cx, 2) + Math.Pow(encima.Z - cz, 2));
+
+        // Dentro de la curva: el eje de la barra queda a más de un diámetro del eje del arco.
+        Assert.True(radio - distancia >= 15.9 - 0.001, $"{radio - distancia}");
+    }
+
+    [Fact]
+    public void Un_doblado_mayor_en_el_proyecto_aleja_la_barra_de_borde()
+    {
+        ConfigParrillas c = Config(numero: 3, superior: false) with { Doblados = new Dictionary<int, double> { [3] = 63.5 } };
+        ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), c, R);
+
+        Assert.Equal(75 + 9.5 + 63.5 / 2, r.Conjuntos.First(b => b.Capa == 2).Posiciones[0], 3);
+    }
+
+    [Fact]
+    public void Una_combinada_rectangular_da_cantidades_y_largos()
+    {
+        var z = new ZapataEntrada(Rect(4000, 1200), 600, [new(1000, 600), new(3000, 600)]);
+
+        ResultadoZapata r = MotorParrillas.Calcular(z, Config(superior: false), R);
+
+        Assert.Empty(r.Errores);
+        Assert.Equal(Direccion.X, r.Principal);
+        ConjuntoBarras enX = r.Conjuntos.Single(b => b.Direccion == Direccion.X), enY = r.Conjuntos.Single(b => b.Direccion == Direccion.Y);
+        Assert.Equal(1, enX.Capa);
+        // X: 3850 de tramo y patas de 450. Y: 1050 de tramo y patas de 434.1.
+        Assert.Equal(3850 + 2 * 450, enX.LargoNeto, 3);
+        Assert.Equal(1050 + 2 * 434.1, enY.LargoNeto, 3);
+        // X: 1050 − 2 × 23.85 = 1002.3 → 7 espacios. Y: 3850 − 2 × 63.4 = 3723.2 → 25 espacios.
+        Assert.Equal(8, enX.Cantidad);
+        Assert.Equal(26, enY.Cantidad);
+        Assert.Equal(34, r.Resumen.TotalBarras);
     }
 
     [Fact]
@@ -131,6 +176,16 @@ public class MotorParrillasTests
         Assert.Empty(r.Errores);
         Assert.NotEmpty(r.Conjuntos);
         Assert.Contains(r.Avisos, a => a.Contains("12 diámetros"));
+    }
+
+    [Fact]
+    public void Una_forma_atipica_o_un_gancho_de_180_avisan_de_posibles_choques()
+    {
+        List<Punto> ele = [new(0, 0), new(3000, 0), new(3000, 1000), new(1000, 1000), new(1000, 3000), new(0, 3000)];
+
+        Assert.Contains(MotorParrillas.Calcular(new ZapataEntrada(ele, 500, []), Config(), R).Avisos, a => a.Contains("Forma atípica"));
+        Assert.Contains(MotorParrillas.Calcular(Maqueta(), Config(t: Terminacion.Gancho180), R).Avisos, a => a.Contains("180°"));
+        Assert.DoesNotContain(MotorParrillas.Calcular(Maqueta(), Config(), R).Avisos, a => a.Contains("cruzar"));
     }
 
     [Fact]

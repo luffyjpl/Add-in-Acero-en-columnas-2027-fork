@@ -34,6 +34,10 @@ internal static class TiposZapata
         return barras;
     }
 
+    /// <summary>La configuración con el doblado de los tipos de barra del proyecto: con el que Revit dobla (decisión 26).</summary>
+    public static ConfigParrillas ConDoblados(Document doc, ConfigParrillas c, Reglas reglas) =>
+        c with { Doblados = Barras(doc, reglas).ToDictionary(b => b.Key, b => LectorZapatas.Mm(b.Value.StandardHookBendDiameter)) };
+
     public static CatalogoZapatas Catalogo(Document doc, Reglas reglas)
     {
         List<BarraCatalogo> barras = Barras(doc, reglas).OrderBy(b => b.Key)

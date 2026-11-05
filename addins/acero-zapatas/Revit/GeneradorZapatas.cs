@@ -33,6 +33,7 @@ internal static class GeneradorZapatas
         if (fallas.Count > 0)
             return new ResumenGeneracion(false, 0, 0, 0, fallas);
 
+        config = TiposZapata.ConDoblados(doc, config, reglas);
         var manejo = new ManejoFallas();
         using var t = new Transaction(doc, NombreTransaccion);
         FailureHandlingOptions opciones = t.GetFailureHandlingOptions();
