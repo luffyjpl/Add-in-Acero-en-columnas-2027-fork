@@ -22,6 +22,21 @@ public class ViguetasTests
     }
 
     [Theory]
+    // Decisión 15 (Santiago, 05-nov): «si hay 90 se pone a 45; si es menor a 80 no se pone». Hasta 0,70 de libre (eje a
+    // eje − ancho) no va ninguna; 0,75 y 0,90, una al centro.
+    [InlineData(600, 0, 600)]
+    [InlineData(700, 0, 700)]
+    [InlineData(750, 1, 325)]
+    [InlineData(900, 1, 400)]
+    public void SiElLibreCabeSinViguetaNoVaNinguna(double libre, int cantidad, double extremos)
+    {
+        Reparto r = RepartoViguetas.Calcular(libre, 800, 100)!;
+
+        Assert.Equal(cantidad, r.Cantidad);
+        Assert.Equal(extremos, r.LibreExtremos, 6);
+    }
+
+    [Theory]
     [InlineData(0, 800, 100)]
     [InlineData(2000, 0, 100)]
     [InlineData(2000, 800, 800)]
@@ -262,8 +277,10 @@ public class ViguetasTests
         Assert.Equal(3, continuas.Count);
         Assert.All(continuas, l => Assert.Equal((0.0, 8000.0), (Math.Round(l.Desde.X), Math.Round(l.Hasta.X))));
         Assert.Equal(6, p.Lineas(continuas: false).Count);
-        // Los tipos se agrupan entre los dos paneles: seis piezas iguales, un tipo.
-        Assert.Equal(new TipoVigueta(1, 3700, 6), Assert.Single(p.Tipos));
+        // Los tipos van por vigueta creada (#954, decisión 19): cada una cruza la viga del medio de punta a punta, así que
+        // son tres viguetas iguales de 7,70 m libres (no seis piezas de 3,70 m), un solo tipo.
+        Assert.Equal(new TipoVigueta(1, 7700, 3), Assert.Single(p.Tipos));
+        Assert.All(p.Viguetas, v => Assert.Equal(1, v.Tipo));
     }
 
     /// <summary>Columna de dos paneles: el de arriba de 4,00 × 3,00 m y el de abajo un poco más angosto (3,40 m).</summary>
@@ -492,14 +509,17 @@ public class ViguetasTests
         List<PuntoPiso> puntos = conCreada.Puntos.ToList();
 
         // Cuatro esquinas (una es la columna), dos vértices del suelo que no son de vigas, la viga corta (cruce abajo y punta
-        // adentro) y la vigueta (cruce y punta); nada repetido ni de lo creado. Cada uno con su tipo, para su color.
-        Assert.Equal(10, puntos.Count);
+        // adentro), la vigueta (cruce y punta) y las dos puntas de la creada (decisión 24); nada repetido. Cada uno con su
+        // tipo, para su color.
+        Assert.Equal(12, puntos.Count);
         Assert.Equal("columna", puntos.Single(p => p.P == new Punto(0, 0)).Tipo);
         Assert.Equal(4, puntos.Count(p => p.Tipo == "cruce"));
         Assert.Equal("viga", puntos.Single(p => p.P == new Punto(3000, 1200)).Tipo);
         Assert.Equal(["vigueta", "vigueta"], puntos.Where(p => p.P.X == 500).OrderBy(p => p.P.Y).Select(p => p.Tipo));
         Assert.Equal([new Punto(2000, 0), new Punto(2000, 3000)], puntos.Where(p => p.Tipo == "suelo").Select(p => p.P).OrderBy(p => p.Y));
-        Assert.DoesNotContain(puntos, p => p.P.X == 1000);
+        // La creada por el add-in da sus dos puntas (decisión 24), como vigueta.
+        Assert.Equal([new Punto(1000, 1000), new Punto(1000, 2000)], puntos.Where(p => p.P.X == 1000).Select(p => p.P).OrderBy(p => p.Y));
+        Assert.All(puntos.Where(p => p.P.X == 1000), p => Assert.Equal("vigueta", p.Tipo));
     }
 
     [Fact]
@@ -610,12 +630,87 @@ public class ViguetasTests
         foreach (IGrouping<double, Vigueta> fila in partidas.GroupBy(v => v.Cota))
         {
             Assert.Equal([(150.0, 1400.0), (2600.0, 3850.0)], fila.OrderBy(v => v.Desde).Select(v => (Math.Round(v.Desde), Math.Round(v.Hasta))));
-            Assert.All(fila, v => Assert.Matches(@"^Z1:\d+\.[12]$", v.Id));
+            // Arriba y abajo del vacío son regiones distintas (decisión 18): cada pieza con su propio id.
+            Assert.All(fila, v => Assert.Matches(@"^Z1:\d+$", v.Id));
+            Assert.Equal(2, fila.Select(v => v.Id).Distinct().Count());
             // Sus líneas de Revit llegan al eje de las viguetas de borde del vacío (a 5 cm por fuera de él).
             Assert.Equal([(0.0, 1450.0), (2550.0, 4000.0)], fila.OrderBy(v => v.Desde).Select(v => (Math.Round(v.EjeDesde), Math.Round(v.EjeHasta))));
         }
         Assert.All(p.Viguetas.Where(v => v.Cota < 2400 || v.Cota > 3600), v => Assert.Equal((150.0, 3850.0), (Math.Round(v.Desde), Math.Round(v.Hasta))));
         Assert.Equal(["Z1:B1", "Z1:B2", "Z1:B3", "Z1:B4"], p.DeBorde.Select(b => b.Id));
+    }
+
+    [Fact]
+    public void LaViguetaDeBordeDelVacioEnElSentidoDeLasViguetasLlegaAlPerimetroYParteElReparto()
+    {
+        // Como en el piso 2 de Santiago (05-nov): un vacío pegado a la viga de la derecha y apoyado en la viga del medio.
+        PisoViguetas piso = PisoDe(
+        [
+            ("abajo", new(0, 0), new(6000, 0)),
+            ("der", new(6000, 0), new(6000, 8000)),
+            ("arriba", new(6000, 8000), new(0, 8000)),
+            ("izq", new(0, 8000), new(0, 0)),
+            ("medio", new(0, 4000), new(6000, 4000)),
+        ]);
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 6000, 8000), [Rectangulo(4800, 4000, 6000, 5000)])], 100));
+        // Solo el lado de arriba y el de la izquierda del vacío son libres.
+        Assert.Equal(2, z.ViguetasDeBorde.Count);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 1000, 100, new HashSet<string>(), piso.Cruces,
+            divisiones: piso.Vigas)!;
+
+        // Decisión 11, corregida por la 22: la del lado izquierdo del vacío sigue por su línea hasta las vigas que la
+        // cruzan. El vacío va sobre la viga del medio, así que va de ella (y = 4,00 m) a la de arriba, no hasta abajo.
+        ViguetaBorde izquierda = Assert.Single(p.DeBorde, b => b.DeVacio && b.Desde.X == b.Hasta.X);
+        Assert.Equal(4750, izquierda.Desde.X);
+        Assert.Equal((4000.0, 8000.0), (Math.Min(izquierda.Desde.Y, izquierda.Hasta.Y), Math.Max(izquierda.Desde.Y, izquierda.Hasta.Y)));
+        // Decisión 25: el panel de abajo de la viga del medio sigue las líneas del de arriba (manda el de arriba, más angosto
+        // por el vacío), sigue la línea de la vigueta de borde del vacío (4,75 m) y de ahí a la viga, la fórmula centrada:
+        // una en 5,325 m.
+        List<double> deArriba = p.Viguetas.Where(v => v.Desde > 4000 && v.Cota < 4700).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        Assert.Equal([.. deArriba, 4750.0, 5325.0], p.Viguetas.Where(v => v.Hasta < 4000).Select(v => Math.Round(v.Cota)).Distinct().Order());
+        // La de arriba del vacío sigue a lo largo de él.
+        ViguetaBorde arriba = Assert.Single(p.DeBorde, b => b.Desde.Y == b.Hasta.Y);
+        Assert.Equal(5050, arriba.Desde.Y);
+
+        // Arriba, ninguna vigueta queda encima de ella ni corrida al lado: el reparto se parte en su línea.
+        Assert.DoesNotContain(p.Viguetas, v => v.Desde > 4000 && v.Cota + 50 > 4700 && v.Cota - 50 < 4800);
+        List<double> cotas = p.Viguetas.Where(v => v.Desde > 4000).Select(v => v.Cota).Distinct().Order().ToList();
+        List<double> izquierdaDeLaLinea = cotas.Where(c => c < 4750).ToList(), derecha = cotas.Where(c => c > 4750).ToList();
+        Assert.NotEmpty(izquierdaDeLaLinea);
+        Assert.NotEmpty(derecha);
+        // Cada tramo se reparte por su cuenta con los dos extremos iguales: de la viga de la izquierda a la línea, y de la
+        // línea a la viga de la derecha (vigas de 30 cm: caras a 150 y 5850).
+        Assert.Equal(Math.Round(izquierdaDeLaLinea[0] - 50 - 150), Math.Round(4700 - (izquierdaDeLaLinea[^1] + 50)));
+        Assert.Equal(Math.Round(derecha[0] - 50 - 4800), Math.Round(5850 - (derecha[^1] + 50)));
+        // Las de la derecha paran en el vacío; las de la izquierda van enteras.
+        Assert.All(p.Viguetas.Where(v => v.Cota > 4750 && v.EjeDesde > 4500), v => Assert.True(v.Desde >= 5100 - 1));
+
+        // Eliminada, deja de partir el reparto.
+        PropuestaViguetas sin = PlanificadorViguetas.Planificar([z], Direccion.Y, 1000, 100, new HashSet<string> { izquierda.Id }, piso.Cruces,
+            divisiones: piso.Vigas)!;
+        Assert.True(Assert.Single(sin.DeBorde, b => b.Id == izquierda.Id).Borrada);
+        Assert.NotEqual(cotas, sin.Viguetas.Where(v => v.Desde > 4000).Select(v => v.Cota).Distinct().Order().ToList());
+    }
+
+    [Fact]
+    public void UnPuntoDentroDelCuerpoDeLaVigaVaASuEjeYNoLlevaViguetaDeBordeEncima()
+    {
+        // Como en la captura del 05-nov: un vértice del suelo a 14 cm del eje de la viga de arriba (de 30 cm).
+        PisoViguetas piso = PisoDe(
+        [
+            ("abajo", new(0, 0), new(3000, 0)),
+            ("der", new(3000, 0), new(3000, 4000)),
+            ("arriba", new(3000, 4000), new(0, 4000)),
+            ("izq", new(0, 4000), new(0, 0)),
+        ]);
+        List<Punto> contorno = [new(0, 0), new(0, 4000), new(1500, 4140), new(3000, 4000), new(3000, 0)];
+
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", contorno, [])], 100));
+
+        Assert.Empty(z.ViguetasDeBorde);
+        Assert.All(z.Eje, q => Assert.True(q.Y is 0 or 4000));
+        Assert.Equal(3850, z.Libre.Max(q => q.Y));
     }
 
     [Fact]
@@ -667,6 +762,250 @@ public class ViguetasTests
         // Sin las vigas (como antes), la fórmula reparte de punta a punta y una cae sobre la del medio.
         PropuestaViguetas antes = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces)!;
         Assert.Contains(antes.Viguetas, v => v.Cota > 3800 && v.Cota < 4200);
+    }
+
+    /// <summary>
+    /// Como el N+3.70 de la reunión del 05-nov: dos luces de 4,00 m (ejes x = 0, 4,00 y 8,00 m) y 6,00 m de alto, con una
+    /// viga a media altura (y = 3,00 m). Las vigas horizontales van una por vano y terminan en la cara de la viga del medio
+    /// (x = 3,85 y 4,15 m), como en los modelos.
+    /// </summary>
+    private static PisoViguetas DosLucesPorVano() => PisoDe(
+    [
+        ("A", new(0, 0), new(0, 6000)),
+        ("B", new(4000, 0), new(4000, 6000)),
+        ("C", new(8000, 0), new(8000, 6000)),
+        ("h0a", new(0, 0), new(3850, 0)), ("h0b", new(4150, 0), new(8000, 0)),
+        ("h3a", new(0, 3000), new(3850, 3000)), ("h3b", new(4150, 3000), new(8000, 3000)),
+        ("h6a", new(0, 6000), new(3850, 6000)), ("h6b", new(4150, 6000), new(8000, 6000)),
+    ]);
+
+    [Fact]
+    public void LasVigasDeCadaVanoQueLleganALaDelMedioNoAmontonanViguetasNiLasCortan()
+    {
+        // Reunión del 05-nov: «separando cada 33 si habíamos establecido 80», «crea cuatro barras donde debe crear dos» y
+        // «esa y la de arriba es una sola» (decisiones 16 y 19).
+        PisoViguetas piso = DosLucesPorVano();
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        // Cada luz, con la fórmula sobre su libre de 3,70 m: cuatro a 0,80, con 0,60 en los extremos. Nada más.
+        Reparto r = RepartoViguetas.Calcular(3700, 800, 100)!;
+        Assert.Equal((4, 600.0), (r.Cantidad, r.LibreExtremos));
+        List<double> cotas = p.Viguetas.Select(v => Math.Round(v.Cota, 3)).Distinct().Order().ToList();
+        Assert.Equal([800.0, 1600.0, 2400.0, 3200.0, 4800.0, 5600.0, 6400.0, 7200.0], cotas);
+        Assert.All(p.Paneles, x => Assert.Equal(800, x.Reparto.EjeAEje));
+        // La viga de y = 3,00 m termina en la del medio, no suelta: no pone topes. Cada vigueta va de punta a punta, una
+        // sola, y todas son del mismo tipo (mismo largo, mismos apoyos).
+        Assert.All(p.Viguetas, v => Assert.False(v.TopeDesde || v.TopeHasta));
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal(8, lineas.Count);
+        Assert.All(lineas, l => Assert.Equal((0.0, 6000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+        Assert.Equal(new TipoVigueta(1, 5700, 8), Assert.Single(p.Tipos));
+    }
+
+    [Fact]
+    public void UnaVigaCortaSueltaSiguePoniendoSuViguetaEnLaPunta()
+    {
+        // La viga corta de verdad (decisiones 30 y 31 de #947) sigue igual: su punta queda suelta dentro del panel.
+        PisoViguetas piso = DosLucesPorVano();
+        var conCorta = new PisoViguetas(piso.Piso with
+        {
+            Armazon = [.. piso.Piso.Armazon, new ArmazonPiso("corta", new(0, 1500), new(1675, 1500), 200, "V20X30", false)],
+        }, false);
+        Panel z = Assert.Single(conCorta.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), conCorta.Cruces, divisiones: conCorta.Vigas)!;
+
+        // Una vigueta por dentro de la viga, con la cara al ras de su punta (eje en 1,625 m), en un reparto parejo de
+        // cuatro a 0,75 con extremos de 0,675 (decisiones 17 y 23): pareja, centrada y no más apretada.
+        List<double> izquierda = p.Viguetas.Where(v => v.Cota < 4000 && v.Desde < 3000).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        Assert.Equal([875.0, 1625.0, 2375.0, 3125.0], izquierda);
+        Assert.Contains(p.Viguetas, v => v.TopeDesde || v.TopeHasta);
+    }
+
+    [Fact]
+    public void AbajoDeUnVacioQueTomaTodaLaLuzSeReparteElAnchoCompletoDeAbajo()
+    {
+        // Reunión del 05-nov: «faltan viguetas abajo… los nervios de arriba no son los mismos de abajo» (decisión 18). Un
+        // vacío en L en la luz izquierda, de viga a viga: abajo toma todo el ancho (de y = 3,50 a 4,00 m) y arriba solo
+        // de x = 2,50 a 4,00 m (de y = 4,00 a 4,50 m). Su lado vertical libre (x = 2,50 m) lleva una vigueta de borde que
+        // sube hasta el perímetro (decisión 11) y parte el reparto solo arriba.
+        PisoViguetas piso = DosLucesPorVano();
+        List<Punto> vacioL = [new(0, 3500), new(4000, 3500), new(4000, 4500), new(2500, 4500), new(2500, 4000), new(0, 4000)];
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [vacioL])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        List<double> Cotas(double w) => p.Viguetas.Where(v => v.Cota < 4000 && v.Desde <= w && w <= v.Hasta).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        // Abajo del vacío: la fórmula sobre todo el ancho de la luz (3,70 m), como si estuviera sola.
+        Assert.Equal([800.0, 1600.0, 2400.0, 3200.0], Cotas(1000));
+        // Arriba a la izquierda, entre la viga A y la vigueta de borde del vacío (de 0,15 a 2,40 m): dos, centradas.
+        Assert.Equal([875.0, 1675.0], Cotas(5000).Where(c => c < 2400));
+        // Arriba del brazo del vacío, de 2,50 a 3,85 m: una al centro.
+        Assert.Equal([3175.0], Cotas(5000).Where(c => c > 2500));
+        // En Revit, las de abajo van del eje de la viga de abajo al de la vigueta de borde del vacío (y = 3,45 m), una sola
+        // a través de la viga de y = 3,00 m; las de arriba a la izquierda, del vacío (4,05 m) a la viga de arriba.
+        List<(Punto Desde, Punto Hasta)> izquierda = p.Lineas(continuas: true).Where(l => l.Desde.X < 4000 && Math.Abs(l.Desde.X - l.Hasta.X) < 1).ToList();
+        Assert.Equal(4, izquierda.Count(l => Math.Round(l.Desde.Y) == 0 && Math.Round(l.Hasta.Y) == 3450));
+        Assert.Equal(2, izquierda.Count(l => Math.Round(l.Desde.Y) == 4050 && Math.Round(l.Hasta.Y) == 6000));
+        // Cada región trae su reparto, en su lugar, para las cotas de la página.
+        Assert.Contains(p.Paneles, r => r.Region is { } g && Math.Round(g.Desde) == 150 && Math.Round(g.Hasta) == 3850 && Math.Round(g.WHasta) == 3400);
+        // La luz derecha no cambia: cuatro de abajo arriba.
+        Assert.Equal(4, p.Viguetas.Where(v => v.Cota > 4000).Select(v => Math.Round(v.Cota)).Distinct().Count());
+        // Abajo y arriba del vacío son tipos distintos: no tienen el mismo largo ni los mismos apoyos.
+        int TipoEn(double cota, double w) => p.Viguetas.First(v => Math.Round(v.Cota) == cota && v.Desde <= w && w <= v.Hasta).Tipo;
+        Assert.NotEqual(TipoEn(800, 1000), TipoEn(875, 5000));
+    }
+
+    [Fact]
+    public void UnVacioChicoNoCruzaLasVigasYElPanelDeAbajoSigueSusLineas()
+    {
+        // Prueba en Revit del 05-nov (vacío 2): sus viguetas de borde no cruzan las vigas (decisión 22) y el panel de abajo
+        // sigue las líneas del de arriba, que manda (decisión 25). Un vacío de 1,00 × 1,00 m en el panel de arriba a la
+        // derecha, con sus cuatro lados libres.
+        PisoViguetas piso = DosLucesPorVano();
+        Panel sinVacio = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [])], 100));
+        PropuestaViguetas antes = PlanificadorViguetas.Planificar([sinVacio], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [Rectangulo(5500, 4000, 6500, 5000)])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        // Sus viguetas de borde verticales suben hasta la viga de arriba (y = 6,00 m) y bajan solo hasta la viga del medio
+        // (y = 3,00 m), no hasta el borde de abajo.
+        List<ViguetaBorde> verticales = p.DeBorde.Where(b => b.DeVacio && Math.Abs(b.Desde.X - b.Hasta.X) < 1).ToList();
+        Assert.Equal(2, verticales.Count);
+        Assert.All(verticales, b => Assert.Equal((3000.0, 6000.0), (Math.Round(Math.Min(b.Desde.Y, b.Hasta.Y)), Math.Round(Math.Max(b.Desde.Y, b.Hasta.Y)))));
+        // Abajo de esa viga, el panel de la derecha sigue las líneas de arriba que llegan a la viga: a los costados del
+        // vacío, 4,775 y 7,225 m; las de sus viguetas de borde, 5,45 y 6,55 m; y la de abajo del vacío, 6,00 m.
+        List<double> abajo = p.Viguetas.Where(v => v.Cota > 4000 && v.Desde < 2000).Select(v => v.Cota).Distinct().Order().ToList();
+        Assert.Equal([4775.0, 5450.0, 6000.0, 6550.0, 7225.0], abajo);
+        // Las de los costados son una sola vigueta de abajo arriba, a través de la viga del medio.
+        Assert.Contains(p.Lineas(continuas: true), l => Math.Abs(l.Desde.X - 4775) < 1 && Math.Round(l.Desde.Y) == 0 && Math.Round(l.Hasta.Y) == 6000);
+        // La luz de la izquierda no cambia.
+        List<double> Izquierda(PropuestaViguetas x) => x.Viguetas.Where(v => v.Cota < 4000).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        Assert.Equal(Izquierda(antes), Izquierda(p));
+        // Ninguna separación más chica que la mitad del eje a eje.
+        Assert.All(p.Paneles.Where(r => r.Reparto.Cantidad > 1), r => Assert.True(r.Reparto.EjeAEje >= 400, $"eje a eje {r.Reparto.EjeAEje}"));
+    }
+
+    [Fact]
+    public void SiElLadoDelVacioVaSobreUnaVigaSuViguetaDeBordeNoPasaDeEsaViga()
+    {
+        // Como el vacío 1 de la prueba del 05-nov: su lado de abajo va sobre la viga de y = 3,00 m. Sus viguetas de borde
+        // verticales suben hasta la viga de arriba y no bajan al panel de abajo (decisión 22). El de abajo sigue las líneas
+        // de los costados del vacío y las de sus viguetas de borde (decisión 25): 4,525, 4,95, 6,05, 6,575 y 7,375 m, y
+        // entre 4,95 y 6,05, la fórmula centrada (5,50).
+        PisoViguetas piso = DosLucesPorVano();
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [Rectangulo(5000, 3000, 6000, 4500)])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        List<ViguetaBorde> verticales = p.DeBorde.Where(b => b.DeVacio && Math.Abs(b.Desde.X - b.Hasta.X) < 1).ToList();
+        Assert.Equal(2, verticales.Count);
+        Assert.All(verticales, b => Assert.Equal((3000.0, 6000.0), (Math.Round(Math.Min(b.Desde.Y, b.Hasta.Y)), Math.Round(Math.Max(b.Desde.Y, b.Hasta.Y)))));
+        Assert.Equal([4525.0, 4950.0, 5500.0, 6050.0, 6575.0, 7375.0], p.Viguetas.Where(v => v.Cota > 4000 && v.Desde < 2000).Select(v => Math.Round(v.Cota)).Distinct().Order());
+    }
+
+    [Fact]
+    public void ElPanelDeArribaSigueLasLineasDelDeAbajoQueTieneElVacio()
+    {
+        // Captura 1 del 05-nov: el vacío está en el panel de abajo, contra la viga del medio y la de la derecha. La franja
+        // de al lado del vacío fija sus líneas («la T6 pone el orden»): siguen hacia arriba a través de la viga, una sola
+        // vigueta y un solo tipo, y arriba del vacío sigue el mismo ritmo («también debe salir la que abajo no se genera»).
+        PisoViguetas piso = DosLucesPorVano();
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [Rectangulo(5600, 600, 8000, 3000)])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        // Al lado del vacío (de 4,15 a 5,50 m): una al centro, en 4,825 m. Arriba: esa misma, la de la línea de la vigueta de
+        // borde del vacío (5,55 m, «hay una que no alinea») y, de ahí a la viga, la fórmula centrada: 6,325 y 7,125 m.
+        Assert.Equal([4825.0], p.Viguetas.Where(v => v.Cota > 4000 && v.Desde < 2000 && v.Hasta > 2000).Select(v => Math.Round(v.Cota)).Distinct());
+        Assert.Equal([4825.0, 5550.0, 6325.0, 7125.0], p.Viguetas.Where(v => v.Cota > 4000 && v.Desde > 3000).Select(v => Math.Round(v.Cota)).Distinct().Order());
+        (Punto desde, Punto hasta) = Assert.Single(p.Lineas(continuas: true), l => Math.Abs(l.Desde.X - 4825) < 1);
+        Assert.Equal((0.0, 6000.0), (Math.Round(desde.Y), Math.Round(hasta.Y)));
+        Assert.Single(p.Viguetas.Where(v => Math.Round(v.Cota) == 4825).Select(v => v.Tipo).Distinct());
+        // La vigueta de borde del vacío y la que la sigue arriba se crean como una sola, de 0 a 6,00 m.
+        (Punto bd, Punto bh) = Assert.Single(p.Lineas(continuas: true), l => Math.Abs(l.Desde.X - 5550) < 1 && Math.Abs(l.Hasta.X - 5550) < 1);
+        Assert.Equal((0.0, 6000.0), (Math.Round(Math.Min(bd.Y, bh.Y)), Math.Round(Math.Max(bd.Y, bh.Y))));
+        // Ninguna queda pegada a la viga de la derecha (cara en 7,85 m).
+        Assert.True(7850 - (p.Viguetas.Max(v => v.Cota) + 50) >= 300);
+    }
+
+    [Fact]
+    public void ElPanelDeAbajoSigueLasLineasDelDeArribaQueTieneLaVigaCorta()
+    {
+        // Captura 2 del 05-nov: arriba hay una viga corta con su punta suelta, que fija las líneas (decisión 31); el panel
+        // de abajo no tiene nada particular y las sigue a través de la viga del medio («la que manda es la de arriba»).
+        PisoViguetas piso = DosLucesPorVano();
+        var conCorta = new PisoViguetas(piso.Piso with
+        {
+            Armazon = [.. piso.Piso.Armazon, new ArmazonPiso("corta", new(0, 4500), new(1675, 4500), 200, "V20X30", false)],
+        }, false);
+        Panel z = Assert.Single(conCorta.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 8000, 6000), [])], 100));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), conCorta.Cruces, divisiones: conCorta.Vigas)!;
+
+        List<double> arriba = p.Viguetas.Where(v => v.Cota < 4000 && v.Desde > 3000).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        List<double> abajo = p.Viguetas.Where(v => v.Cota < 4000 && v.Desde < 3000).Select(v => Math.Round(v.Cota)).Distinct().Order().ToList();
+        Assert.Equal([875.0, 1625.0, 2375.0, 3125.0], arriba);
+        Assert.Equal(arriba, abajo);
+    }
+
+    [Fact]
+    public void EnUnaFranjaAngostaLaPuntaDeUnaVigaNoApretaNiDescuadraElReparto()
+    {
+        // Prueba en Revit del 05-nov: dos viguetas a 0,30 en una franja de 0,87 m (decisión 23). Un panel de 0,87 m libres
+        // (ejes x = 0 y 1,17 m) con una viga corta que entra desde la derecha hasta x = 0,40 m.
+        List<BordePanel> bordes =
+        [
+            new("abajo", new(0, 0), new(1170, 0), 300),
+            new("arriba", new(0, 3000), new(1170, 3000), 300),
+            new("izq", new(0, 0), new(0, 3000), 300),
+            new("der", new(1170, 0), new(1170, 3000), 300),
+            new("corta", new(1170, 1500), new(400, 1500), 200),
+        ];
+        Panel panel = DetectorPaneles.Detectar(bordes.Take(4)).Single();
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([panel], Direccion.Y, 800, 100, new HashSet<string>(), bordes)!;
+
+        // El parejo con la de la punta (eje en 0,45 m) daba dos a 0,27: no se acepta. Va la fórmula: una al centro.
+        Assert.Equal([585.0], p.Viguetas.Select(v => Math.Round(v.Cota)).Distinct());
+    }
+
+    [Fact]
+    public void UnLadoCasiDerechoSeEnderezaYSuViguetaDeBordeNoVaEnDiagonal()
+    {
+        // Reunión del 05-nov: «no existen diagonales… la vigueta debe ir derechita» (decisión 20). El punto de arriba a la
+        // izquierda quedó 6 cm más alto que el de la derecha.
+        PisoViguetas piso = PisoDe(Cuadro("abajo", "der", "izq"));
+
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", [new(0, 0), new(4000, 0), new(4000, 3000), new(0, 3060)], [])], 100));
+
+        (Punto desde, Punto hasta) = Assert.Single(z.ViguetasDeBorde);
+        Assert.Equal(desde.Y, hasta.Y, 3);
+        Assert.Equal(3030 - 50, desde.Y, 3);
+        Assert.All(z.Eje.Zip(z.Eje.Skip(1).Append(z.Eje[0])), l => Assert.True(Math.Abs(l.First.X - l.Second.X) < 1e-6 || Math.Abs(l.First.Y - l.Second.Y) < 1e-6));
+    }
+
+    [Fact]
+    public void LasCreadasDentroDeLoElegidoNoSonGuia()
+    {
+        // Reunión del 05-nov: al reemplazar, las nuevas seguían a las que se iban a borrar (decisión 21).
+        PisoViguetas piso = ColumnaDeTres();
+        var conCreadas = new PisoViguetas(piso.Piso with
+        {
+            Armazon =
+            [
+                .. piso.Piso.Armazon,
+                new ArmazonPiso("adentro", new(1000, 6000), new(1000, 9000), 100, "VT_10X35", true),
+                new ArmazonPiso("modelo", new(2200, 6000), new(2200, 9000), 100, "VT_10X35", false),
+            ],
+        }, false);
+        Panel arriba = conCreadas.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+
+        Assert.Equal([1000.0, 2200.0], conCreadas.Guias(Direccion.Y));
+        Assert.Equal([2200.0], conCreadas.Guias(Direccion.Y, [arriba]));
     }
 
     [Fact]

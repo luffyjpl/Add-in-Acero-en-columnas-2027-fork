@@ -133,7 +133,7 @@ internal sealed class PuenteViguetas
         List<(Punto Desde, Punto Hasta)> ocupadas = piso.PiezasDelModelo(paneles).Select(x => (x.Inicio, x.Fin)).ToList();
         PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
             PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas);
-        PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion));
+        PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion, paneles));
         bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
         return (p.Seguir || !hay ? siguiendo : Con(null), hay);
     }
