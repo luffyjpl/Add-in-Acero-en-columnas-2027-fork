@@ -8,9 +8,27 @@ public sealed record BordePanel(string Id, Punto Desde, Punto Hasta, double Anch
 /// <paramref name="Libre"/>, el contorno entre caras (medio ancho de viga hacia adentro). Los dos en sentido
 /// antihorario, en mm.
 /// </summary>
-public sealed record Panel(string Id, IReadOnlyList<Punto> Eje, IReadOnlyList<Punto> Libre)
+/// <remarks>
+/// Una zona por puntos (#954) puede traer vacíos (<paramref name="HuecosEje"/> por ejes y <paramref name="HuecosLibre"/>
+/// entre caras) y viguetas de borde en sus lados libres (<paramref name="Bordes"/>, por su eje). <paramref name="Apoyos"/>:
+/// el contorno y los vacíos por los ejes de lo que sostiene cada lado (la viga o la vigueta de borde); hasta ahí llegan
+/// las líneas de Revit de las viguetas.
+/// </remarks>
+public sealed record Panel(string Id, IReadOnlyList<Punto> Eje, IReadOnlyList<Punto> Libre,
+    IReadOnlyList<IReadOnlyList<Punto>>? HuecosEje = null, IReadOnlyList<IReadOnlyList<Punto>>? HuecosLibre = null,
+    IReadOnlyList<(Punto Desde, Punto Hasta)>? Bordes = null, IReadOnlyList<IReadOnlyList<Punto>>? Apoyos = null)
 {
     public double AreaLibre => Geometria.Area(Libre);
+
+    /// <summary>El contorno por ejes y los de sus vacíos: los cortes de una vigueta los usan todos (regla par-impar).</summary>
+    public IReadOnlyList<IReadOnlyList<Punto>> AnillosEje => [Eje, .. HuecosEje ?? []];
+
+    /// <summary>Hasta dónde llegan las líneas de Revit: los <see cref="Apoyos"/> o, si no hay, los ejes.</summary>
+    public IReadOnlyList<IReadOnlyList<Punto>> AnillosApoyo => Apoyos ?? AnillosEje;
+
+    public IReadOnlyList<IReadOnlyList<Punto>> AnillosLibre => [Libre, .. HuecosLibre ?? []];
+
+    public IReadOnlyList<(Punto Desde, Punto Hasta)> ViguetasDeBorde => Bordes ?? [];
 }
 
 /// <summary>

@@ -40,6 +40,9 @@ internal sealed class PuenteViguetas
             case ArmarPerimetro a:
                 ventana.Enviar(ProtocoloViguetas.Perimetro(a.Ids, piso is null ? [] : piso.Perimetro(a.Ids).Select(z => (z, piso.CreadasEn(z).Count))));
                 break;
+            case ArmarZonas z:
+                ventana.Enviar(ProtocoloViguetas.Zonas(piso is null ? [] : piso.Zonas(z.Zonas, z.Ancho).Select(x => (x, piso.CreadasEn(x).Count))));
+                break;
             case CerrarViguetas:
                 ventana.Close();
                 break;
@@ -129,7 +132,7 @@ internal sealed class PuenteViguetas
         // Donde ya hay una vigueta del modelo, quitada o no, no se propone otra (decisión 28).
         List<(Punto Desde, Punto Hasta)> ocupadas = piso.PiezasDelModelo(paneles).Select(x => (x.Inicio, x.Fin)).ToList();
         PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
-            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas);
+            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas);
         PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion));
         bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
         return (p.Seguir || !hay ? siguiendo : Con(null), hay);

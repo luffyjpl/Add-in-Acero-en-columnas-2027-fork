@@ -44,7 +44,52 @@ internal static class LectorPiso
                     new Punto(Medidas.Mm(puntos.Min(p => p.X)), Medidas.Mm(puntos.Min(p => p.Y))),
                     new Punto(Medidas.Mm(puntos.Max(p => p.X)), Medidas.Mm(puntos.Max(p => p.Y)))));
         }
-        return new PisoLeido(nivel.Id.ToString(), nivel.Name, cota, armazon, columnas);
+        return new PisoLeido(nivel.Id.ToString(), nivel.Name, cota, armazon, columnas, Suelos(doc, nivel));
+    }
+
+    /// <summary>Lados de menos de esto (mm) no dejan vértice: son restos del dibujo del boceto.</summary>
+    private const double MismoVertice = 1;
+
+    /// <summary>
+    /// Los suelos del nivel (#954, decisión 3) con los contornos de su boceto (<see cref="Floor.SketchId"/> →
+    /// <see cref="Sketch.Profile"/>, API pública desde Revit 2022), en planta y en mm. El de afuera va primero (el de
+    /// más área); los demás son sus huecos.
+    /// </summary>
+    private static List<SueloPiso> Suelos(Document doc, Level nivel)
+    {
+        var suelos = new List<SueloPiso>();
+        foreach (Floor f in new FilteredElementCollector(doc).OfClass(typeof(Floor)).WhereElementIsNotElementType().OfType<Floor>()
+                     .Where(f => f.LevelId == nivel.Id))
+        {
+            if (doc.GetElement(f.SketchId) is not Sketch boceto)
+                continue;
+            List<IReadOnlyList<Punto>> contornos = boceto.Profile.Cast<CurveArray>().Select(Contorno)
+                .Where(c => c.Count >= 3).OrderByDescending(c => Math.Abs(Geometria.Area(c))).Cast<IReadOnlyList<Punto>>().ToList();
+            if (contornos.Count > 0)
+                suelos.Add(new SueloPiso(f.Id.ToString(), contornos));
+        }
+        return suelos;
+    }
+
+    /// <summary>
+    /// Los vértices de un lazo del boceto, en orden: cada curva se encadena con la anterior (dándola vuelta si hace falta)
+    /// y los arcos se reparten en tramos rectos.
+    /// </summary>
+    private static List<Punto> Contorno(CurveArray lazo)
+    {
+        var puntos = new List<Punto>();
+        foreach (Curve curva in lazo)
+        {
+            List<Punto> tramo = curva.Tessellate().Select(Planta).ToList();
+            if (puntos.Count > 0 && Geometria.Distancia(puntos[^1], tramo[0]) > Geometria.Distancia(puntos[^1], tramo[^1]))
+                tramo.Reverse();
+            foreach (Punto p in tramo)
+                if (puntos.Count == 0 || Geometria.Distancia(puntos[^1], p) > MismoVertice)
+                    puntos.Add(p);
+        }
+        if (puntos.Count > 1 && Geometria.Distancia(puntos[0], puntos[^1]) <= MismoVertice)
+            puntos.RemoveAt(puntos.Count - 1);
+        return Geometria.SinColineales(puntos);
     }
 
     /// <summary>Los tipos de armazón del modelo, para elegir con cuál se crean las viguetas (decisión 8).</summary>

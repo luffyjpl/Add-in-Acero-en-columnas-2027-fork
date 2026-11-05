@@ -30,6 +30,12 @@ public sealed record QuitarCreadas(IReadOnlyList<string> Paneles) : MensajeVigue
 /// <summary>Arma el perímetro con estos elementos de armazón (decisión 24).</summary>
 public sealed record ArmarPerimetro(IReadOnlyList<string> Ids) : MensajeViguetas;
 
+/// <summary>
+/// Arma todas las zonas por puntos de la página (#954, decisión 6): siempre llegan todas juntas y reemplazan a las
+/// anteriores. <paramref name="Ancho"/> es el de vigueta, en mm: el de las viguetas de borde de los lados libres.
+/// </summary>
+public sealed record ArmarZonas(IReadOnlyList<ZonaPuntos> Zonas, double Ancho) : MensajeViguetas;
+
 public sealed record CerrarViguetas : MensajeViguetas;
 
 public sealed record DesconocidoViguetas : MensajeViguetas;
@@ -74,10 +80,16 @@ public static class ProtocoloViguetas
             "crear" when paneles.Count > 0 && e.TipoVigueta is not null => new CrearViguetas(Pedido(), e.TipoVigueta),
             "quitar" when paneles.Count > 0 => new QuitarCreadas(paneles),
             "perimetro" => new ArmarPerimetro(e.Ids ?? []),
+            "zonas" => new ArmarZonas((e.Zonas ?? []).Where(z => z.Id is not null)
+                .Select(z => new ZonaPuntos(z.Id!, Puntos(z.Contorno), (z.Vacios ?? []).Select(Puntos).ToList())).ToList(), e.Ancho ?? 0),
             "cerrar" => new CerrarViguetas(),
             _ => new DesconocidoViguetas(),
         };
     }
+
+    /// <summary>Los [x, y] que mandó la página; los que no traen dos números finitos se saltan.</summary>
+    private static List<Punto> Puntos(List<double[]>? xy) =>
+        (xy ?? []).Where(p => p is { Length: >= 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])).Select(p => new Punto(p[0], p[1])).ToList();
 
     public static string Pisos(string documento, IEnumerable<PisoResumen> pisos, IEnumerable<TipoArmazon> tipos) =>
         Escribir(new { tipo = "pisos", documento, pisos, tipos });
@@ -92,6 +104,8 @@ public static class ProtocoloViguetas
         armazon = p.Piso.Armazon.Select(a => new { id = a.Id, desde = Xy(a.Desde), hasta = Xy(a.Hasta), ancho = a.Ancho, tipo = a.NombreTipo, esVigueta = a.EsVigueta, creada = a.Creada }),
         columnas = p.Piso.Columnas.Select(c => new { id = c.Id, min = Xy(c.Min), max = Xy(c.Max) }),
         paneles = p.Paneles.Select(x => new { id = x.Id, eje = x.Eje.Select(Xy), libre = x.Libre.Select(Xy), creadas = p.CreadasEn(x).Count }),
+        suelos = p.Piso.LosSuelos.Select(s => new { id = s.Id, contornos = s.Contornos.Select(c => c.Select(Xy)) }),
+        puntos = p.Puntos.Select(x => new { xy = Xy(x.P), tipo = x.Tipo }),
     });
 
     /// <summary>
@@ -127,6 +141,7 @@ public static class ProtocoloViguetas
                     largo = v.Largo, tipo = v.Tipo, borrada = v.Borrada,
                 }),
                 tipos = p.Tipos,
+                bordes = p.DeBorde.Select(b => new { id = b.Id, panel = b.Panel, desde = Xy(b.Desde), hasta = Xy(b.Hasta), largo = b.Largo, borrada = b.Borrada }),
             },
         });
 
@@ -136,6 +151,22 @@ public static class ProtocoloViguetas
         tipo = "perimetro",
         ids,
         paneles = perimetros.Select(x => new { id = x.Panel.Id, eje = x.Panel.Eje.Select(Xy), libre = x.Panel.Libre.Select(Xy), creadas = x.Creadas }),
+    });
+
+    /// <summary>
+    /// Las zonas por puntos armadas (#954), como los perímetros, más sus vacíos (por ejes y entre caras) y sus viguetas de
+    /// borde. Una zona pedida que no da un libre no viene.
+    /// </summary>
+    public static string Zonas(IEnumerable<(Panel Panel, int Creadas)> zonas) => Escribir(new
+    {
+        tipo = "zonas",
+        paneles = zonas.Select(x => new
+        {
+            id = x.Panel.Id, eje = x.Panel.Eje.Select(Xy), libre = x.Panel.Libre.Select(Xy), creadas = x.Creadas,
+            huecosEje = (x.Panel.HuecosEje ?? []).Select(h => h.Select(Xy)),
+            huecosLibre = (x.Panel.HuecosLibre ?? []).Select(h => h.Select(Xy)),
+            bordes = x.Panel.ViguetasDeBorde.Select(b => new { desde = Xy(b.Desde), hasta = Xy(b.Hasta) }),
+        }),
     });
 
     public static string Aviso(string texto, bool bien = false) => Escribir(new { tipo = "aviso", texto, bien });
@@ -159,5 +190,13 @@ public static class ProtocoloViguetas
         public double? Ancho { get; set; }
         public List<string>? Borradas { get; set; }
         public string? TipoVigueta { get; set; }
+        public List<ZonaEntrada>? Zonas { get; set; }
+    }
+
+    private sealed class ZonaEntrada
+    {
+        public string? Id { get; set; }
+        public List<double[]>? Contorno { get; set; }
+        public List<List<double[]>>? Vacios { get; set; }
     }
 }

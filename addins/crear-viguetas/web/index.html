@@ -42,7 +42,14 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
 .ib.on{background:#FFE9E7;border-color:#E2564B;color:#A3261C;font-weight:600}
 .ib:disabled{opacity:.45}
 .ib .k{margin-left:auto;font:500 11px var(--mono)}
-.modos{display:grid;grid-template-columns:1.05fr .95fr 1.35fr .8fr;border:1px solid var(--w-line);border-radius:7px;overflow:hidden}
+.modos{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--w-line);border-radius:7px;overflow:hidden}
+.zonas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--w-ink3)}
+.zonas li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 4px 3px 8px;border-radius:5px;background:var(--w-bg)}
+.zonas b{color:var(--w-ink);font-family:var(--mono);font-weight:600}
+.zonas .sub{padding-left:12px}
+.zonas .x{width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:var(--w-ink3);cursor:pointer;font-size:15px;line-height:1}
+.zonas .x:hover{background:#FFE9E7;color:#A3261C}
+.ib.vac{background:#FFF3E3;border-color:#E58A1F;color:#8A4B06;font-weight:600}
 .modos button{height:30px;white-space:nowrap;font-size:11.5px!important;border:0;border-right:1px solid var(--w-line);background:var(--w-sf);color:var(--w-ink2);cursor:pointer;font-size:12px;padding:0 4px}
 .modos button:last-child{border-right:0}
 .modos button[aria-pressed="true"]{background:var(--w-acc-soft);color:var(--w-acc);font-weight:600}
@@ -119,6 +126,33 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
 .pn.con{fill:#163033}
 .pn.sel{fill:#1A2B22;stroke:var(--ok);stroke-width:2}
 .editando .pn{cursor:default}
+.pn.mudo{cursor:inherit}
+.pn.mudo:hover{fill:var(--cv-panel)}
+.pn.mudo.con:hover{fill:#163033}
+.zona{fill-rule:evenodd;cursor:inherit}
+.suelo{fill:#E8EEF4;fill-opacity:.11;fill-rule:evenodd;stroke:#E8EEF4;stroke-opacity:.35;stroke-width:1;pointer-events:none}
+.zeje{fill:none;stroke:var(--ok);stroke-width:1;stroke-dasharray:6 4;pointer-events:none}
+.hueco{fill:rgba(18,26,36,.6);stroke:#FF8C83;stroke-width:1.5;stroke-dasharray:5 3;pointer-events:none}
+.trazo{fill:none;stroke:var(--warn);stroke-width:2.5;pointer-events:none}
+.trazo.cierre{stroke-dasharray:6 5;stroke-width:1.5}
+.trazo.vac{stroke:#FF8C83}
+/* Puntos (decisión 9): un color por tipo, borde oscuro para que se lean sobre las vigas claras. */
+.pto{stroke:#0B1118;stroke-width:1.2;cursor:pointer}
+.t-columna{--pt:#F2F5F8}
+.t-cruce{--pt:#FFC233}
+.t-viga{--pt:#FF7A45}
+.t-vigueta{--pt:#3FD6E0}
+.t-suelo{--pt:#C59BFF}
+.pto{fill:var(--pt)}
+.pt-sw{background:var(--pt)}
+.pto:hover{stroke:#fff;stroke-width:2.5}
+.pto.tr{stroke:var(--warn);stroke-width:2.5}
+.pto.primero{fill:var(--ok);stroke:#fff;stroke-width:2}
+.leyenda-pt{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--w-ink3)}
+.leyenda-pt span{display:inline-flex;align-items:center;gap:5px}
+.pt-sw{width:9px;height:9px;border-radius:50%;display:inline-block;box-shadow:0 0 0 1.2px #0B1118}
+.vb{fill:#8FC1FF}
+.banner.vac{border-color:rgba(255,140,131,.6)}
 .viga{fill:var(--viga)}
 .existente{fill:var(--existente)}
 .creada{fill:var(--creada)}
@@ -180,6 +214,7 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
         <button class="tb" id="b-panel" title="Acercar al panel elegido" disabled>Acercar al panel</button>
       </div>
       <div class="leg">
+        <span><i class="sw" style="background:#E8EEF4;opacity:.35"></i>Suelo</span>
         <span><i class="sw" style="background:var(--viga)"></i>Vigas</span>
         <span><i class="sw" style="background:var(--existente)"></i>Viguetas del modelo</span>
         <span><i class="sw" style="background:var(--creada)"></i>Creadas por CQEING</span>
