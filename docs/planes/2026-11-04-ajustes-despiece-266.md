@@ -194,34 +194,28 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin despie
 
 ## Estado
 
-- [x] Issue padre #266 creada y #260–#264 movidas debajo (04-nov).
-- [x] Paso 1 (#263) implementado (04-nov): `Revit/Importados.cs` y sus cuatro llamadas. Build Debug 2026 y 2027
-      sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos.
-- [ ] Paso 1 (#263) probado en Revit.
-- [x] Paso 2 (#261) implementado (04-nov), sin commit todavía: `TamanoLetra.cs` + 9 pruebas, `Letra.cs`, separaciones
-      con `Letra.Factor`, tipos con el tamaño en el nombre, `letra` en los mensajes y control − / + en `pasos.js`. Build
-      Debug 2026 y 2027 sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos. Desplegado en Revit 2027.
-- [ ] Paso 2 (#261) probado en Revit: 2.0, 3.5 y 5.0 mm en una viga y una columna; nada encimado; las vistas viejas
-      no cambian.
-- [x] Paso 2 (#261) en commit `fdbfcec` (05-nov).
-- [x] Paso 3 (#260) implementado (05-nov): encabezado con el nombre en `pasos.js`. Build 2027 sin advertencias.
-- [ ] Paso 3 (#260) visto en Revit.
-- [x] Paso 3 (#260) en commit `e15fbf9` (05-nov).
-- [x] Paso 4 (#264): maqueta publicada (05-nov), https://claude.ai/artifact/JgQLJPRf6cfxEkbxz2CdXY, con la viga de
-      ejemplo A-B-C (columnas 0.40, luces libres 5.60 y 2.63) y tres opciones: **A** caras arriba y ejes abajo en la
-      misma línea; **B** cadena mixta, el eje parte la columna; **C** igual a la imagen del equipo y los totales en una
-      nota. Falta que el equipo elija.
-- [x] Paso 4 (#264) implementado (05-nov), sin commit: `CotaLinea`/`BajoLinea`/`CotaArriba`, `PasarTextoAbajo`, nota
-      `Ejes …`, largo arriba. Build Debug 2026 y 2027 sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos.
-      Desplegado en Revit 2027.
-- [x] 05-nov, vista previa de `V A - (0.30x0.35)` en Revit 2027 con letra 5.0 mm: la línea de abajo y el largo arriba
-      salen; los números de ejes pegados a la línea y las columnas tapando el acero → decisiones 9 y 10, corregidas en
-      el código (build 2026 sin advertencias; la de 2027 esperaba a que se cerrara Revit).
-- [ ] Paso 4 (#264) probado en Revit. A medir: dónde queda el texto de ejes al pasarlo abajo (el log dice a qué
-      distancia estaba sobre la línea) y si Revit le pone una línea guía al moverlo.
-- [x] Paso 5 (#262) implementado (05-nov), sin commit: `Apoyos` y `Limpiar(..., tambien)` en `GeneradorPrevia.cs`. Build
-      Debug 2026 y 2027 sin advertencias. Desplegado en Revit 2027.
-- [ ] Paso 5 (#262): actualizar la regla en el cuerpo de #217 (pendiente del permiso de Luciano para editar la issue).
-- [x] Paso 5 (#262) visto en Revit 2027 (05-nov) en la vista previa de `V A - (0.30x0.35)`: columna arriba, pedestal
-      abajo, contorno negro, acero visible (decisiones 9 y 11).
-- [ ] Paso 5 (#262): probar con una vigueta y en las vistas creadas.
+Cerrado el 05-nov-2026. PR #269 (rama `despiece/ajustes-266`), un commit por issue. Luciano probó todo en Revit 2027
+el 05-nov ("ya probé todo"). `dotnet test CQEING-Addins.sln` sin fallos; build Debug 2026 y 2027 sin advertencias.
+
+| Issue | Commit | Qué quedó |
+|---|---|---|
+| #263 CAD | `30b01ad` | `Revit/Importados.cs`: se ocultan CAD, vínculos y nubes de puntos en la planta y las cuatro vistas. |
+| #261 Letra | `fdbfcec` | Control − / + de 2.0 a 5.0 mm, un estilo de texto por tamaño, separaciones × `Letra.Factor`. |
+| #260 Nombre | `e15fbf9` | Nombre del grupo en grande en el tablero desde el paso 2 (decisión 6). |
+| #262 Columnas | `ad07127` | Columnas de los nudos asomando 0.20 m, contorno negro, sin tapar el acero (decisiones 7, 9 y 11). |
+| #264 Cotas | `eede512` | Opción A: una línea abajo (caras arriba, ejes abajo, nota `Ejes …`) y el largo arriba (decisiones 8 y 10). |
+
+**Criterios de aceptación**
+
+- ✅ #263: sin CAD en el tablero ni en las vistas creadas (probado por Luciano, 05-nov).
+- ✅ #261: los números se leen sin zoom, nada se encima, sale así al crear la vista; las vistas viejas no cambian.
+- ✅ #260: nombre en grande, igual en vigas y columnas (en el tablero, no en Revit: decisión 6).
+- ✅ #264: una sola línea abajo con la forma elegida en la maqueta (opción A, el equipo, 05-nov), el largo arriba.
+- ✅ #262: columnas reales en los nudos, sin su acero, sin tapar el de la viga (evidencia:
+  `docs/planes/imagenes/despiece-262-nudo-columnas.png`).
+
+**Pendiente / conocido**
+
+- #217: en lugar de editar su descripción, se dejó un comentario con la regla nueva de las columnas (Luciano, 05-nov).
+- Si en el paso 2 se sube una barra de arriba por encima de la cota del largo total, se enciman (decisión 8).
+- Maqueta de #264: https://claude.ai/artifact/JgQLJPRf6cfxEkbxz2CdXY (privada; el equipo eligió la A).
