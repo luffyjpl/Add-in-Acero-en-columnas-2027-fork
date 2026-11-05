@@ -175,6 +175,7 @@ internal static class SeccionColumna
             .Select(e => e.Id).ToList();
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
+        Importados.Ocultar(doc, vista);
         foreach (BuiltInCategory c in new[] { BuiltInCategory.OST_Grids, BuiltInCategory.OST_Levels, BuiltInCategory.OST_Sections,
             BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_Elev })
         {

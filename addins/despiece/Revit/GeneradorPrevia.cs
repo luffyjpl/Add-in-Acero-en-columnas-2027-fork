@@ -1050,6 +1050,7 @@ internal static class GeneradorPrevia
             .Select(e => e.Id).ToList();
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
+        Importados.Ocultar(doc, vista);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_SectionBox), true);
     }

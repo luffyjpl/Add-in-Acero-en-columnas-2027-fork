@@ -39,6 +39,8 @@ internal static class GeneradorPlanta
                 : ViewPlan.Create(doc, TipoDePlanta(doc), nivel.Id);
             copia.Name = "CQEING temporal " + Guid.NewGuid().ToString("N");
             copia.ViewTemplateId = ElementId.InvalidElementId;
+            // Sin la plantilla, un CAD que ella escondía vuelve a verse y tapa la planta (#263).
+            Importados.Ocultar(doc, copia);
             copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
             // Una planta de piso de arquitectura puede ocultar el armazón o no mirar por debajo del nivel, donde cuelgan las
             // vigas; una vista nueva trae el rango por defecto del tipo. En la copia se muestran y se mira un metro abajo;

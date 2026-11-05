@@ -251,6 +251,7 @@ internal static class GeneradorColumna
             .Select(e => e.Id).ToList();
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
+        Importados.Ocultar(doc, vista);
         foreach (BuiltInCategory c in new[] { BuiltInCategory.OST_Sections, BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_Levels,
             BuiltInCategory.OST_Grids, BuiltInCategory.OST_Elev })
         {
