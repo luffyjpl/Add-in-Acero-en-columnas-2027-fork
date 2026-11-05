@@ -32,16 +32,17 @@
 ## Criterios de aceptación
 
 - [ ] El suelo del piso se ve en la planta, en un color claro, debajo de todo.
-- [ ] En el modo «Puntos» se ven los puntos que se pueden elegir: columnas, extremos, cruces de ejes y vértices del
-      suelo. Solo queda elegido el punto en el que se hace clic.
-- [ ] Al cerrar los puntos (clic en el primero o «Cerrar contorno») se arma una zona (Z1, Z2…) con sus viguetas.
+- [x] En el modo «Puntos» se ven los puntos que se pueden elegir: columnas, extremos, cruces de ejes y vértices del
+      suelo. Solo queda elegido el punto en el que se hace clic. (Probado en Revit sin suelo; los vértices del suelo,
+      pendientes.)
+- [x] Al cerrar los puntos (clic en el primero o «Cerrar contorno») se arma una zona (Z1, Z2…) con sus viguetas.
 - [ ] Se pueden armar varias zonas, separadas o no, sin perder las anteriores; cada una se puede quitar.
 - [ ] «＋ Vacío»: los puntos de un vacío dentro de una zona lo restan; las viguetas paran en él.
-- [ ] Los lados del contorno o del vacío que no tienen viga llevan una vigueta de borde con la cara al ras del lado,
-      hacia adentro de la losa. Se puede quitar como cualquier pieza.
+- [x] Los lados del contorno o del vacío que no tienen viga llevan una vigueta de borde con la cara al ras del lado,
+      hacia adentro de la losa. Se puede quitar como cualquier pieza. (Probado en Revit en el contorno.)
 - [ ] Lo de antes sigue funcionando: «Por vigas» (el perímetro de hoy) y «Paneles» (un panel, Ctrl + clic y el aviso de
       la columna), seguir las existentes, quitar por tramos, tope y vigueta en la punta de la viga corta.
-- [ ] `dotnet test CQEING-Addins.sln` sin fallos; compila para 2026 y 2027 sin advertencias.
+- [x] `dotnet test CQEING-Addins.sln` sin fallos; compila para 2026 y 2027 sin advertencias.
 
 ## Hallazgos del código
 
@@ -218,5 +219,11 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin crear-
             `divisiones`. Prueba `UnaVigaParalelaDentroDeLaZonaParteElRepartoYNingunaViguetaQuedaEncima` (también
             comprueba que sin el arreglo sí caía una encima). 1494 pruebas, 0 fallos; compila 2026 y 2027; vuelto a
             desplegar para 2027 (Revit cerrado, comprobado).
-      - [ ] Volver a probar en Revit esos arreglos, y la lectura de suelos con un modelo que tenga suelo.
-- [ ] Probado en Revit.
+      - [x] 04-nov: publicado `crear-viguetas-v1.1.0` (PR #257 unido, etiqueta sobre `2d3225a`; release en
+            `utilidadcqeing-prog/CQEING-releases` con los ZIP de 2026 y 2027 y `manifest.json`).
+      - [x] 04-nov: el usuario volvió a probar en Revit 2027 (PROY_JULIO_BETO, N+3.70) los cuatro arreglos: viguetas
+            de borde sobre vigas, eliminadas al crear, puntos por color sin encimarse y viga del medio. Todo bien.
+      - [ ] Probar la lectura de suelos con un modelo que tenga suelo (criterio 1 y vértices del suelo del 2).
+      - [ ] Probar en Revit el vacío, varias zonas a la vez y que «Por vigas» y «Paneles» sigan igual (criterios 4, 5 y
+            7): en el navegador y en las pruebas están bien, pero el usuario no los mencionó.
+- [ ] Probado en Revit: los arreglos del 04-nov sí; falta el suelo.
