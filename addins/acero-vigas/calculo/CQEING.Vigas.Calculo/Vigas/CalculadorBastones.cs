@@ -25,6 +25,9 @@ internal static class CalculadorBastones
         IReadOnlyList<Lugar> luces = g.Luces.Select(l => new Lugar(l.Nombre, false, (l.CaraIzquierda + l.CaraDerecha) / 2)).ToList();
 
         var bastones = new List<Baston>();
+        // los ids de todos los lugares, eliminados incluidos: un cambio guardado de un eliminado no es un cambio perdido
+        var ids = new HashSet<string>();
+        var eliminados = new HashSet<string>(armado.Eliminados ?? []);
         foreach (Posicion capa in new[] { Posicion.Superior, Posicion.Inferior })
         {
             GrupoBarras grupo = GrupoDe(armado, e, capa);
@@ -37,17 +40,23 @@ internal static class CalculadorBastones
             }
             string prefijo = capa == Posicion.Superior ? "BS" : "BI";
             IEnumerable<Lugar> lugares = (capa == capaDeLosApoyos ? apoyos : luces).OrderBy(l => l.Centro);
-            bastones.AddRange(lugares.Select((lugar, i) => Armar($"{prefijo}{i + 1}", capa, lugar, grupo, regla, e, armado, g, avisos)));
+            foreach ((Lugar lugar, int i) in lugares.Select((l, i) => (l, i)))
+            {
+                string id = $"{prefijo}{i + 1}";
+                ids.Add(id);
+                if (!eliminados.Contains(id))
+                    bastones.Add(Armar(id, capa, lugar, grupo, regla, e, armado, g, avisos));
+            }
         }
         // un gancho o unas puntas guardados para un bastón que ya no está (#84)
         foreach (string clave in e.Cambios?.Ganchos?.Keys ?? [])
         {
-            if (clave.StartsWith('B') && bastones.All(b => b.Id != clave.Split('.')[0]))
+            if (clave.StartsWith('B') && !ids.Contains(clave.Split('.')[0]))
                 avisos.Add(new Aviso(TipoAviso.CambioNoAplicado, clave, Motivo: MotivoBloqueo.NoExiste));
         }
         foreach (string id in armado.Puntas?.Keys ?? [])
         {
-            if (bastones.All(b => b.Id != id))
+            if (!ids.Contains(id))
                 avisos.Add(new Aviso(TipoAviso.CambioNoAplicado, id, Motivo: MotivoBloqueo.NoExiste));
         }
         return bastones;

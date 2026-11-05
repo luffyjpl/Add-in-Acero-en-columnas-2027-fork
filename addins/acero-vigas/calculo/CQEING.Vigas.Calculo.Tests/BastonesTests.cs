@@ -77,6 +77,33 @@ public class BastonesTests
     }
 
     [Fact]
+    public void LosEliminadosNoSalenYLosDemasConservanSuId()
+    {
+        ResultadoVigas r = MotorVigas.Calcular(Entrada(new ArmadoBastones(Eliminados: ["BS2", "BI3"])));
+
+        Assert.Equal(["BS1", "BS3", "BS4", "BI1", "BI2"], r.Bastones.Select(b => b.Id));
+        Assert.Equal("C", De(r, "BS3").Donde);
+    }
+
+    [Fact]
+    public void EliminarUnIdQueYaNoExisteNoAvisa()
+    {
+        ResultadoVigas r = MotorVigas.Calcular(Entrada(new ArmadoBastones(Eliminados: ["BS9"])));
+
+        Assert.Equal(7, r.Bastones.Count);
+        Assert.DoesNotContain(r.Avisos, a => a.Elemento == "BS9");
+    }
+
+    [Fact]
+    public void LosCambiosDeUnEliminadoNoAvisan()
+    {
+        var puntas = new Dictionary<string, PuntasBaston> { ["BS2"] = new(3250, 5550) };
+        ResultadoVigas r = MotorVigas.Calcular(Entrada(new ArmadoBastones(Puntas: puntas, Eliminados: ["BS2"])));
+
+        Assert.DoesNotContain(r.Avisos, a => a.Elemento == "BS2");
+    }
+
+    [Fact]
     public void ConGancho_SoloLaPuntaQueLlegaAlBordeLoLleva()
     {
         ResultadoVigas r = MotorVigas.Calcular(Entrada(new ArmadoBastones(ConGancho: true)));

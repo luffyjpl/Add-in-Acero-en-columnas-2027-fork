@@ -35,6 +35,8 @@
     cutX: '', depth: '0.10', mira: 'derecha',
     // edición (#84): CambiosManuales en mm (barras y traslapos ya; movidos y ganchos, fases B y C) y bastones arrastrados
     cambios: { barras: {}, traslapos: {}, movidos: {}, ganchos: {} }, bastPuntas: {},
+    // bastones quitados con "Eliminar" (ArmadoBastones.Eliminados): los demás conservan su id
+    bastElim: [],
   };
   // Con lo que arranca un pórtico que el usuario no tocó, como OpcionesTablero.Para en C# (#942): una vigueta de 10 cm
   // no admite las barras ni el recubrimiento de una viga.
@@ -84,7 +86,7 @@
         separacionFilasCm: s.sepMode === 'pegada' ? null : n(s.sepCm), maximoFilas: Math.max(1, Math.round(n(s.maxCapas))),
         cara: s.side ? (s.side === 'izq' ? 'Inicio' : 'Final') : null,
         bastones: { superior: baston(s.bastSupN, s.bastSupD, s.sup), inferior: baston(s.bastInfN, s.bastInfD, s.inf),
-          largo: mm(n(s.bastDef)), conGancho: s.bastHook, largos, puntas: s.bastPuntas },
+          largo: mm(n(s.bastDef)), conGancho: s.bastHook, largos, puntas: s.bastPuntas, eliminados: (s.bastElim || []).slice() },
         estribos: estribos(s.est),
         tramosMarcados: s.tramosSel.slice(),
         estribosMarcados: s.tramosSel.length && s.estMarc ? estribos(s.estMarc) : null,
@@ -219,7 +221,17 @@
 
     componentDidMount() {
       window.addEventListener('resize', this.alCambiarTamano);
+      window.addEventListener('keydown', this.alTeclear);
     }
+
+    // Supr con un bastón elegido en el alzado lo elimina, como el botón Eliminar (fuera de los campos de texto).
+    alTeclear = (e) => {
+      if (e.key !== 'Delete' || !this.quitarBaston) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      this.quitarBaston();
+    };
 
     // Lo que el usuario eligió para el pórtico abierto (las claves de OPCIONES0).
     estadoDeLaPagina() {
@@ -238,6 +250,7 @@
 
     componentWillUnmount() {
       window.removeEventListener('resize', this.alCambiarTamano);
+      window.removeEventListener('keydown', this.alTeclear);
     }
 
     // La página mide como mínimo 1440 × 900, como la maqueta (más chica, C# la achica con el zoom). Si la ventana es
@@ -622,7 +635,7 @@
           // el largo automático llega con la vista siguiente; ahí se pone en el campo
           reset: () => { this.llenarLargo = true; this.cambiar({ cambios: conCambio('traslapos', SL.id, null) }); } };
       }
-      let stv = { id: '', where: '', note: '', apply: () => {}, reset: () => {} };
+      let stv = { id: '', where: '', note: '', apply: () => {}, reset: () => {}, remove: () => {} };
       if (SBa) {
         const o = opcion('aplicar');
         stv = { id: SBa.id, where: SBa.donde + ' · ahora ' + f2(SBa.largo) + ' m',
@@ -641,8 +654,24 @@
             const largos = { ...s.bastLen }, puntas = { ...s.bastPuntas }, ganchos = { ...s.cambios.ganchos };
             delete largos[SBa.id]; delete puntas[SBa.id]; delete ganchos[SBa.id + '.inicio']; delete ganchos[SBa.id + '.fin'];
             this.cambiar({ bastLen: largos, bastPuntas: puntas, cambios: { ...s.cambios, ganchos }, draft: s.bastDef });
+          },
+          // sale del alzado, de la lista y de lo que se genera; sus cambios a mano quedan por si se restaura
+          remove: () => {
+            this.setState({ sel: NADA });
+            this.cambiar({ bastElim: [...(s.bastElim || []).filter((x) => x !== SBa.id), SBa.id] });
+            this.say('Bastón ' + SBa.id + ' (' + SBa.donde + ') eliminado. Puedes restaurarlo en el paso Bastones.');
           } };
       }
+      this.quitarBaston = SBa ? stv.remove : null;
+      // los eliminados, en el orden del pórtico (BS antes que BI, y por número)
+      const ordenBaston = (id) => (id.startsWith('BS') ? 0 : 1000) + Number(id.slice(2));
+      const bastElim = (s.bastElim || []).slice().sort((a, b) => ordenBaston(a) - ordenBaston(b)).map((id) => ({
+        id, capa: id.startsWith('BS') ? 'Arriba' : 'Abajo',
+        restore: () => {
+          this.cambiar({ bastElim: (this.state.bastElim || []).filter((x) => x !== id) });
+          this.say('Bastón ' + id + ' restaurado');
+        } }));
+      const restoreAllBast = () => { this.cambiar({ bastElim: [] }); this.say('Bastones restaurados'); };
 
       // lista
       const rowsList = bars.map((b) => {
@@ -779,7 +808,7 @@
         isAlzado: s.tab === 'alzado', isCorte: s.tab === 'corte', tabA: s.tab === 'alzado' ? on : off, tabC: s.tab === 'corte' ? on : off,
         side, faceQuestion: '¿Dónde traslapan las barras de ' + faceName + '?', izq: sideBtn('izq', P && P.izquierda), der: sideBtn('der', P && P.derecha),
         barSel: kind === 'bar' || kind === 'bast' ? selEl.id : '', lapSel: kind === 'lap' ? selEl.id : '', lapsManual: lapsAll.filter((l) => l.manual).map((l) => l.id).join(','),
-        isSelBar: kind === 'bar' && !!SB, isSelLap: kind === 'lap' && !!SL, isSelBast: kind === 'bast' && !!SBa, sb, sl, st: stv, draft: s.draft,
+        isSelBar: kind === 'bar' && !!SB, isSelLap: kind === 'lap' && !!SL, isSelBast: kind === 'bast' && !!SBa, sb, sl, st: stv, draft: s.draft, bastElim, restoreAllBast,
         bastDef: s.bastDef, bastSupN: s.bastSupN, bastInfN: s.bastInfN, bastSupD: bastD(s.bastSupD, s.sup), bastInfD: bastD(s.bastInfD, s.inf),
         rulesWarn: s.rulesWarn,
         // abierta, la lista de barras toma todo el alto que sobra en la columna (Juan, 19-oct: "que la tabla llegue al límite")
@@ -1292,6 +1321,10 @@
               <input id="bast-len" type="text" inputmode="decimal" value=${v.draft} onInput=${v.setDraft} style="width: 70px; height: 32px; padding: 0 8px; border: 1px solid #1F5FAF; border-radius: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #16191D" />
               <span style="color: #5E6670">m</span>
               <div style="flex: 1"></div>
+              <button type="button" class="btn-eliminar" onClick=${v.st.remove} title="Quitar este bastón del pórtico (Supr)" aria-label=${'Eliminar el bastón ' + v.st.id}>
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5"/></svg>
+                Eliminar
+              </button>
               <button type="button" onClick=${v.st.reset} style="height: 32px; padding: 0 12px; border: 0; background: transparent; font: inherit; color: #1F5FAF; cursor: pointer">Usar el largo general</button>
               <button type="button" onClick=${v.st.apply} style="height: 32px; padding: 0 16px; border: 1px solid #1F5FAF; border-radius: 6px; background: #1F5FAF; font: inherit; font-weight: 600; color: #FFFFFF; cursor: pointer">Aplicar</button>
             </div>
@@ -1497,6 +1530,24 @@
                 <button type="button" onClick=${v.hookNo} style="height: 30px; padding: 0 14px; border: 0; font: inherit; cursor: pointer; ${v.segHookNo}">Sin gancho</button>
                 <button type="button" onClick=${v.hookYes} style="height: 30px; padding: 0 14px; border: 0; border-left: 1px solid #C9CFD6; font: inherit; cursor: pointer; ${v.segHookYes}">Con gancho</button>
               </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: baseline; gap: 8px">
+                <span style="font-weight: 600; flex: 1">Eliminados</span>
+                ${v.bastElim.length > 1 ? html`<button type="button" onClick=${v.restoreAllBast} style="height: 24px; padding: 0; border: 0; background: transparent; font: inherit; font-size: 12px; color: #1F5FAF; cursor: pointer">Restaurar todos</button>` : null}
+              </div>
+              ${v.bastElim.length ? html`
+                <div style="display: flex; flex-wrap: wrap; gap: 6px">
+                  ${v.bastElim.map((b) => html`
+                    <span key=${b.id} class="chip-eliminado">
+                      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-decoration: line-through; text-decoration-color: #9AA3AD">${b.id}</span>
+                      <span style="font-size: 11px; color: #5E6670">${b.capa}</span>
+                      <button type="button" onClick=${b.restore} title=${'Restaurar ' + b.id} aria-label=${'Restaurar el bastón ' + b.id}>
+                        <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5"/></svg>
+                      </button>
+                    </span>`)}
+                </div>` : html`
+                <span style="font-size: 12px; line-height: 1.4; color: #5E6670">Para quitar un bastón, haz clic en él en el alzado y elige Eliminar.</span>`}
             </div>          </div>` : null}
 
         ${v.isEstribos ? html`

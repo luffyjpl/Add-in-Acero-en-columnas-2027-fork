@@ -15,6 +15,13 @@ a{color:#1F5FAF}a:hover{color:#174A8A}
 button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #1F5FAF;outline-offset:1px}
 button:disabled{cursor:not-allowed}
 input:disabled,select:disabled{background:#F4F6F8;color:#5E6670}
+/* Eliminar un bastón: discreto en gris, rojo al pasar el mouse; los eliminados quedan como chips para restaurarlos. */
+.btn-eliminar{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:1px solid #C9CFD6;border-radius:6px;background:#FFFFFF;font:inherit;color:#5E6670;cursor:pointer;transition:color .12s,border-color .12s,background .12s}
+.btn-eliminar:hover{color:#B42318;border-color:#F1B5AE;background:#FEF3F2}
+.btn-eliminar:active{background:#FDE3E0}
+.chip-eliminado{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px 0 10px;border:1px dashed #C9CFD6;border-radius:13px;background:#F7F8FA;color:#3F4A57}
+.chip-eliminado button{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:10px;background:transparent;color:#1F5FAF;cursor:pointer}
+.chip-eliminado button:hover{background:#E8F0FA}
 </style>
 </head>
 <body>

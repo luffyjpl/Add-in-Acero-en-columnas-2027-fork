@@ -5,7 +5,8 @@ namespace CQEING.Vigas.Calculo.Modelo;
 /// <paramref name="Inferior"/> son las barras de cada bastón de esa cara; null = 1 del diámetro de las esquinas de
 /// esa capa, y cantidad 0 = esa cara no lleva bastones. <paramref name="Largo"/> es el largo general en mm y
 /// <paramref name="Largos"/> los que se escribieron a mano, por id. <paramref name="Puntas"/> (#84) son los bastones
-/// arrastrados, que dejan de estar centrados; mandan sobre <paramref name="Largos"/>.
+/// arrastrados, que dejan de estar centrados; mandan sobre <paramref name="Largos"/>. <paramref name="Eliminados"/> son
+/// los bastones que el usuario quitó con "Eliminar": no se arman, y los demás conservan su id (BS3 sigue siendo BS3).
 /// </summary>
 public sealed record ArmadoBastones(
     GrupoBarras? Superior = null,
@@ -13,7 +14,8 @@ public sealed record ArmadoBastones(
     int Largo = 2000,
     bool ConGancho = false,
     IReadOnlyDictionary<string, int>? Largos = null,
-    IReadOnlyDictionary<string, PuntasBaston>? Puntas = null);
+    IReadOnlyDictionary<string, PuntasBaston>? Puntas = null,
+    IReadOnlyList<string>? Eliminados = null);
 
 /// <summary>Las puntas de la parte recta de un bastón arrastrado, en mm desde el eje A.</summary>
 public sealed record PuntasBaston(int Desde, int Hasta);
