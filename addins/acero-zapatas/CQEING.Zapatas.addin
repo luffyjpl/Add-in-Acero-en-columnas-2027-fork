@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CQEING - Acero en zapatas</Name>
+    <!-- El gestor reescribe esta ruta como absoluta a la carpeta de la versión instalada. -->
+    <Assembly>CQEING.Zapatas.dll</Assembly>
+    <FullClassName>CQEING.Zapatas.AppZapatas</FullClassName>
+    <ClientId>6570532d-ba74-40dc-9f40-38b4cba4c2f3</ClientId>
+    <VendorId>CQEING</VendorId>
+    <VendorDescription>CQEING</VendorDescription>
+  </AddIn>
+</RevitAddIns>
