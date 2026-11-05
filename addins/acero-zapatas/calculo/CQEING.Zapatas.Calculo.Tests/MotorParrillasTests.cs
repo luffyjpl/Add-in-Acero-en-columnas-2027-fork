@@ -8,8 +8,10 @@ public class MotorParrillasTests
 
     private static List<Punto> Rect(double x, double y) => [new(0, 0), new(x, 0), new(x, y), new(0, y)];
 
-    private static ConfigParrillas Config(int numero = 5, double sep = 150, double rec = 75, bool superior = true, Terminacion t = Terminacion.Pata90) =>
-        new(new ConfigDireccion(numero, sep, t), new ConfigDireccion(numero, sep, t), Recubrimientos.Global(rec), superior);
+    // Las pruebas de la v0.1.0 miden la pata hasta el recubrimiento; la del cuadro tiene las suyas abajo (decisión 29).
+    private static ConfigParrillas Config(int numero = 5, double sep = 150, double rec = 75, bool superior = true, Terminacion t = Terminacion.Pata90,
+        LargoPata largo = LargoPata.Recubrimiento) =>
+        new(new ConfigDireccion(numero, sep, t), new ConfigDireccion(numero, sep, t), Recubrimientos.Global(rec), superior, LargoPata: largo);
 
     private static ZapataEntrada Maqueta() => new(Rect(1800, 1800), 500, [new(900, 900)]);
 
@@ -179,13 +181,12 @@ public class MotorParrillasTests
     }
 
     [Fact]
-    public void Una_forma_atipica_o_un_gancho_de_180_avisan_de_posibles_choques()
+    public void Los_choques_ya_no_se_avisan_con_texto()
     {
         List<Punto> ele = [new(0, 0), new(3000, 0), new(3000, 1000), new(1000, 1000), new(1000, 3000), new(0, 3000)];
 
-        Assert.Contains(MotorParrillas.Calcular(new ZapataEntrada(ele, 500, []), Config(), R).Avisos, a => a.Contains("Forma atípica"));
-        Assert.Contains(MotorParrillas.Calcular(Maqueta(), Config(t: Terminacion.Gancho180), R).Avisos, a => a.Contains("180°"));
-        Assert.DoesNotContain(MotorParrillas.Calcular(Maqueta(), Config(), R).Avisos, a => a.Contains("cruzar"));
+        Assert.DoesNotContain(MotorParrillas.Calcular(new ZapataEntrada(ele, 500, []), Config(), R).Avisos, a => a.Contains("Forma atípica"));
+        Assert.DoesNotContain(MotorParrillas.Calcular(Maqueta(), Config(t: Terminacion.Gancho180), R).Avisos, a => a.Contains("cruzar"));
     }
 
     [Fact]
@@ -212,6 +213,92 @@ public class MotorParrillasTests
         {
             Assert.Equal(0, b.Pata);
             Assert.Equal(1650 + 2 * gancho, b.LargoNeto);
+        });
+    }
+
+    [Fact]
+    public void Por_defecto_la_pata_mide_lo_del_cuadro_si_cabe()
+    {
+        // La zapata de 0.80 m de Carlos (reunión del 05-nov): el B del cuadro de la #5 es 278 y caben 650.
+        var z = new ZapataEntrada(Rect(1800, 1800), 800, [new(900, 900)]);
+        var c = new ConfigParrillas(new ConfigDireccion(5, 150), new ConfigDireccion(5, 150), Recubrimientos.Global(75), false);
+
+        ResultadoZapata r = MotorParrillas.Calcular(z, c, R);
+
+        Assert.All(r.Conjuntos, b => Assert.Equal(278, b.Pata));
+        Assert.All(r.Conjuntos, b => Assert.Equal(1650 + 2 * 278, b.LargoNeto, 3));
+        Assert.DoesNotContain(r.Avisos, a => a.Contains("cuadro"));
+    }
+
+    [Fact]
+    public void La_pata_del_cuadro_que_no_cabe_se_corta_en_el_recubrimiento_y_avisa()
+    {
+        var z = new ZapataEntrada(Rect(1800, 1800), 350, [new(900, 900)]);
+
+        ResultadoZapata r = MotorParrillas.Calcular(z, Config(superior: false, largo: LargoPata.Cuadro), R);
+
+        Assert.Equal(200, r.Conjuntos.First(b => b.Capa == 1).Pata, 3);
+        Assert.Contains(r.Avisos, a => a.Contains("no cabe en la altura"));
+    }
+
+    [Fact]
+    public void Hasta_el_recubrimiento_avisa_si_queda_mas_corta_que_el_cuadro()
+    {
+        var baja = new ZapataEntrada(Rect(1800, 1800), 350, [new(900, 900)]);
+
+        Assert.Contains(MotorParrillas.Calcular(baja, Config(superior: false), R).Avisos, a => a.Contains("no cumple el largo del cuadro"));
+        Assert.DoesNotContain(MotorParrillas.Calcular(Maqueta(), Config(superior: false), R).Avisos, a => a.Contains("no cumple"));
+    }
+
+    [Fact]
+    public void En_L_la_barra_lleva_una_sola_pata_y_no_ocupa_franja_al_final()
+    {
+        var x = new ConfigDireccion(5, 150, Terminacion.Pata90, Patas.Inicio);
+        var c = new ConfigParrillas(x, x, Recubrimientos.Global(75), false, LargoPata: LargoPata.Recubrimiento);
+
+        ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), c, R);
+
+        ConjuntoBarras capa1 = r.Conjuntos.First(b => b.Capa == 1), capa2 = r.Conjuntos.First(b => b.Capa == 2);
+        Assert.Equal(Patas.Inicio, capa1.Patas);
+        Assert.Equal(1650 + 350, capa1.LargoNeto, 3);
+        // La capa 1 empieza después de la franja de la otra dirección, pero al final llega hasta el recubrimiento.
+        Assert.Equal(98.85, capa1.Posiciones[0], 3);
+        Assert.Equal(1800 - 75 - 15.9 / 2, capa1.Posiciones[^1], 3);
+        Assert.Equal(1800 - 75 - 15.9 / 2, capa2.Posiciones[^1], 3);
+    }
+
+    [Fact]
+    public void Con_forma_recta_la_de_90_no_lleva_patas_ni_franja()
+    {
+        var x = new ConfigDireccion(5, 150, Terminacion.Pata90, Patas.Ninguna);
+        var c = new ConfigParrillas(x, x, Recubrimientos.Global(75), false);
+
+        ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), c, R);
+
+        Assert.All(r.Conjuntos, b =>
+        {
+            Assert.Equal(Terminacion.Recta, b.Terminacion);
+            Assert.Equal(Patas.Ninguna, b.Patas);
+            Assert.Equal(0, b.Pata);
+            Assert.Equal(1650, b.LargoNeto, 3);
+        });
+        Assert.Equal(75 + 15.9 / 2, r.Conjuntos.First(b => b.Capa == 1).Posiciones[0], 3);
+    }
+
+    [Fact]
+    public void La_parrilla_superior_puede_llevar_otro_gancho()
+    {
+        var x = new ConfigDireccion(5, 150, Superior: new Extremos(Terminacion.Gancho180, Cola: 79.4));
+        var c = new ConfigParrillas(x, x, Recubrimientos.Global(75), true, LargoPata: LargoPata.Recubrimiento);
+
+        ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), c, R);
+
+        Assert.All(r.Conjuntos.Where(b => b.Parrilla == Parrilla.Inferior), b => Assert.Equal(Terminacion.Pata90, b.Terminacion));
+        Assert.All(r.Conjuntos.Where(b => b.Parrilla == Parrilla.Superior), b =>
+        {
+            Assert.Equal(Terminacion.Gancho180, b.Terminacion);
+            Assert.Equal(0, b.Pata);
+            Assert.Equal(79.4, b.Cola);
         });
     }
 

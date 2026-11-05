@@ -11,22 +11,49 @@ public enum Parrilla { Inferior, Superior }
 /// <summary>Cómo termina una barra: recta, con pata ajustada a la altura (90°) o con gancho del cuadro (135° y 180°).</summary>
 public enum Terminacion { Recta, Pata90, Gancho135, Gancho180 }
 
+/// <summary>
+/// Dónde lleva pata una barra de 90°, según la forma elegida (decisión 37 del plan de 2026-11-05): en U en las dos puntas, en
+/// L solo al inicio (la punta de menor X o de menor Y, como la 17A) y recta en ninguna.
+/// </summary>
+public enum Patas { Ambas, Inicio, Ninguna }
+
+/// <summary>
+/// Hasta dónde llega la pata de 90° (decisión 29): el largo B del cuadro, como vigas y columnas, o hasta el recubrimiento
+/// opuesto, como en la <c>v0.1.0</c>. Si el del cuadro no cabe, se corta en el recubrimiento.
+/// </summary>
+public enum LargoPata { Cuadro, Recubrimiento }
+
 /// <summary>Los recubrimientos de la zapata, en mm: abajo, a los lados y arriba (decisión 8 del plan de #247).</summary>
 public sealed record Recubrimientos(double Inferior, double Lateral, double Superior)
 {
     public static Recubrimientos Global(double mm) => new(mm, mm, mm);
 }
 
-/// <summary>El acero de una dirección: número de barra, separación máxima en mm y terminación.</summary>
-public sealed record ConfigDireccion(int Numero, double Separacion, Terminacion Terminacion = Terminacion.Pata90);
+/// <summary>
+/// Cómo terminan las barras de una parrilla en una dirección. <paramref name="Cola"/>: el tramo recto del gancho de 135° o
+/// 180° que pone Revit con el tipo de gancho elegido, en mm (H13 del plan de 2026-11-05); null si no se conoce. Solo lo usa
+/// el dibujo: el resumen suma el largo del cuadro.
+/// </summary>
+public sealed record Extremos(Terminacion Terminacion = Terminacion.Pata90, Patas Patas = Patas.Ambas, double? Cola = null);
 
 /// <summary>
-/// Lo que elige el modelador. La parrilla superior repite esta configuración (Carlos, reunión del 04-nov).
+/// El acero de una dirección: número de barra, separación máxima en mm y cómo terminan las barras de la parrilla inferior.
+/// <paramref name="Superior"/>: cómo terminan las de la superior, que elige su gancho aparte (decisión 30); null, igual
+/// que la inferior.
+/// </summary>
+public sealed record ConfigDireccion(int Numero, double Separacion, Terminacion Terminacion = Terminacion.Pata90, Patas Patas = Patas.Ambas,
+    double? Cola = null, Extremos? Superior = null)
+{
+    public Extremos En(Parrilla p) => p == Parrilla.Superior && Superior is not null ? Superior : new(Terminacion, Patas, Cola);
+}
+
+/// <summary>
+/// Lo que elige el modelador. La parrilla superior repite el número y la separación (Carlos, reunión del 04-nov).
 /// <paramref name="Doblados"/>: diámetro de doblado por número de barra, en mm, del tipo de barra del proyecto; sin él, el del
 /// cuadro. Revit dobla con el del tipo, que puede ser mayor (decisión 26 del plan de #246).
 /// </summary>
 public sealed record ConfigParrillas(ConfigDireccion X, ConfigDireccion Y, Recubrimientos Recubrimientos, bool IncluirSuperior = true,
-    IReadOnlyDictionary<int, double>? Doblados = null);
+    IReadOnlyDictionary<int, double>? Doblados = null, LargoPata LargoPata = LargoPata.Cuadro);
 
 /// <summary>Una zapata en sus propios ejes: contorno en mm, altura y centros de las columnas que se apoyan.</summary>
 public sealed record ZapataEntrada(IReadOnlyList<Punto> Contorno, double Altura, IReadOnlyList<Punto> Columnas);
@@ -35,9 +62,12 @@ public sealed record ZapataEntrada(IReadOnlyList<Punto> Contorno, double Altura,
 /// Barras iguales y seguidas de una capa. Las líneas van de <see cref="Desde"/> a <see cref="Hasta"/> a lo largo de la
 /// dirección, hasta la cara exterior del doblez, como las recibe Revit. <see cref="Posiciones"/> son las coordenadas
 /// transversales; <see cref="Z"/> es la altura del eje de la barra sobre la cara inferior de la zapata.
+/// <see cref="Pata"/> mide de la cara exterior de la barra a la punta; <see cref="Patas"/> dice en qué puntas va (con
+/// <see cref="Terminacion.Pata90"/>). <see cref="Cola"/> es la del gancho de 135° o 180° (ver <see cref="Extremos"/>).
 /// </summary>
 public sealed record ConjuntoBarras(Parrilla Parrilla, Direccion Direccion, int Capa, int Numero, double Diametro, double Z, double Desde, double Hasta,
-    IReadOnlyList<double> Posiciones, Terminacion Terminacion, double Pata, double LargoNeto, double LongitudCorte, double Kilos)
+    IReadOnlyList<double> Posiciones, Terminacion Terminacion, double Pata, double LargoNeto, double LongitudCorte, double Kilos,
+    Patas Patas = Patas.Ambas, double? Cola = null)
 {
     public int Cantidad => Posiciones.Count;
 
