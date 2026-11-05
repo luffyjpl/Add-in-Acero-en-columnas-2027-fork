@@ -8,6 +8,17 @@
   const ZOOM_MIN = 0.35, ZOOM_MAX = 16;
   // Lo mínimo del dibujo que queda a la vista al moverlo, en píxeles de pantalla.
   const MARGEN_VISIBLE = 80;
+  // El tamaño de letra de las vistas, en mm (#261): los mismos límites que TamanoLetra.cs. Se recuerda entre aperturas.
+  const LETRA = { min: 2, max: 5, paso: 0.5, defecto: 3.5, clave: 'despiece.letra' };
+  const limitarLetra = (mm) => Number.isFinite(mm) ? Math.min(LETRA.max, Math.max(LETRA.min, Math.round(mm / LETRA.paso) * LETRA.paso)) : LETRA.defecto;
+  const letraGuardada = () => {
+    try {
+      const v = window.localStorage.getItem(LETRA.clave);
+      return v === null ? LETRA.defecto : limitarLetra(parseFloat(v));
+    } catch {
+      return LETRA.defecto;
+    }
+  };
   const TIPOS = [
     { n: 'Vigas', k: 'viga', icon: 'M3 14h30v8H3zM8 14v8M28 14v8' },
     { n: 'Columnas', k: 'columna', icon: 'M13 3h10v30H13zM13 12h10M13 24h10' },
@@ -297,7 +308,7 @@
   class Pasos extends Component {
     constructor(props) {
       super(props);
-      this.state = { paso: 1, modelo: null, plantaId: null, plantas: {}, grupo: null, previas: {}, negros: false, tipo: 'viga', movimientos: {}, modo3d: false, modelos3d: {}, hechos: {}, error: null, hecho: false, ...(props.inicial ?? {}) };
+      this.state = { paso: 1, modelo: null, plantaId: null, plantas: {}, grupo: null, previas: {}, negros: false, letra: letraGuardada(), tipo: 'viga', movimientos: {}, modo3d: false, modelos3d: {}, hechos: {}, error: null, hecho: false, ...(props.inicial ?? {}) };
       this.alCambiarTamano = () => this.forceUpdate();
       this.alRecibir = (e) => this.recibir(e.data);
     }
@@ -320,6 +331,7 @@
     componentWillUnmount() {
       window.removeEventListener('resize', this.alCambiarTamano);
       window.chrome?.webview?.removeEventListener('message', this.alRecibir);
+      clearTimeout(this.esperaLetra);
     }
 
     recibir(m) {
@@ -419,18 +431,18 @@
      * Los pasos de revisar traen lo movible aparte y no dependen de lo movido; el último es la imagen real con todo
      * aplicado. La sección de la columna usa la misma previa que el alzado: no se vuelve a generar.
      */
-    mensajePrevia(g, negros, paso) {
+    mensajePrevia(g, negros, paso, letra = this.state.letra) {
       const separar = paso > 1 && paso < this.ultimo();
       const movimientos = separar ? {} : this.movimientos(g);
-      return { tipo: 'previa', grupo: g.indice, negros, separar, movimientos, clave: `${g.indice}|${negros}|${separar}|${JSON.stringify(movimientos)}` };
+      return { tipo: 'previa', grupo: g.indice, negros, letra, separar, movimientos, clave: `${g.indice}|${negros}|${letra}|${separar}|${JSON.stringify(movimientos)}` };
     }
 
     previa(g) {
       return this.state.previas[this.mensajePrevia(g, this.state.negros, this.state.paso).clave];
     }
 
-    pedirPrevia(g, negros, paso) {
-      const m = this.mensajePrevia(g, negros, paso);
+    pedirPrevia(g, negros, paso, letra = this.state.letra) {
+      const m = this.mensajePrevia(g, negros, paso, letra);
       if (!this.state.previas[m.clave]) enviar(m);
     }
 
@@ -440,6 +452,37 @@
       this.pedirPrevia(g, negros, this.state.paso);
     }
 
+    /**
+     * Sube o baja la letra medio milímetro. La vista previa se pide a Revit medio segundo después del último clic: cada
+     * una tarda unos segundos y no tiene sentido generar las intermedias.
+     */
+    cambiarLetra(g, delta) {
+      const letra = limitarLetra(this.state.letra + delta);
+      if (letra === this.state.letra) return;
+      this.setState({ letra });
+      try {
+        window.localStorage.setItem(LETRA.clave, String(letra));
+      } catch {
+        // Recordarla es una ayuda: sin almacenamiento, la próxima vez vuelve a la de por defecto.
+      }
+      clearTimeout(this.esperaLetra);
+      this.esperaLetra = setTimeout(() => this.pedirPrevia(g, this.state.negros, this.state.paso, letra), 500);
+    }
+
+    selectorLetra(g) {
+      const boton = (texto, delta, apagado, titulo) => html`
+        <button type="button" title=${titulo} aria-label=${titulo} disabled=${apagado} onClick=${() => this.cambiarLetra(g, delta)}
+          style="width: 22px; height: 22px; padding: 0; border: 1px solid #C9CED6; border-radius: 4px; background: #FFFFFF; color: ${apagado ? '#B0B6BF' : AZUL}; font: inherit; font-size: 14px; line-height: 1; cursor: ${apagado ? 'default' : 'pointer'}">${texto}</button>`;
+      const letra = this.state.letra;
+      return html`
+        <span style="display: flex; align-items: center; gap: 6px">
+          Letra
+          ${boton('−', -LETRA.paso, letra <= LETRA.min, 'Letra más chica')}
+          <span style="min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: #1F2329">${letra.toFixed(1)} mm</span>
+          ${boton('+', LETRA.paso, letra >= LETRA.max, 'Letra más grande')}
+        </span>`;
+    }
+
     selectorTextos(g) {
       const movido = this.state.paso === 2 && Object.keys(this.movimientos(g)).length > 0;
       return html`
@@ -447,6 +490,7 @@
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer">
             <input type="checkbox" checked=${this.state.negros} onChange=${(e) => this.elegirTextos(g, e.target.checked)} style="margin: 0; accent-color: ${AZUL}" />Textos en negro
           </label>
+          ${this.selectorLetra(g)}
           ${movido ? html`<button type="button" onClick=${() => this.setState((s) => ({ movimientos: { ...s.movimientos, [g.vigas[0]]: {} } }))} style="padding: 0; border: 0; background: transparent; color: ${AZUL}; font: inherit; cursor: pointer">Volver a la posición automática</button>` : null}
         </div>`;
     }
@@ -613,7 +657,7 @@
         if (paso < ultimo) return this.irA(paso + 1);
         if (hecho) return set({ paso: 1, hecho: false, grupo: null });
         set({ creando: true, error: null });
-        enviar({ tipo: 'crearVistas', grupo: g.indice, negros: this.state.negros, movimientos: this.movimientos(g) });
+        enviar({ tipo: 'crearVistas', grupo: g.indice, negros: this.state.negros, letra: this.state.letra, movimientos: this.movimientos(g) });
       };
 
       return html`
@@ -631,10 +675,15 @@
           </div>
 
           <div style="flex: 1; min-height: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px">
-            <div style="display: flex; flex-direction: column; gap: 2px">
-              <span style="font-size: 22px; font-weight: 600">${titulo}</span>
-              <span style="color: #5E6670">${ayuda}</span>
-            </div>
+            ${paso > 1 && g ? html`
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="font-size: 24px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title=${g.nombre}>${g.nombre}</span>
+                <span style="color: #5E6670"><span style="font-weight: 600; color: #16191D">${titulo}</span> · ${ayuda}</span>
+              </div>` : html`
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 22px; font-weight: 600">${titulo}</span>
+                <span style="color: #5E6670">${ayuda}</span>
+              </div>`}
 
             ${paso === 1 ? html`
               <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px">

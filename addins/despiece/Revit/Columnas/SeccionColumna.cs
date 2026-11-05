@@ -31,19 +31,19 @@ internal static class SeccionColumna
     private const double PiezaDeAbajo = 0.15 * M;
 
     // Como la sección de la viga: las etiquetas en filas encima y debajo, y debajo de ellas la cota y el recubrimiento.
-    private const double FilaArriba = 0.38 * M;
-    private const double FilaAbajo = 0.20 * M;
-    private const double PasoEtiquetas = 0.28 * M;
-    private const double CotaAncho = 0.42 * M;
-    private const double TextoAncho = 0.46 * M;
-    private const double CotaAlto = 0.15 * M;
-    private const double TextoAlto = 0.30 * M;
-    private const double Leyenda = 0.62 * M;
-    private const double EstriboAparte = 0.70 * M;
+    private static double FilaArriba => 0.38 * M * Letra.Factor;
+    private static double FilaAbajo => 0.20 * M * Letra.Factor;
+    private static double PasoEtiquetas => 0.28 * M * Letra.Factor;
+    private static double CotaAncho => 0.42 * M * Letra.Factor;
+    private static double TextoAncho => 0.46 * M * Letra.Factor;
+    private static double CotaAlto => 0.15 * M * Letra.Factor;
+    private static double TextoAlto => 0.30 * M * Letra.Factor;
+    private static double Leyenda => 0.62 * M * Letra.Factor;
+    private static double EstriboAparte => 0.70 * M * Letra.Factor;
     private const double AireNota = 0.01 * M;
 
     /// <summary>A 1:15 la caja de una nota mide 0.12 m (medido en la viga); entre una forma de estribo y la siguiente, 0.08 m.</summary>
-    private const double FilaTexto = 0.13 * M;
+    private static double FilaTexto => 0.13 * M * Letra.Factor;
     private const double HuecoEstribos = 0.08 * M;
 
     /// <summary>Los colores de traslapo (decisión 3): no están en la paleta de diámetros.</summary>
@@ -175,6 +175,7 @@ internal static class SeccionColumna
             .Select(e => e.Id).ToList();
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
+        Importados.Ocultar(doc, vista);
         foreach (BuiltInCategory c in new[] { BuiltInCategory.OST_Grids, BuiltInCategory.OST_Levels, BuiltInCategory.OST_Sections,
             BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_Elev })
         {

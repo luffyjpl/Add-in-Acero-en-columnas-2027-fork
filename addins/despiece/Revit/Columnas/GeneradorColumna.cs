@@ -32,19 +32,19 @@ internal static class GeneradorColumna
     private const double DesfaseTraslapo = 0.08 * M;
 
     // A 1:15 la caja de la nota baja 0.09 m desde su punto y mide 0.12 m (medido en la viga, 30-oct).
-    private const double AltoTexto = 0.11 * M;
-    private const double BajaNota = 0.09 * M;
+    private static double AltoTexto => 0.11 * M * Letra.Factor;
+    private static double BajaNota => 0.09 * M * Letra.Factor;
     private const double AireNota = 0.01 * M;
-    private const double AnchoNotaGirada = 0.10 * M;
-    private const double FilaEstribos = 0.13 * M;
+    private static double AnchoNotaGirada => 0.10 * M * Letra.Factor;
+    private static double FilaEstribos => 0.13 * M * Letra.Factor;
     private const double MismaZona = 0.10 * M;
 
     /// <summary>De la etiqueta de estribos al borde izquierdo del recorte.</summary>
     private const double AireEstribos = 0.05 * M;
 
     /// <summary>A la izquierda del recorte: la cadena de elementos y, más afuera, el alto total.</summary>
-    private const double CotaElementos = 0.45 * M;
-    private const double CotaTotal = 0.80 * M;
+    private static double CotaElementos => 0.45 * M * Letra.Factor;
+    private static double CotaTotal => 0.80 * M * Letra.Factor;
     private const double DentroDelRecorte = 0.03 * M;
 
     /// <summary>Igual altura de dos barras sacadas, al centímetro.</summary>
@@ -251,6 +251,7 @@ internal static class GeneradorColumna
             .Select(e => e.Id).ToList();
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
+        Importados.Ocultar(doc, vista);
         foreach (BuiltInCategory c in new[] { BuiltInCategory.OST_Sections, BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_Levels,
             BuiltInCategory.OST_Grids, BuiltInCategory.OST_Elev })
         {
