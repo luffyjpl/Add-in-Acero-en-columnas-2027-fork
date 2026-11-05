@@ -1,0 +1,8 @@
+{
+  "id": "cotas-planta",
+  "nombre": "Cotas de planta",
+  "descripcion": "Genera la vista «Cotas <planta>» con cotas libres, eje a eje, voladizos, viguetas y longitud total por color, rótulos de vigas y leyenda, con vista previa.",
+  "proyecto": "CQEING.CotasPlanta.csproj",
+  "revit": ["2026", "2027"],
+  "heredados": []
+}
