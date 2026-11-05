@@ -34,8 +34,19 @@ Del código de `main` en `6de33cb`. Lo marcado **por medir** aún no se ha compr
 - **MCP de Revit (2026-11-04):** el usuario pidió conectar `mcp-servers-for-revit` v1.0.0 para leer el modelo y probar
   código en Revit real. Todavía no está instalado: lo bloqueó el control de permisos de Claude Code. El diagnóstico del
   paso 5 mide lo mismo sin el MCP.
-- **Por medir, con el diagnóstico del paso 5:** cómo crear una barra con patas ajustadas a la altura, si Revit la corre al
-  regenerar por el recubrimiento, y si formas y ganchos tienen imagen disponible por la API pública.
+- **Medido con el diagnóstico (2026-11-04, `Prueba 080720sfsd26`, Revit 2026.5.10, barra #5, h 350, recubrimientos de 75):**
+  - La lectura dio bien las 12 zapatas: 8 de 900 × 2000 y 4 de 1800 × 1800, con contorno, altura, columna y eje correctos.
+  - **El modelo no tiene combinadas ni formas atípicas:** esos casos siguen sin probar en Revit.
+  - Una barra en U por curvas toma una forma existente (`13 2`), sin crear tipos. Una recta con gancho propio (`02`) da la
+    misma geometría: x −367.1 a 367.1 y h 82.9 a 275, tal como el plan, con largo 1070.6 mm. Revit no la corrió al regenerar.
+  - La punta queda exacta en el recubrimiento opuesto (350 − 75 = 275). Esto confirma las decisiones 12 y 16.
+  - `SetLayoutAsFixedNumber` repartió 5 barras. Falta comprobar el sentido del reparto al generar.
+  - `CLEAR_COVER_TOP`, `CLEAR_COVER_BOTTOM` y `CLEAR_COVER_OTHER` existen y se pueden escribir. Las zapatas traen el tipo
+    `CIM` de 75 mm, que coincide con el valor por defecto de la decisión 8.
+  - `GetCurvesForBrowser` devuelve las curvas de cada forma, así que el catálogo las puede dibujar. El modelo tiene 288
+    formas, en su mayoría estribos; las que sirven para una parrilla son las de estilo `Standard` y hasta 3 curvas.
+  - El proyecto tiene barras por uso, como `#5` y `#5 CIM`.
+  - Cuatro zapatas ya traen 2 barras hechas a mano (780849, 780858, 780869 y 780981).
 
 ## Decisiones
 
@@ -57,6 +68,13 @@ Continúan la numeración del plan de #247.
 21. **Parrilla superior** (2026-11-04, Claude, a partir de la decisión 11): cada barra va media separación real corrida.
     Son `n − 1` barras, para no salirse del recubrimiento. Queda marcada por defecto y se puede apagar.
 22. **Aviso de tabla** (2026-11-04, usuario): compara el tipo y el ángulo del gancho elegido, no el largo de la pata.
+23. **La pata de 90° va en las curvas** (2026-11-04, Claude, por lo medido): se crea la barra en U sin crear tipos de
+    gancho, y así no se llena el proyecto con un tipo por altura. Si el modelador elige una forma, se usa esa; si Revit no
+    la acepta, se usa la automática y se avisa. Los ganchos de 135° y 180° usan el tipo del proyecto que se elija.
+24. **Barra de cimentación primero** (2026-11-04, Claude, por lo medido): de los tipos con el diámetro de la regla, se
+    prefiere el que tiene `CIM` en el nombre, luego `#n`.
+25. **Solo el acero del add-in se reemplaza** (2026-11-04, Claude, según #254): al volver a generar se borra lo que lleva
+    la marca, previa confirmación. Lo hecho a mano no se toca, y el tablero avisa cuántas barras tiene esa zapata.
 
 ## Plan paso a paso
 
@@ -91,5 +109,31 @@ Con Revit abierto, la DLL de `bin\Debug\2026` queda bloqueada: para revisar que 
 
 ## Estado
 
-- [ ] Pasos implementados.
-- [ ] Probado en Revit.
+- [x] Pasos 1 a 7 implementados (2026-11-04), versión prefinal.
+- [ ] Probado en Revit: falta generar acero con el tablero. Solo se midieron en Revit la lectura y la barra inferior de
+      prueba del diagnóstico.
+- [ ] Paso 9, release de respaldo: pendiente de terminar las pruebas.
+
+Comprobado (2026-11-04): compila en Release para 2026 y 2027 con 0 advertencias; `dotnet test CQEING-Addins.sln -c Release`
+da 1540 pruebas correctas en 7 proyectos, 46 de ellas de zapatas; `node --check` pasa en `zapatas.js`.
+
+### Lista de depuración en Revit
+
+1. Abrir el tablero: lista, planta, detalles y catálogo con los datos del modelo.
+2. Una zapata cuadrada de 1800 × 1800: generar y medir cantidad, separación, recubrimiento y patas en una sección.
+3. Una rectangular de 900 × 2000: la barra paralela al lado largo va abajo, y arriba hacia afuera.
+4. Parrilla superior: gancho al revés, media separación corrida y sin choques con la inferior ni con las patas.
+5. Sentido del reparto en X y en Y, y que el tablero no reporte barras corridas.
+6. Volver a generar: reemplaza sin duplicar, y no toca las barras a mano de 780849, 780858, 780869 y 780981.
+7. Elegir iguales: aplicar a varias de un clic; con zapatas distintas debe impedirlo.
+8. Cambiar el recubrimiento global y por cara: la zapata y las barras lo reflejan, y los tipos existentes no cambian.
+9. Una forma elegida del catálogo (17) y los ganchos de 135° y 180°.
+10. Ctrl+Z deshace la generación completa de una vez.
+
+Riesgos conocidos, sin resolver:
+
+- **Combinadas y formas atípicas:** el motor las prueba, pero este modelo no las trae; hace falta otro modelo.
+- **Ganchos de 135° y 180°:** el resumen usa el largo del cuadro y Revit el del tipo elegido, así que pueden diferir.
+- **Barras de la parrilla con h pequeña:** con h 350 y #5, la segunda capa queda con pata de 184 mm, bajo los 191 mm de 12
+  diámetros, y avisa. Es lo que pide la decisión 12; hay que confirmar con Juan si ese aviso es el esperado.
+- **Revit 2027:** compila, sin probar.

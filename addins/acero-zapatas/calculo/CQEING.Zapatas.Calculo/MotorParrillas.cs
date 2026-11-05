@@ -60,7 +60,7 @@ public static class MotorParrillas
         foreach (Parrilla parrilla in c.IncluirSuperior ? new[] { Parrilla.Inferior, Parrilla.Superior } : new[] { Parrilla.Inferior })
         {
             conjuntos.AddRange(Capa(parrilla, principal, 1, 0));
-            conjuntos.AddRange(Capa(parrilla, otra, 2, Config(principal).Diametro()));
+            conjuntos.AddRange(Capa(parrilla, otra, 2, reglas.PorDiametro[Config(principal).Numero].Diametro));
         }
         var resumen = new ResumenAcero(conjuntos.Sum(b => b.Cantidad), conjuntos.Sum(b => b.Cantidad * b.LongitudCorte), Math.Round(conjuntos.Sum(b => b.Kilos), 1));
         return new ResultadoZapata(conjuntos, resumen, principal, avisos, []);
@@ -153,8 +153,6 @@ public static class MotorParrillas
         if (grupo.Count > 0)
             yield return grupo;
     }
-
-    private static double Diametro(this ConfigDireccion c) => Reglas.Generales.PorDiametro[c.Numero].Diametro;
 
     private static string Nombre(Parrilla p) => p == Parrilla.Inferior ? "inferior" : "superior";
 }

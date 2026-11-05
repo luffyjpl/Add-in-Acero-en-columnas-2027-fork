@@ -22,6 +22,15 @@ public class AppZapatas : IExternalApplication
             "Abre el tablero de acero en zapatas.",
             "iconoCQ"));
 
+#if DEBUG
+        panel.AddItem(CintaCqeing.CrearBoton(
+            "ComandoDiagnosticoZapata",
+            "Diagnóstico",
+            "CQEING.Zapatas.Revit.ComandoDiagnosticoZapata",
+            "Solo en desarrollo: mide cómo se comporta Revit con las zapatas y deshace todo.",
+            "iconoCQ"));
+#endif
+
         return Result.Succeeded;
     }
 
