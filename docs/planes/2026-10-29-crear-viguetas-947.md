@@ -71,6 +71,129 @@
 11. **Página fuera de Revit**: `web/viguetas-demo.js` trae un piso de ejemplo de 2 × 2 paneles para ver la página en un
     navegador, como `demo.js` del tablero. En Revit no se carga.
 
+### Correcciones de la revisión (30-oct)
+
+Pedidas en la reunión con la captura de P4 (viguetas en ↕ Y):
+
+12. **Elegir varios paneles.** Tres modos: **Un panel**, **Fila o columna** (con un clic se eligen todos los paneles
+    alineados en la dirección de las viguetas: en ↕ Y la columna, en ↔ X la fila) y **Varios** (cada clic suma o quita
+    un panel). Cada panel se reparte con la fórmula del Excel sobre su propio ancho libre; los tipos se agrupan entre
+    todos los paneles elegidos. Motivo: las viguetas van de arriba abajo o de lado a lado completas.
+13. **Viguetas continuas.** Al crear, las piezas que están en la misma línea y se tocan en el eje de una viga (paneles
+    seguidos o una viga que cruza el panel) se crean como **una sola vigueta** de punta a punta. Se puede apagar con
+    «Viguetas continuas a través de las vigas».
+14. **Vigueta que atraviesa una viga.** Si el eje de cualquier elemento de armazón del piso (que no sea creado por el
+    add-in) cruza una vigueta dentro del panel, la vigueta se parte ahí en dos piezas (a y b), cada una hasta la cara
+    de esa viga. Cada pieza se elimina por separado: así se elige de qué lado de la viga se quita.
+15. **Ids de vigueta con el panel**: `P4:3`, `P4:3a`, `P4:3b` (y `P4:3.2` si el panel parte la línea en dos tramos),
+    porque ahora la propuesta tiene varios paneles.
+
+### Correcciones de la segunda revisión (02-nov)
+
+Con la captura de P6 en ↕ Y: las viguetas propuestas no caían en la línea de las que ya están en P1 y P3, y no se
+encontraba cómo elegir varios paneles.
+
+16. **Seguir las viguetas que ya están.** Si en la misma fila o columna hay viguetas paralelas (del modelo o creadas
+    por el add-in) fuera de los paneles elegidos, las viguetas nuevas van en **esas mismas líneas**. Es lo que se usa
+    por defecto cuando las hay; se puede cambiar a «Fórmula del Excel». Ubicación: «Seguir las que ya están».
+17. **Paneles en la misma línea, viguetas alineadas.** Si se eligen varios paneles de la misma fila o columna, se
+    reparte con la fórmula del Excel el **primero** y los demás usan esas mismas líneas, para que las viguetas sean
+    continuas. Un panel queda en la misma línea si su ancho en la dirección del reparto se superpone más de la mitad.
+    Cada panel muestra de dónde salen sus viguetas (fórmula, alineadas con P1 o las existentes) y sus dos libres de
+    extremo, que pueden no ser iguales.
+18. **Elegir varios paneles, fácil:**
+    - Al hacer clic en un panel que tiene otros en su columna o fila, aparece un aviso con dos botones: «Solo P6» y
+      «Toda la columna (3 paneles)».
+    - **Ctrl + clic** suma o quita paneles en cualquier modo, y el modo «Varios» lo hace sin Ctrl.
+    - El modo del medio dice «Columna entera» o «Fila entera», según la dirección.
+19. **Quitar viguetas del modelo** (02-nov, captura de P4): con «Eliminar viguetas» también se puede hacer clic en una
+    vigueta que ya está en el modelo (azul oscuro) dentro de los paneles elegidos. Queda marcada y se borra de Revit al
+    **Crear**, en la misma transacción (Ctrl+Z la devuelve). Las marcadas dejan de servir de guía para «Seguir las que
+    ya están». Solo se aceptan elementos de armazón que cumplen la regla de vigueta; las vigas no se pueden quitar.
+    ~~Se borraba el elemento entero.~~ Ver la decisión 21.
+21. **Solo se quita el tramo dentro de los paneles elegidos** (02-nov): una vigueta del modelo suele ser un solo
+    elemento que cruza varios paneles (P1, P4 y P6). Al quitarla, se recorta: el elemento queda con el tramo de un lado
+    (su línea de ubicación se acorta hasta el eje de la viga del borde del panel) y, si queda también un tramo del otro
+    lado, se crea una copia del mismo elemento con ese tramo. Si no queda nada afuera, se borra. Los tramos se calculan
+    con el contorno por ejes de los paneles (`PisoViguetas.Restos`). La página dibuja punteado solo lo que se quita.
+22. **Las viguetas del modelo se quitan por piezas, como las propuestas** (02-nov): dentro de los paneles elegidos,
+    cada vigueta del modelo se parte donde la cruza otro elemento de armazón (una viga), y cada pieza se marca por
+    separado: se puede quitar solo la de arriba o la de abajo de la viga. Al crear, el elemento queda con lo que no se
+    marcó (decisión 21: se acorta y, si hacen falta más tramos, se copia). Ids de pieza: `<id del elemento>#<n>`.
+### Correcciones de la reunión del 03-nov
+
+23. **La vigueta llega al eje de la viga y no se corta en cada viga.** Se dibuja y se crea de eje a eje (hasta la mitad
+    de la viga de apoyo). Las piezas en la misma línea siempre se unen al crear, a través de las vigas que cruzan: se
+    quita la casilla «Viguetas continuas» (~~decisión 13, se podía apagar~~). Solo se corta donde el usuario quita una
+    pieza.
+24. **Seleccionar por perímetro** (modo nuevo, el primero y el que viene marcado): el usuario hace clic en los elementos
+    de armazón de la planta (vigas, viguetas de borde y **voladizos**) y con ellos se arma el perímetro de trabajo
+    (`PisoViguetas.Perimetro`, con `DetectorPaneles` sobre solo esos elementos). Las vigas de adentro que no se
+    eligieron no parten el perímetro: cruzan las viguetas, que se parten ahí en piezas (decisión 14) para poder quitar
+    de un solo P, y se crean continuas. Los perímetros se llaman Z1, Z2…
+25. **Quitar para el vacío en un solo P**: al quitar una pieza (propuesta o del modelo) solo se quita la de ese P; lo que
+    sigue en la misma línea se queda y termina en el eje de la viga. Con prueba.
+28. **Las viguetas del modelo de adentro también son guía** (03-nov, prueba en Revit con el perímetro Z1 de la
+    columna P1-P4-P6: las nuevas no quedaban en línea con las que ya estaban en P1 y P6). Cambia la decisión 16:
+    - Guías: todas las viguetas paralelas del modelo y las creadas, estén dentro o fuera de lo elegido.
+    - Donde ya hay una vigueta del modelo (una pieza de `PiezasDelModelo`, quitada o no) no se propone otra encima: la
+      pieza propuesta que cae sobre ella, en la misma línea, se omite. Así las nuevas solo rellenan los tramos que faltan,
+      y donde el usuario quitó una del modelo para el vacío tampoco aparece una nueva.
+29. **Las viguetas se ven pasar las vigas** (03-nov): en la planta, las piezas de las viguetas del modelo ya no llevan
+    las vigas dibujadas encima; van de eje a eje, como las propuestas, y se ven continuas. Cuando se quita una pieza de
+    un panel, las que quedan terminan en el eje de la viga, porque cada pieza llega justo hasta ahí. Solo cambia el
+    dibujo (`viguetas.js`); el cálculo y lo que se crea en Revit siguen igual.
+30. **Las viguetas terminan en las vigas que acaban dentro del panel** (03-nov, P4: al borrar todas y crearlas de
+    nuevo, pasaban por encima de la viga corta, y al crear solo las que faltaban quedaban pegadas a ella). Cambia la
+    decisión 23 solo para esas vigas:
+    - Viga que cruza el panel o el perímetro de lado a lado (sus dos puntas en el borde): las viguetas la atraviesan y
+      se crean continuas.
+    - Viga que termina dentro del panel (alguna punta adentro, a más de 50 mm del borde, como la viga corta de P4): la
+      vigueta se parte ahí, cada pieza llega a su eje y al crear no se unen (`Vigueta.TopeDesde` / `TopeHasta`).
+31. **Una vigueta en la punta de la viga que termina dentro del panel** (04-nov, prueba del usuario en la columna
+    P1-P4-P6: al repartir todas con la fórmula, la punta de la viga corta quedaba suelta entre dos viguetas y dejaba un
+    vacío; con las viguetas del modelo sí había una en la punta). Completa la decisión 30:
+    - Por cada viga que termina dentro de algún panel de la fila o columna (misma regla de la decisión 30: punta
+      adentro, a más de 50 mm del borde), va una vigueta **por dentro de la viga**: su cara de afuera al ras de la
+      punta, o sea su eje medio ancho de vigueta hacia el lado de la viga (`PlanificadorViguetas.Puntas`).
+      ~~Eje en la punta~~: en la prueba del 04-nov la mitad de la vigueta quedaba fuera de la viga; en el modelo de
+      referencia queda por dentro.
+    - Esa vigueta se parte en piezas en la viga corta, como las demás, para poder quitar solo la de arriba o la de
+      abajo (decisión 25), pero **sin tope**: si quedan las dos, se crean unidas, de punta a punta; si se quita una, la
+      otra llega al eje de la viga (`Partir`: corte sin tope si la vigueta está a medio ancho o menos de la punta).
+      ~~No se partía~~: en la prueba del 04-nov no se podía quitar solo un lado de esa vigueta.
+    - **Reparto parejo con una vigueta en la punta** (`PlanificadorViguetas.Repartir` y `Parejo`): se busca la menor
+      cantidad de viguetas, todas a la misma separación (no más que el eje a eje elegido) y con los dos libres de
+      extremo iguales (no más que el libre máximo), en la que una cae justo en la punta. Con n viguetas y la de la punta
+      en el lugar k (desde 0): separación s = (libre − 2·t) / (n − 1 − 2k), con t la distancia del borde libre al eje
+      de la punta; extremos = (libre − ancho − (n − 1)·s) / 2. Se prueba desde la cantidad de la fórmula hasta 6 más.
+      Ejemplo de P4 (modelo de referencia): libre 3,48 m, punta a 1,05 m → 5 viguetas a 0,69 m, extremos 0,31 m.
+    - Si no hay reparto parejo posible, la fórmula del Excel en todo el ancho más la vigueta de la punta (si una de la
+      fórmula queda pegada a ella, a menos de dos anchos entre ejes, se quita esa). Con varias puntas, la primera arma
+      el reparto parejo y las demás se suman así si no caen sobre una vigueta.
+      ~~Fórmula a cada lado de la punta, por separado~~ (salían 4 desparejas) y ~~fórmula en todo el ancho más la
+      punta~~ (seguían saliendo 4 en Z1): en el modelo de referencia son 5, parejas, a 0,69 m.
+    - La vigueta de la punta corre por toda la fila o columna: los demás paneles de la línea se alinean con el primero
+      (decisión 17), que ya la incluye. Pasa de largo por la punta de la viga (no la cruza) y se crea continua; las del
+      lado donde pasa la viga siguen parándose en ella (decisión 30).
+    - Si en la línea ya hay viguetas que seguir (decisiones 16 y 28), se siguen ellas, como antes.
+26. ~~**Release**: publicar `acero-vigas-v1.5.0`.~~ Ver la decisión 27.
+27. **Add-in propio, `crear-viguetas`** (03-nov, pedido del usuario: «que sea libre, que aparezca en el gestor para
+    descargar y no se descargue junto con otro»). Cambia la decisión 1: deja de ser un botón de «Acero en vigas».
+    - Carpeta `addins/crear-viguetas/` como `despiece`: `addin.json` (id `crear-viguetas`), `CQEING.Viguetas.csproj`,
+      `CQEING.Viguetas.addin` con su propio ClientId, `AppViguetas.cs` (licencia y bloqueo por versión, panel
+      «Viguetas»), `Interfaz/` (comando, puente, ventana WebView2 con host `viguetas.cqeing` y su cola de Revit),
+      `Revit/` (lector del piso y creador), `web/` (la página) y `calculo/` (`CQEING.Viguetas.Calculo` en net8.0 puro,
+      con sus pruebas).
+    - Los archivos de viguetas se mueven desde «Acero en vigas» (con `git mv`, para no perder la historia). Se enlazan,
+      sin copiarlos, `ReglaVigueta.cs` y `CalculadoraZoom.cs` del cálculo de vigas, como hace `despiece`.
+    - «Acero en vigas» vuelve a quedar como antes de #947: sin el botón y sin el parámetro de página de su ventana. La
+      regla de vigueta pública (`ReglaVigueta.cs`) se queda allí, porque la usan los pórticos.
+    - Release: `crear-viguetas-v1.0.0` (add-in nuevo) y `acero-vigas-v1.5.0` (se le quita el botón, para que no
+      aparezca dos veces). Las dos etiquetas van de a una, sobre `main` y después de unir el PR.
+20. **Aviso de libre grande**: si un panel queda con un libre de extremo mayor que el máximo (eje a eje − ancho), por
+    ejemplo al seguir pocas viguetas existentes, se avisa debajo del dibujo.
+
 ## Plan paso a paso
 
 1. **Regla de vigueta pública** — `Porticos/ReglaVigueta.cs`, `AgrupadorPorticos.cs` — los tests de pórticos siguen en
@@ -86,6 +209,10 @@
    (página y título), `Tablero/web/viguetas.html`, `Tablero/web/viguetas.js`, botón en `AppVigas.cs`.
 9. **Compilar, pruebas y despliegue** — comandos de abajo.
 10. **Prueba en Revit** (#953) — lista de abajo, con capturas en `docs/planes/imagenes/`.
+11. **Correcciones del 30-oct** (decisiones 12 a 15) — `PlanificadorViguetas.cs` (varios paneles, cortes en vigas,
+    líneas continuas), `PisoViguetas.cs` (cruces), `ProtocoloViguetas.cs` (lista de paneles), `PuenteViguetas.cs`,
+    `CreadorViguetas.cs` (crea líneas), `viguetas.js` y `viguetas.html` (modos de selección, continuas) + tests:
+    pieza partida por una viga, dos paneles seguidos dan una sola línea continua, y sin continuas dan dos.
 
 ## Cómo probarlo
 
@@ -126,6 +253,87 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin acero-
 - ✅ Crear en Revit con el tipo elegido, en el nivel del panel; Ctrl+Z las deshace.
 - ✅ Quitar las creadas por el add-in en un panel.
 - ✅ Pruebas unitarias y `dotnet test CQEING-Addins.sln` sin fallos.
+
+### Correcciones del 30-oct (decisiones 12 a 15)
+
+- [x] Implementadas: modos Un panel / Fila o columna / Varios, viguetas continuas a través de las vigas y viguetas
+      partidas donde las cruza una viga (cada lado se elimina por separado).
+- [x] `dotnet test CQEING-Addins.sln` sin fallos (Vigas.Calculo 1070). Pruebas nuevas: pieza partida por una viga,
+      borrar un lado deja la vigueta hasta la viga, dos paneles seguidos dan tres viguetas continuas de 0 a 8 m.
+- [x] Página revisada con el piso de ejemplo: la columna de P3 en ↕ Y elige P1 y P3; Varios suma P4; en ↔ X la vigueta
+      1 de P3 sale partida en P3:1a y P3:1b por la viga corta y se elimina solo el lado b.
+- [x] Compilado y desplegado para Revit 2027.
+- [ ] Probado en Revit con PROY_JULIO_BETO: falta.
+
+### Correcciones del 02-nov (decisiones 16 a 18)
+
+- [x] Implementadas: seguir las viguetas que ya están en la fila o columna, alinear los paneles de una misma línea con
+      el primero, aviso «Solo P… / Toda la columna» al elegir un panel, Ctrl + clic para sumar o quitar y el modo
+      «Columna entera» / «Fila entera».
+- [x] `dotnet test CQEING-Addins.sln` sin fallos (Vigas.Calculo 1072). Pruebas nuevas: una columna con un panel más
+      angosto usa las líneas del primero, y un panel sigue las viguetas que ya están (1,00 y 2,20 m, eje a eje 1,20).
+- [x] Página revisada con el piso de ejemplo: P3 en ↕ Y sigue las viguetas de P1, el aviso ofrece la columna y Ctrl +
+      clic suma P4.
+- [x] Desplegado para Revit 2027 (02-nov).
+- [x] Decisiones 19 y 20 (quitar viguetas del modelo y aviso de libre grande): implementadas, con prueba
+      (`LasViguetasDelModeloQueSeQuitanNoSonGuiaYLasVigasNoSeQuitan`); `dotnet test` sin fallos (Vigas.Calculo 1073).
+      Página revisada: en P1 del ejemplo se marcan dos viguetas del modelo y salen como «Del modelo × 2».
+- [x] Desplegado de nuevo para Revit 2027 (02-nov).
+- [x] En Revit, el usuario vio que quitar una vigueta del modelo borraba la vigueta entera de P1, P4 y P6: se cambió a
+      recortar (decisión 21), con prueba `QuitarUnaViguetaDelModeloSoloQuitaElTramoDelPanelElegido`; `dotnet test` sin
+      fallos (Vigas.Calculo 1074).
+- [x] Desplegado con el recorte para Revit 2027 (02-nov).
+- [x] En Revit, el usuario pidió quitar también por piezas las viguetas del modelo (decisión 22): implementado, con
+      pruebas `UnaViguetaDelModeloSeQuitaPorPiezasDeCadaLadoDeLaViga` y
+      `LasViguetasDelModeloConPiezasQuitadasNoSonGuiaYLasVigasNoSonPiezas`; `dotnet test` sin fallos (Vigas.Calculo
+      1074). Página revisada con el piso de ejemplo y desplegado para Revit 2027.
+- [x] Probado en Revit con PROY_JULIO_BETO (02-nov, prueba del usuario): en P4 se quita solo el tramo de un lado de la
+      viga corta y el resto de la vigueta del modelo se queda. Todas las correcciones del 30-oct y del 02-nov
+      (decisiones 12 a 22) quedan probadas en Revit.
+
+### Correcciones del 03-nov (decisiones 23 a 27)
+
+- [x] Viguetas de eje a eje y siempre continuas; modo Perímetro (por defecto) con vigas, viguetas de borde y voladizos;
+      quitar en un solo P. Pruebas nuevas: `ElPerimetroConLasVigasDeAfueraEsUnoYLasDeAdentroSoloPartenLasViguetas`,
+      `QuitarUnaViguetaEnUnSoloPDejaLasQueSiguenHastaElEje`, `ElPerimetroPuedeCerrarseConVoladizosYUnaViguetaDeBorde`.
+- [x] Página revisada con el piso de ejemplo: el perímetro con cuatro vigas arma Z1, los elementos elegidos se ven en
+      naranja y las viguetas van de eje a eje.
+- [x] Add-in propio `addins/crear-viguetas/` (decisión 27). «Acero en vigas» vuelve a como estaba antes de #947.
+      `dotnet test CQEING-Addins.sln` sin fallos (Viguetas.Calculo 26, Vigas.Calculo 1051, Gestor.Core 256 con
+      `TodosLosAddinsExigenLicenciaTests`, Gestor 37, Publicador 8). Los dos compilan para 2027 sin advertencias y
+      están desplegados con `desplegar-local.ps1`.
+- [x] Probado en Revit por el usuario (03-nov): todo bien, salvo que las nuevas no quedaban en línea con las del modelo
+      dentro del perímetro. Corregido con la decisión 28, con prueba
+      `EnElPerimetroLasNuevasSiguenLasDelModeloYSoloRellenanLosTramosQueFaltan`; `dotnet test` sin fallos
+      (Viguetas.Calculo 27).
+- [x] Decisión 28 desplegada para Revit 2027 (03-nov). El usuario la probó: todo bien.
+- [x] Decisiones 29 (las viguetas se ven pasar las vigas en la planta) y 30 (terminan en las vigas que acaban dentro
+      del panel, también al crearlas todas de nuevo). Pruebas nuevas o cambiadas: `UnaVigaQueCruzaParteLaViguetaEnDosLados`
+      y `LaVigaQueCruzaElPanelDeLadoALadoNoParaLasViguetas`; `dotnet test` sin fallos (Viguetas.Calculo 28). Desplegado
+      para Revit 2027.
+- [ ] Probar la decisión 30 en Revit, en P4: falta.
+
+### Correcciones del 04-nov (decisión 31)
+
+- [x] Vigueta fija en la punta de cada viga que termina dentro del panel y fórmula a cada lado. Pruebas nuevas o
+      cambiadas: `UnaVigaQueCruzaParteLaViguetaEnDosLados` (ahora 0,65 / 1,20 / 1,70 m),
+      `BorrarUnLadoDejaLaViguetaHastaLaViga` y `LaViguetaEnLaPuntaDeLaVigaCortaCorrePorTodaLaColumna`.
+- [x] Compilado para Revit 2027 sin advertencias y desplegado con `desplegar-local.ps1` (04-nov).
+- [x] Probado en Revit (04-nov): la vigueta salía centrada en la punta, con media vigueta fuera de la viga. Corregido:
+      va por dentro (0,625 / 1,15 / 1,675 m en la prueba del panel; 1,75 m en la de la columna).
+- [x] Corrección desplegada para Revit 2027 (04-nov).
+- [x] Probado en Revit (04-nov): la vigueta queda por dentro de la viga, bien; pero no se podía quitar solo un lado.
+      Corregido: se parte en la viga corta sin tope (prueba `QuitarUnLadoDeLaViguetaDeLaPuntaDejaElOtroHastaElEje`).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (30).
+- [x] Probado en Revit (04-nov): se quita solo un lado, bien. Pero el reparto a cada lado de la punta daba 4 viguetas
+      desparejas y el modelo tiene 5. Corregido: fórmula en todo el ancho más la de la punta (0,75 / 1,15 / 1,55 m en
+      la prueba del panel; 0,80 / 1,60 / 1,95 / 2,40 / 3,20 m en la de la columna).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (31).
+- [x] Probado en Revit (04-nov, Z1 y Z2): en Z1 seguían saliendo 4. Corregido con el reparto parejo (prueba de la
+      columna con el ancho de P4: 3,48 m da 5 a 0,69 m y extremos de 0,31 m).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (31).
+- [ ] Probar de nuevo en Z1 (deben salir 5 a 0,69 m): falta.
+- [ ] Unir `main` en la rama, commit, PR, y publicar `crear-viguetas-v1.0.0` y `acero-vigas-v1.5.0`.
 
 Pendiente: commit, PR y versión (`acero-vigas` 1.2.0) cuando el usuario lo pida; detectar vacíos desde el modelo
 queda fuera de esta tarea.

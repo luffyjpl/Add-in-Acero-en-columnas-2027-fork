@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CQEING - Crear viguetas</Name>
+    <!-- El gestor reescribe esta ruta como absoluta a la carpeta de la versión instalada. -->
+    <Assembly>CQEING.Viguetas.dll</Assembly>
+    <FullClassName>CQEING.Viguetas.AppViguetas</FullClassName>
+    <ClientId>b3e7d2a4-6c19-4f58-9a0e-2d4c8f1b7e63</ClientId>
+    <VendorId>CQEING</VendorId>
+    <VendorDescription>CQEING</VendorDescription>
+  </AddIn>
+</RevitAddIns>
