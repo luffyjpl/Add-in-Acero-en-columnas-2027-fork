@@ -77,6 +77,12 @@
    tolerancias, ejes) no cambian. El tamaño elegido se fija al empezar cada vista previa o creación (`Letra.Usar`) y las
    separaciones lo leen de ahí; Revit atiende una orden a la vez, así que no hay dos tamaños mezclados.
 
+6. **#260: el nombre en grande va en el tablero, no en el dibujo de Revit** (05-nov, Luciano: "no quiero que salga en
+   el dibujo sino en el addin como tal cuando se esté configurando"). Hallazgo: ni vigas ni columnas mostraban el nombre
+   en grande, ni en Revit ni en el tablero; desde el paso 2 el encabezado solo decía "Revisa el despiece". Se hace en
+   vigas y columnas (Luciano, 05-nov): desde el paso 2, el encabezado de la página es el nombre del grupo
+   (`V Cim A-B-C - (0.50x0.90)`) y debajo, más chico, el paso y su ayuda. No se crea ningún tipo de texto en Revit.
+
 ## Plan paso a paso
 
 1. **#263 CAD** — archivos: nuevo `addins/despiece/Revit/Importados.cs` con
@@ -102,8 +108,10 @@
    6. `web/pasos.js`: control "Letra − 3.5 mm +", en el estado y en la clave de la previa; guardado en `localStorage`.
    Cómo se prueba: pruebas de `TamanoLetra`, build sin advertencias, y en Revit con 2.0, 3.5 y 5.0 mm en una viga y una
    columna: que nada se encime y que las vistas creadas antes no cambien.
-3. **#260 Título de la viga** — copiar el título que ya tiene columnas (`GeneradorColumna.cs`), con un tipo de texto
-   propio más grande. Detalle al llegar a este paso.
+3. **#260 Nombre en grande en el tablero** (decisión 6) — archivo: `web/pasos.js`, el bloque del encabezado (`titulo`
+   / `ayuda`, en `render`). Desde el paso 2 y con un grupo elegido: el nombre a 24 px y en negrita; debajo, en gris,
+   "Revisa el despiece · <ayuda>". En el paso 1 queda como está. Cómo se prueba: abrir el despiece, elegir una viga y una
+   columna y pasar por todos los pasos: el nombre se ve arriba en grande y no tapa nada.
 4. **#264 Cotas en una línea** — primero una maqueta (artifact) con 2 o 3 formas; el equipo elige; se anota aquí y
    se implementa en `GeneradorPrevia.cs` (`CotaLuces`, `CotaTotal`, `CotaColumnas`, `CotaViga`, `AjustarEjes`).
 5. **#262 Columnas en los nudos** — solo después de que Juan Felipe y Santiago confirmen el cambio de regla. Patrón
@@ -136,4 +144,7 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin despie
       Debug 2026 y 2027 sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos. Desplegado en Revit 2027.
 - [ ] Paso 2 (#261) probado en Revit: 2.0, 3.5 y 5.0 mm en una viga y una columna; nada encimado; las vistas viejas
       no cambian.
-- [ ] Pasos 3 a 5.
+- [x] Paso 2 (#261) en commit `fdbfcec` (05-nov).
+- [x] Paso 3 (#260) implementado (05-nov): encabezado con el nombre en `pasos.js`. Build 2027 sin advertencias.
+- [ ] Paso 3 (#260) visto en Revit.
+- [ ] Pasos 4 y 5.

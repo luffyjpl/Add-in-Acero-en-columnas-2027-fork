@@ -675,10 +675,15 @@
           </div>
 
           <div style="flex: 1; min-height: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px">
-            <div style="display: flex; flex-direction: column; gap: 2px">
-              <span style="font-size: 22px; font-weight: 600">${titulo}</span>
-              <span style="color: #5E6670">${ayuda}</span>
-            </div>
+            ${paso > 1 && g ? html`
+              <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                <span style="font-size: 24px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap" title=${g.nombre}>${g.nombre}</span>
+                <span style="color: #5E6670"><span style="font-weight: 600; color: #16191D">${titulo}</span> · ${ayuda}</span>
+              </div>` : html`
+              <div style="display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 22px; font-weight: 600">${titulo}</span>
+                <span style="color: #5E6670">${ayuda}</span>
+              </div>`}
 
             ${paso === 1 ? html`
               <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px">
