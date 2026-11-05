@@ -79,9 +79,12 @@ internal static class GeneradorPrevia
     private static double CotaAltoSeccion => 0.15 * M * Letra.Factor;
     private static double TextoAltoSeccion => 0.30 * M * Letra.Factor;
 
-    // La vista es solo de la viga (Juan, 30-oct): sin columnas, ni ocultas con otro dibujo. El recorte va justo a su alto;
-    // las barras sacadas se ven por fuera de él. Donde había una columna, Revit deja la viga cortada: es su geometría real.
+    // La vista es de la viga y las columnas de sus nudos, sin el acero de ellas (#262, Juan 05-nov). El recorte va al alto
+    // de la viga más el asomo de las columnas; las barras sacadas se ven por fuera de él.
     private const double HolguraRecorte = 0.005 * M;
+    // Lo que se ve de las columnas arriba y abajo de la viga (#262, decisión 9 del plan de #266): un poco, como las vigas en
+    // la vista de columna. Las etiquetas de estribos y las barras sacadas empiezan después.
+    private const double Asomo = 0.20 * M;
     private const double ColaEje = 0.3 * M * Proporcion;
     private const double CabezaEje = 0.8 * M * Proporcion;
     private static double CotaLuces => 0.35 * M * Proporcion * Letra.Factor;
@@ -302,9 +305,14 @@ internal static class GeneradorPrevia
         };
         ViewSection vista = Preparar(doc, tipo, caja, "V", EscalaLongitudinal);
         Registro.Paso("longitudinal: limpiando");
-        Limpiar(doc, vista, viga, barras);
+        // Con las columnas de sus nudos, sin su acero (#262, Juan 05-nov; antes no salían, regla de #217 del 30-oct).
+        List<ElementId> apoyos = Apoyos(doc, viga, derecha, min, max).Select(e => e.Id).ToList();
+        double asomo = apoyos.Count > 0 ? Asomo : 0;
+        Registro.Paso($"longitudinal: {apoyos.Count} apoyos visibles: {string.Join(", ", apoyos.Select(id => id.Value))}");
+        Limpiar(doc, vista, viga, barras, apoyos);
         Registro.Paso("longitudinal: coloreando");
         Colorear(doc, vista, barras);
+        SoloContorno(vista, apoyos);
         doc.Regenerate();
 
         // Se sacan todas lejos de la viga, se mide cuánto ocupa cada una y se acomodan en filas sin encimarse.
@@ -359,11 +367,11 @@ internal static class GeneradorPrevia
             return Acomodar(doc, vista, lado.Where(s => MarcaVigas.Serie(s.Barra) != serie && !EsBaston(s)).ToList(), z, haciaArriba, tipos);
         }
         var sueltas = new List<(Rebar Barra, TextNote Nota)>();
-        int filasEstribos = EtiquetarEstribos(doc, vista, barras, derecha, enPlano, max.Z, tipos, sueltas);
-        double tope = Lineas(deArriba, "S", max.Z + SeparacionViga + FilaEstribos * Math.Max(filasEstribos - 1, 0), true);
-        double fondo = Lineas(deAbajo, "I", min.Z - SeparacionViga, false);
+        int filasEstribos = EtiquetarEstribos(doc, vista, barras, derecha, enPlano, max.Z + asomo, tipos, sueltas);
+        double tope = Lineas(deArriba, "S", max.Z + asomo + SeparacionViga + FilaEstribos * Math.Max(filasEstribos - 1, 0), true);
+        double fondo = Lineas(deAbajo, "I", min.Z - asomo - SeparacionViga, false);
 
-        Recortar(vista, centro, largo / 2 + 1.0 * M, largo / 2 + 1.0 * M, alto / 2 + HolguraRecorte, alto / 2 + HolguraRecorte);
+        Recortar(vista, centro, largo / 2 + 1.0 * M, largo / 2 + 1.0 * M, alto / 2 + asomo + HolguraRecorte, alto / 2 + asomo + HolguraRecorte);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Levels), true);
         doc.Regenerate();
         AjustarEjes(doc, vista, Math.Max(tope, max.Z) + CabezaEje, Math.Min(fondo, min.Z) - CotaViga - ColaEje);
@@ -472,6 +480,25 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>
+    /// Donde se apoya la viga: las columnas que tocan su caja (con 5 cm de holgura) y, en una vigueta, las vigas
+    /// perpendiculares que la tocan y no son otra vigueta (decisión 3 del plan de viguetas). Se acotan y, desde #262, se
+    /// muestran en la vista larga.
+    /// </summary>
+    private static List<Element> Apoyos(Document doc, VigaContinua viga, XYZ derecha, XYZ min, XYZ max)
+    {
+        double holgura = 0.05 * M;
+        var caja = new Outline(new XYZ(min.X - holgura, min.Y - holgura, min.Z - holgura), new XYZ(max.X + holgura, max.Y + holgura, max.Z + holgura));
+        var filtro = new BoundingBoxIntersectsFilter(caja);
+        List<Element> apoyos = new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralColumns)
+            .WhereElementIsNotElementType().WherePasses(filtro).ToList();
+        if (viga.Elemento.EsVigueta)
+            apoyos.AddRange(new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming).WhereElementIsNotElementType().WherePasses(filtro)
+                .OfType<FamilyInstance>().Where(v => !viga.Vigas.Contains(v.Id) && v.Location is LocationCurve { Curve: Line l } && Math.Abs(l.Direction.DotProduct(derecha)) < 0.1
+                    && !TipoElemento.EsVigueta(v.Symbol.Name, (int)Math.Round(LectorDespiece.Mm(Math.Abs((v.get_BoundingBox(null).Max - v.get_BoundingBox(null).Min).DotProduct(derecha)))))));
+        return apoyos;
+    }
+
+    /// <summary>
     /// La cadena columna, luz libre, columna… y, más abajo, el largo completo de la viga (Juan, 31-oct). Las medidas se
     /// toman contra planos de referencia puestos en las caras de las columnas, solo en esta vista. Si Revit no acepta las
     /// cotas, se deshace lo hecho y la vista queda sin ellas: no vale tumbar la vista previa por esto.
@@ -479,16 +506,7 @@ internal static class GeneradorPrevia
     private static void CotarColumnas(Document doc, View vista, VigaContinua viga, XYZ centro, XYZ derecha, XYZ min, XYZ max, double fondo, TiposPropios tipos)
     {
         double a = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), b = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
-        double holgura = 0.05 * M;
-        var caja = new Outline(new XYZ(min.X - holgura, min.Y - holgura, min.Z - holgura), new XYZ(max.X + holgura, max.Y + holgura, max.Z + holgura));
-        var filtro = new BoundingBoxIntersectsFilter(caja);
-        IEnumerable<Element> apoyos = new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralColumns)
-            .WhereElementIsNotElementType().WherePasses(filtro).ToList();
-        // Una vigueta se apoya en vigas: lo perpendicular que la toca y no es otra vigueta (decisión 3 del plan de viguetas).
-        if (viga.Elemento.EsVigueta)
-            apoyos = apoyos.Concat(new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming).WhereElementIsNotElementType().WherePasses(filtro)
-                .OfType<FamilyInstance>().Where(v => !viga.Vigas.Contains(v.Id) && v.Location is LocationCurve { Curve: Line l } && Math.Abs(l.Direction.DotProduct(derecha)) < 0.1
-                    && !TipoElemento.EsVigueta(v.Symbol.Name, (int)Math.Round(LectorDespiece.Mm(Math.Abs((v.get_BoundingBox(null).Max - v.get_BoundingBox(null).Min).DotProduct(derecha)))))));
+        List<Element> apoyos = Apoyos(doc, viga, derecha, min, max);
         List<(double Desde, double Hasta)> columnas = apoyos.Select(c => c.get_BoundingBox(null)).Where(c => c is not null)
             .Select(c => (Math.Min(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)), Math.Max(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)))).ToList();
         IReadOnlyList<TramoViga> tramos = TramosViga.Calcular(a, b, columnas);
@@ -1043,10 +1061,13 @@ internal static class GeneradorPrevia
         vista.CropBox = recorte;
     }
 
-    /// <summary>Solo la viga y su acero (#217): sin columnas, rellenos ni dibujos que imiten otra cosa.</summary>
-    private static void Limpiar(Document doc, View vista, VigaContinua viga, List<Rebar> barras)
+    /// <summary>
+    /// Solo la viga, su acero y lo que se pida en <paramref name="tambien"/> (las columnas de los nudos en la vista larga,
+    /// #262): sin rellenos ni dibujos que imiten otra cosa (#217). El acero de lo demás queda oculto.
+    /// </summary>
+    private static void Limpiar(Document doc, View vista, VigaContinua viga, List<Rebar> barras, IEnumerable<ElementId>? tambien = null)
     {
-        var deja = new HashSet<ElementId>(barras.Select(b => b.Id).Concat(viga.Vigas));
+        var deja = new HashSet<ElementId>(barras.Select(b => b.Id).Concat(viga.Vigas).Concat(tambien ?? []));
         List<ElementId> ocultar = new FilteredElementCollector(doc, vista.Id).WhereElementIsNotElementType()
             .Where(e => e.Category is { CategoryType: CategoryType.Model } && !deja.Contains(e.Id) && e.CanBeHidden(vista))
             .Select(e => e.Id).ToList();
@@ -1055,6 +1076,24 @@ internal static class GeneradorPrevia
         Importados.Ocultar(doc, vista);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_SectionBox), true);
+    }
+
+    /// <summary>
+    /// Las columnas de los nudos, solo con su contorno en negro: sin relleno y con la superficie transparente, para que no
+    /// tapen el acero de la viga (#262, decisiones 9 y 11 del plan de #266).
+    /// </summary>
+    private static void SoloContorno(View vista, List<ElementId> elementos)
+    {
+        var contorno = new OverrideGraphicSettings();
+        contorno.SetProjectionLineColor(new Color(0, 0, 0));
+        contorno.SetCutLineColor(new Color(0, 0, 0));
+        contorno.SetSurfaceTransparency(100);
+        contorno.SetSurfaceForegroundPatternVisible(false);
+        contorno.SetSurfaceBackgroundPatternVisible(false);
+        contorno.SetCutForegroundPatternVisible(false);
+        contorno.SetCutBackgroundPatternVisible(false);
+        foreach (ElementId id in elementos)
+            vista.SetElementOverrides(id, contorno);
     }
 
     internal static void Colorear(Document doc, View vista, List<Rebar> barras)
