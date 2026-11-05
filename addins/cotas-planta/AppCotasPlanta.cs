@@ -20,7 +20,7 @@ public class AppCotasPlanta : IExternalApplication
             "Cotas\nde planta",
             "CQEING.CotasPlanta.Commands.CotasPlantaCommand",
             "Genera la vista «Cotas <planta>» con cotas libres, eje a eje, voladizos, viguetas y total, con vista previa.",
-            "iconoCQ"));
+            "iconoCota"));
 
         return Result.Succeeded;
     }
