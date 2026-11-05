@@ -1,0 +1,8 @@
+{
+  "id": "acero-zapatas",
+  "nombre": "Acero en zapatas",
+  "descripcion": "Coloca las parrillas de acero en las zapatas individuales y combinadas que ya existen en el modelo.",
+  "proyecto": "CQEING.Zapatas.csproj",
+  "revit": ["2026", "2027"],
+  "heredados": []
+}

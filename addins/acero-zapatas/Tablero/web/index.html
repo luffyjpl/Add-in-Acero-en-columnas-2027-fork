@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Acero en zapatas</title>
+<!-- Tablero de zapatas (#252): la maqueta aprobada (#246), con los cambios de Juan Felipe del 04-nov (decisiones 7 y 8 del plan de #247). -->
+<style>
+:root{--ink:#1F2933;--ink2:#3E4751;--ink3:#5B6672;--line:#D0D5DB;--line2:#E4E7EB;--campo:#B9C0C8;--azul:#1F5FAD;--azul2:#174A87;--x:#C2410C;--y:#2B6CB0;--x2:#E07A44;--y2:#5B9BD5;--bien:#1E8E4E;--mal:#B42318;--amarillo:#8A5A00;--fondoAm:#FFF6DD}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#DDE1E6;font:13px/1.35 'Segoe UI',system-ui,sans-serif;color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.55}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+h2{margin:0;font-size:13px;font-weight:600}
+h3{margin:0;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.mono{font-family:Consolas,monospace}
+.barra{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line)}
+.btn{height:34px;padding:0 12px;border:1px solid var(--campo);border-radius:6px;background:#fff;font-weight:500}
+.btn.azul{background:var(--azul);border-color:var(--azul);color:#fff;font-weight:600}
+.btn.borde{border-color:var(--azul);color:var(--azul);font-weight:600}
+.sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+select,input[type=number]{height:32px;padding:0 6px;border:1px solid var(--campo);border-radius:6px;background:#fff;width:100%;min-width:0}
+#cuerpo{flex:1;min-height:0;display:grid;grid-template-columns:300px minmax(420px,1fr) 340px;gap:12px;padding:12px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0}
+#planta{padding:8px;background:#FAFBFC;flex:1;min-height:180px}
+#planta svg{width:100%;height:100%;display:block}
+.nota{margin:0;padding:0 10px 8px;font-size:11px;color:var(--ink3);background:#FAFBFC}
+dl{margin:0;padding:4px 12px 10px;display:grid;grid-template-columns:auto 1fr;column-gap:8px;overflow:auto}
+dt,dd{padding:5px 0;border-bottom:1px solid #EEF0F3;margin:0}
+dt{color:var(--ink3)}
+dd{text-align:right;font-weight:500}
+#vista{position:relative;flex:1;min-height:0;background:#F7F8FA;overflow:hidden;cursor:grab;touch-action:none}
+#vista:active{cursor:grabbing}
+#svg3d{width:100%;height:100%;display:block}
+.grupo{display:flex;border:1px solid var(--campo);border-radius:6px;overflow:hidden}
+.grupo button{height:30px;padding:0 10px;border:0;background:#fff;font-size:12px;font-weight:600}
+.grupo button[aria-pressed=true]{background:var(--azul);color:#fff}
+#emergente{position:absolute;top:12px;right:12px;width:340px;max-width:calc(100% - 24px);background:#fff;border:1px solid var(--campo);border-radius:8px;box-shadow:0 8px 24px rgba(31,41,51,.18);cursor:default}
+#emergente header{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 4px 12px;background:#EEF0F3;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;border-radius:8px 8px 0 0}
+#emergente svg{width:100%;display:block}
+#emergente footer{display:flex;justify-content:space-between;gap:8px;padding:4px 12px 8px;font-size:11px;color:var(--ink3)}
+.x{width:32px;height:26px;border:0;background:transparent;font-size:14px}
+.leyenda{display:flex;flex-wrap:wrap;gap:12px;padding:8px 12px;border-top:1px solid var(--line2);font-size:12px;color:var(--ink2)}
+.leyenda i{display:inline-block;width:18px;height:3px;margin-right:6px;vertical-align:middle}
+#refuerzo{padding:12px;display:flex;flex-direction:column;gap:14px;overflow:auto;flex:1}
+.seccion{display:flex;flex-direction:column;gap:8px}
+.tabla{display:grid;grid-template-columns:82px minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center;font-size:12px}
+.tabla .cab{font-size:11px;font-weight:700;text-align:center}
+.tabla .val{text-align:center;font-family:Consolas,monospace}
+.elige{height:32px;width:100%;padding:0 4px;border:1px solid var(--campo);border-radius:6px;background:#fff;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.fila{display:flex;align-items:center;gap:8px}
+.fila label{flex:1;font-size:12px}
+.fila input[type=number]{width:96px;flex:none}
+.resumen{background:#F3F4F6;border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.resumen div{display:flex;justify-content:space-between}
+.resumen .tot{font-size:13px;font-weight:700;padding-top:6px;border-top:1px solid var(--line)}
+#avisos{display:flex;flex-direction:column;gap:6px;font-size:12px}
+#avisos div{padding:6px 8px;border-radius:6px;background:var(--fondoAm);color:var(--amarillo)}
+#avisos div.mal{background:#FDECEA;color:var(--mal)}
+.pie{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line2)}
+.pie .btn{height:38px;flex:1}
+.pie .btn.azul{flex:2}
+#estado{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:6px 12px;background:#E4E7EB;border-top:1px solid var(--line);font-size:11px;color:var(--ink2)}
+#estado i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bien);margin-right:6px}
+#toast{position:fixed;left:50%;bottom:44px;transform:translateX(-50%);max-width:70%;background:#2B3138;color:#F3F4F6;padding:10px 14px;border-radius:6px;font-size:12px;box-shadow:0 8px 24px rgba(31,41,51,.3);z-index:30}
+#toast.mal{background:var(--mal)}
+#toast.bien{background:var(--bien)}
+.modal{position:fixed;inset:0;background:rgba(31,41,51,.45);display:flex;align-items:center;justify-content:center;z-index:20}
+.caja{background:#fff;border-radius:8px;width:min(860px,92vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 32px rgba(31,41,51,.3)}
+.caja.chica{width:min(440px,92vw)}
+.caja header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.caja .contenido{padding:12px 14px;overflow:auto}
+.caja footer{display:flex;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--line2)}
+.rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.ficha{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:11px;min-height:96px}
+.ficha svg{width:90px;height:54px}
+.ficha.tenue{opacity:.55}
+.ficha[aria-pressed=true]{border:2px solid var(--azul);background:#E6EEF8;opacity:1}
+.ficha small{color:var(--ink3)}
+[hidden]{display:none!important}
+@media (max-width:1100px){#cuerpo{grid-template-columns:260px minmax(320px,1fr) 300px}}
+</style>
+</head>
+<body>
+<div class="barra">
+  <label for="sel" style="font-size:12px;font-weight:600;color:var(--ink3)">Zapata</label>
+  <select id="sel" style="width:auto;min-width:200px;height:34px"></select>
+  <button class="btn borde" id="bSeleccionar">Seleccionar en Revit</button>
+  <button class="btn azul" id="bMostrar">Mostrar en Revit</button>
+  <span class="sep"></span>
+  <button class="btn" id="bIguales">Elegir iguales</button>
+  <button class="btn" id="bRecalcular">Recalcular</button>
+</div>
+
+<div id="cuerpo">
+  <div class="col">
+    <section class="panel" style="flex:1">
+      <div class="titulo"><h2>Vista en planta · Cimentación</h2><span class="mono" id="cota" style="font-size:11px;color:var(--ink3)"></span></div>
+      <div id="planta"></div>
+      <p class="nota" id="notaPlanta">Clic elige una zapata. Ctrl + clic suma o quita.</p>
+    </section>
+    <section class="panel" style="max-height:48%">
+      <div class="titulo"><h2>Detalles de la zapata</h2></div>
+      <dl id="detalles"></dl>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="titulo">
+      <h2 id="titulo3d">Vista 3D</h2>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+        <div class="grupo" id="modos">
+          <button data-modo="solido" aria-pressed="false">Sólido</button>
+          <button data-modo="transparente" aria-pressed="true">Transparente</button>
+          <button data-modo="alambre" aria-pressed="false">Alambre</button>
+        </div>
+        <button class="btn" style="height:30px;font-size:12px" id="bArriba">Vista superior</button>
+        <button class="btn" style="height:30px;font-size:12px" id="bIso">Vista 3D</button>
+        <button class="btn" style="height:30px;font-size:12px" id="b2d" aria-pressed="true">Vista 2D</button>
+      </div>
+    </div>
+    <div id="vista">
+      <svg id="svg3d" role="img" aria-label="Vista 3D de la zapata y su acero"></svg>
+      <div id="emergente">
+        <header><span id="titulo2d">Sección A-A</span><button class="x" id="c2d" aria-label="Cerrar vista 2D">×</button></header>
+        <div id="sec2d"></div>
+        <footer><span id="esc2d"></span><span id="gan2d"></span></footer>
+      </div>
+    </div>
+    <div class="leyenda">
+      <span><i style="background:var(--x)"></i>Inferior X</span>
+      <span><i style="background:var(--y)"></i>Inferior Y</span>
+      <span><i style="background:var(--x2)"></i>Superior X</span>
+      <span><i style="background:var(--y2)"></i>Superior Y</span>
+      <span><i style="background:var(--ink2)"></i>Columna</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="titulo"><h2>Detalles del refuerzo</h2></div>
+    <div id="refuerzo">
+      <div class="seccion">
+        <h3>Recubrimiento</h3>
+        <div class="fila"><label for="recG">Global (m)</label><input id="recG" type="number" step="0.005" min="0"><button class="btn" style="height:32px" id="bOpciones">Opciones</button></div>
+      </div>
+      <div class="seccion">
+        <h3>Parrilla inferior</h3>
+        <div class="tabla">
+          <span></span><span class="cab" style="color:var(--x)">Dir. X</span><span class="cab" style="color:var(--y)">Dir. Y</span>
+          <span>Barra</span><select id="numX" aria-label="Barra dirección X"></select><select id="numY" aria-label="Barra dirección Y"></select>
+          <span>Separación (m)</span><input id="sepX" type="number" step="0.01" min="0.01" aria-label="Separación dirección X"><input id="sepY" type="number" step="0.01" min="0.01" aria-label="Separación dirección Y">
+          <span>Cantidad</span><span class="val" id="canX">–</span><span class="val" id="canY">–</span>
+          <span>Forma</span><button class="elige" id="forX"></button><button class="elige" id="forY"></button>
+          <span>Gancho</span><button class="elige" id="ganX"></button><button class="elige" id="ganY"></button>
+          <span>Pata (m)</span><span class="val" id="patX">–</span><span class="val" id="patY">–</span>
+        </div>
+      </div>
+      <div class="seccion">
+        <h3>Parrilla superior</h3>
+        <label class="fila" style="min-height:28px"><input type="checkbox" id="sup" style="width:16px;height:16px;margin:0"><span style="font-size:12px">Incluir parrilla superior (misma configuración, gancho al revés, media separación corrida)</span></label>
+      </div>
+      <div id="avisos"></div>
+      <div class="resumen">
+        <h3>Resumen de acero</h3>
+        <div><span>Longitud por barra</span><span class="mono" id="rLon">–</span></div>
+        <div><span>Total de barras</span><span class="mono" id="rBar">–</span></div>
+        <div><span>Longitud total</span><span class="mono" id="rTot">–</span></div>
+        <div class="tot"><span>Peso total</span><span class="mono" id="rKg">–</span></div>
+      </div>
+    </div>
+    <div class="pie">
+      <button class="btn" id="bCerrar">Cerrar</button>
+      <button class="btn azul" id="bAplicar">Aplicar refuerzo en Revit</button>
+    </div>
+  </section>
+</div>
+
+<div id="estado"><span><i></i><span id="txtEstado">Leyendo el modelo…</span></span><span>Unidades: m · kg</span></div>
+<div id="toast" role="status" hidden></div>
+
+<div class="modal" id="mOpciones" hidden>
+  <div class="caja chica" role="dialog" aria-modal="true" aria-labelledby="tOpc">
+    <header><h2 id="tOpc">Recubrimiento por cara</h2><button class="x" data-cierra aria-label="Cerrar">×</button></header>
+    <div class="contenido seccion">
+      <div class="fila"><label for="recI">Abajo (m)</label><input id="recI" type="number" step="0.005" min="0"></div>
+      <div class="fila"><label for="recL">Lados (m)</label><input id="recL" type="number" step="0.005" min="0"></div>
+      <div class="fila"><label for="recS">Arriba (m)</label><input id="recS" type="number" step="0.005" min="0"></div>
+    </div>
+    <footer><button class="btn azul" data-cierra>Listo</button></footer>
+  </div>
+</div>
+
+<div class="modal" id="mCatalogo" hidden>
+  <div class="caja" role="dialog" aria-modal="true" aria-labelledby="tCat">
+    <header><h2 id="tCat">Catálogo</h2>
+      <label class="fila" id="filtroCat" style="font-size:12px"><input type="checkbox" id="todas" style="margin:0"><span>Mostrar todas</span></label>
+      <button class="x" data-cierra aria-label="Cerrar">×</button></header>
+    <div class="contenido"><div class="rejilla" id="rejilla"></div></div>
+  </div>
+</div>
+
+<div class="modal" id="mConfirmar" hidden>
+  <div class="caja chica" role="alertdialog" aria-modal="true" aria-labelledby="tCon">
+    <header><h2 id="tCon">Antes de generar</h2></header>
+    <div class="contenido" id="txtConfirmar"></div>
+    <footer><button class="btn" data-cierra>Cancelar</button><button class="btn azul" id="bConfirmar">Generar</button></footer>
+  </div>
+</div>
+
+<script src="zapatas.js"></script>
+</body>
+</html>
