@@ -83,6 +83,7 @@ internal sealed class PuenteDespiece
                 VerPrevia(raiz);
                 break;
             case "crearVistas":
+                UsarLetra(raiz);
                 CrearVistas(raiz.GetProperty("grupo").GetInt32(), raiz.GetProperty("negros").GetBoolean(), Movimientos(raiz));
                 break;
             case "ver3d":
@@ -93,6 +94,10 @@ internal sealed class PuenteDespiece
                 break;
         }
     }
+
+    /// <summary>El tamaño de letra elegido en la página (#261); un mensaje sin él usa el de por defecto.</summary>
+    private static void UsarLetra(JsonElement raiz) =>
+        Letra.Usar(raiz.TryGetProperty("letra", out JsonElement letra) && letra.ValueKind == JsonValueKind.Number ? letra.GetDouble() : TamanoLetra.PorDefecto);
 
     /// <summary>Lo que la página dice que se movió: <c>{ "397193": { dz, tx, tz, dx } }</c>, en metros (<c>dx</c> solo en columnas).</summary>
     private static Dictionary<string, Movimiento> Movimientos(JsonElement raiz)
@@ -294,6 +299,7 @@ internal sealed class PuenteDespiece
             var movible = new DespieceMovible(Movimientos(raiz), raiz.GetProperty("separar").GetBoolean());
             ElementoLeido e = grupos[grupo].Elementos[0];
             bool negros = raiz.GetProperty("negros").GetBoolean();
+            UsarLetra(raiz);
             PreviaGenerada p = e.EsColumna
                 ? GeneradorColumna.Generar(doc, Columna(e), ventana.CarpetaPrevia, negros, movible)
                 : GeneradorPrevia.Generar(doc, Continua(e), ventana.CarpetaPrevia, negros, movible);

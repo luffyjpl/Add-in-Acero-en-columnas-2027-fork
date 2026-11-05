@@ -49,44 +49,46 @@ internal static class GeneradorPrevia
     private const int EscalaLongitudinal = 15;
     private const int EscalaSeccion = 15;
 
+    // Las separaciones que dependen del texto se midieron con letra de 2.5 mm y crecen con la elegida en el tablero
+    // (Letra.Factor, #261 decisión 5); las demás son del modelo y no cambian.
     // Las separaciones de la vista larga se midieron a 1:50, en pies del modelo; el texto ocupa lo que dice la escala,
     // así que se reducen en proporción para que la vista no quede llena de aire.
     private const double Proporcion = EscalaLongitudinal / 50.0;
-    private const double SeparacionViga = 0.14 * M;
+    private static double SeparacionViga => 0.14 * M * Letra.Factor;
     // A 1:15 la caja de la nota baja 0.09 m desde su punto (medido en V 3, 30-oct); el resto es aire sobre la barra.
-    private const double AltoTexto = 0.11 * M;
-    private const double EspacioCotas = 0.15 * M;
+    private static double AltoTexto => 0.11 * M * Letra.Factor;
+    private static double EspacioCotas => 0.15 * M * Letra.Factor;
     private const double MinimoGancho = 0.05 * M;
     private const double MinimoTraslapo = 0.01 * M;
-    private const double MedioAnchoEtiqueta = 0.65 * M * Proporcion;
-    private const double HuecoFilas = 0.15 * M * Proporcion;
-    private const double HuecoEnFila = 0.20 * M * Proporcion;
+    private static double MedioAnchoEtiqueta => 0.65 * M * Proporcion * Letra.Factor;
+    private static double HuecoFilas => 0.15 * M * Proporcion * Letra.Factor;
+    private static double HuecoEnFila => 0.20 * M * Proporcion * Letra.Factor;
     private const double DesfaseTraslapo = 0.08 * M;
     private const double MismaZona = 0.10 * M;
     // La caja de la nota mide 0.12 m de alto a 1:15 (medido en V 3, 30-oct).
-    private const double FilaEstribos = 0.13 * M;
-    private const double BajaNota = 0.09 * M;
-    private const double SubeNota = 0.03 * M;
+    private static double FilaEstribos => 0.13 * M * Letra.Factor;
+    private static double BajaNota => 0.09 * M * Letra.Factor;
+    private static double SubeNota => 0.03 * M * Letra.Factor;
     private const double AireNota = 0.01 * M;
-    private const double AnchoNotaGirada = 0.10 * M;
+    private static double AnchoNotaGirada => 0.10 * M * Letra.Factor;
 
     // Bajo la sección, de arriba abajo: las etiquetas (hasta 0.29 m), la cota del ancho y el recubrimiento. Así las flechas
     // no cruzan las cotas. A la izquierda, la cota del alto y su recubrimiento.
-    private const double CotaAnchoSeccion = 0.42 * M;
-    private const double TextoAnchoSeccion = 0.46 * M;
-    private const double CotaAltoSeccion = 0.15 * M;
-    private const double TextoAltoSeccion = 0.30 * M;
+    private static double CotaAnchoSeccion => 0.42 * M * Letra.Factor;
+    private static double TextoAnchoSeccion => 0.46 * M * Letra.Factor;
+    private static double CotaAltoSeccion => 0.15 * M * Letra.Factor;
+    private static double TextoAltoSeccion => 0.30 * M * Letra.Factor;
 
     // La vista es solo de la viga (Juan, 30-oct): sin columnas, ni ocultas con otro dibujo. El recorte va justo a su alto;
     // las barras sacadas se ven por fuera de él. Donde había una columna, Revit deja la viga cortada: es su geometría real.
     private const double HolguraRecorte = 0.005 * M;
     private const double ColaEje = 0.3 * M * Proporcion;
     private const double CabezaEje = 0.8 * M * Proporcion;
-    private const double CotaLuces = 0.35 * M * Proporcion;
-    private const double CotaTotal = 0.75 * M * Proporcion;
+    private static double CotaLuces => 0.35 * M * Proporcion * Letra.Factor;
+    private static double CotaTotal => 0.75 * M * Proporcion * Letra.Factor;
     // Debajo de las cotas de ejes: la cadena de columnas y luces libres y, al final, el largo de la viga.
-    private const double CotaColumnas = 1.15 * M * Proporcion;
-    private const double CotaViga = 1.55 * M * Proporcion;
+    private static double CotaColumnas => 1.15 * M * Proporcion * Letra.Factor;
+    private static double CotaViga => 1.55 * M * Proporcion * Letra.Factor;
     private const double AlturaPlano = 0.03 * M;
 
     /// <summary>Un bastón va más adentro que la capa exterior por más de esto.</summary>
@@ -173,7 +175,7 @@ internal static class GeneradorPrevia
             escala = Math.Abs(c.EscalaX) / 0.3048,
             horizontal,
             // Revit mide la altura de la mayúscula; en la página se pide el tamaño de la fuente, y en Arial la mayúscula es el 72 %.
-            altoLetra = Math.Abs(c.EscalaX) / 0.3048 * 0.0025 * EscalaLongitudinal / 0.72,
+            altoLetra = Math.Abs(c.EscalaX) / 0.3048 * Letra.Mm / 1000 * EscalaLongitudinal / 0.72,
             piezas = movible.Piezas.Select(p => new
             {
                 id = p.Id,
@@ -1162,7 +1164,8 @@ internal sealed class TiposPropios
     public static TiposPropios Crear(Document doc, bool definitivos)
     {
         string sufijo = Guid.NewGuid().ToString("N");
-        string Nombre(string fijo) => definitivos ? fijo : "CQEING temporal " + sufijo;
+        // Un tipo por tamaño de letra: crear vistas con otro tamaño no cambia las ya creadas (#261, decisión 4).
+        string Nombre(string fijo) => definitivos ? Letra.Nombre(fijo) : "CQEING temporal " + sufijo;
         List<RebarBendingDetailType> todos = new FilteredElementCollector(doc).OfClass(typeof(RebarBendingDetailType)).Cast<RebarBendingDetailType>().ToList();
         // El que no trae etiqueta: la del proyecto dice "#5 CQEING - 34", y borrarla después borra también el detalle.
         RebarBendingDetailType original = todos.FirstOrDefault(t => !TieneEtiqueta(doc, t)) ?? todos.First();
@@ -1194,7 +1197,7 @@ internal sealed class TiposPropios
         if (nota is null)
         {
             nota = (TextNoteType)notas[0].Duplicate(nombreNota);
-            nota.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(TamanoTexto);
+            nota.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(Letra.Pies);
             nota.get_Parameter(BuiltInParameter.TEXT_BACKGROUND).Set(1);
         }
         DimensionType? corta = null;
@@ -1228,7 +1231,7 @@ internal sealed class TiposPropios
     }
 
     /// <summary>
-    /// El número de la cota del mismo tamaño que las notas (2.5 mm): el tipo duplicado hereda el del proyecto, que puede
+    /// El número de la cota del mismo tamaño que las notas (el elegido en el tablero, #261): el tipo duplicado hereda el del proyecto, que puede
     /// ser diminuto (hallazgo 35 del plan de columnas). Es un tipo del despiece: no se toca ninguno del proyecto.
     /// </summary>
     private static DimensionType ConTextoLegible(DimensionType tipo)
@@ -1237,11 +1240,8 @@ internal sealed class TiposPropios
         if (tamano is null || tamano.IsReadOnly)
             return tipo;
         Registro.Paso($"tipos: texto de cota de «{tipo.Name}» {tamano.AsDouble() * 304.8:0.00} mm");
-        if (Math.Abs(tamano.AsDouble() - TamanoTexto) > 1e-6)
-            tamano.Set(TamanoTexto);
+        if (Math.Abs(tamano.AsDouble() - Letra.Pies) > 1e-6)
+            tamano.Set(Letra.Pies);
         return tipo;
     }
-
-    /// <summary>El tamaño de las notas del despiece, en pies.</summary>
-    private const double TamanoTexto = 0.0025 / 0.3048;
 }

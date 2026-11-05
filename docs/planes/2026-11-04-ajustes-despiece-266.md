@@ -63,6 +63,20 @@
    Se ocultan por elemento (`HideElements`), no por categoría, porque las categorías de los CAD dependen del nombre
    de cada archivo.
 
+3. **#261: el tamaño de letra se elige en el tablero, con un número que se sube y se baja** (04-nov, Luciano): nada de
+   opciones fijas. Un solo número para vigas y columnas, junto a "Textos en negro", con botones − / +.
+   Detalles (Claude, 04-nov): pasos de 0.5 mm, entre 2.0 y 5.0 mm, 3.5 mm por defecto. El tablero recuerda el último
+   (en el almacenamiento de la página). Cambiarlo vuelve a generar la vista previa en Revit, medio segundo después del
+   último clic, para no encolar una generación por cada clic.
+4. **#261: un estilo de texto por tamaño** (04-nov, Luciano): `CQ Despiece etiqueta 3.5 mm`, y lo mismo para los otros
+   tipos que llevan texto (`CQ Despiece - metros 3.5 mm`, `... corta`, y los detalles de barra
+   `CQ Despiece sin etiqueta 3.5 mm`, porque apuntan a un tipo de cota). Así crear vistas con otro tamaño no cambia las
+   vistas ya creadas. Los tipos viejos, sin tamaño en el nombre, no se tocan.
+5. **#261: las separaciones que dependen del texto crecen en proporción** (04-nov, Claude): se multiplican por
+   `tamaño / 2.5`, porque se midieron con 2.5 mm. Las que no dependen del texto (holguras, desfase del traslapo,
+   tolerancias, ejes) no cambian. El tamaño elegido se fija al empezar cada vista previa o creación (`Letra.Usar`) y las
+   separaciones lo leen de ahí; Revit atiende una orden a la vez, así que no hay dos tamaños mezclados.
+
 ## Plan paso a paso
 
 1. **#263 CAD** — archivos: nuevo `addins/despiece/Revit/Importados.cs` con
@@ -71,9 +85,23 @@
    - en `GeneradorPlanta.Generar`, después de quitar la plantilla de la copia;
    - al final de `GeneradorPrevia.Limpiar`, `GeneradorColumna.Limpiar` y `SeccionColumna.Limpiar`.
    Cómo se prueba: build sin advertencias, `dotnet test CQEING-Addins.sln`, y en Revit 2027 (ver "Cómo probarlo").
-2. **#261 Texto más grande** — `GeneradorPrevia.cs` (`TamanoTexto` y separaciones que dependen del texto), tipos de cota
-   `CQ Despiece - metros`/`corta`, columnas (`GeneradorColumna.cs`, `SeccionColumna.cs`) y `web/pasos.js` (`altoLetra`).
-   Antes de programar: elegir el tamaño con Luciano (propuesta 3.5 mm a escala 1:15/1:50). Detalle al llegar a este paso.
+2. **#261 Texto más grande, elegido en el tablero** (decisiones 3 a 5):
+   1. `calculo/CQEING.Despiece.Calculo/TamanoLetra.cs`: límites, redondeo a 0.5 mm, factor y nombre del tipo, con
+      pruebas en `TamanoLetraTests.cs` (sin Revit).
+   2. `Revit/Letra.cs`: el tamaño en uso (`Letra.Usar(mm)`, `Letra.Factor`, `Letra.Pies`, `Letra.Nombre(tipo)`).
+   3. `GeneradorPrevia.cs`, `Columnas/GeneradorColumna.cs`, `Columnas/SeccionColumna.cs`: las separaciones de texto
+      pasan de `const` a propiedades `× Letra.Factor`. Escalan: viga `SeparacionViga`, `AltoTexto`, `EspacioCotas`,
+      `MedioAnchoEtiqueta`, `HuecoFilas`, `HuecoEnFila`, `FilaEstribos`, `BajaNota`, `SubeNota`, `AnchoNotaGirada`,
+      `CotaAnchoSeccion`, `TextoAnchoSeccion`, `CotaAltoSeccion`, `TextoAltoSeccion`, `CotaLuces`, `CotaTotal`,
+      `CotaColumnas`, `CotaViga`; columna `AltoTexto`, `BajaNota`, `AnchoNotaGirada`, `FilaEstribos`, `CotaElementos`,
+      `CotaTotal`; sección de columna `FilaArriba`, `FilaAbajo`, `PasoEtiquetas`, `CotaAncho`, `TextoAncho`, `CotaAlto`,
+      `TextoAlto`, `Leyenda`, `EstriboAparte`, `FilaTexto`.
+   4. `TiposPropios.Crear`: nombres con el tamaño y `TEXT_SIZE = Letra.Pies` en notas y cotas. `Capa`: `altoLetra` con
+      `Letra.Pies`.
+   5. `Interfaz/PuenteDespiece.cs`: leer `letra` de los mensajes `previa` y `crearVistas` y llamar `Letra.Usar`.
+   6. `web/pasos.js`: control "Letra − 3.5 mm +", en el estado y en la clave de la previa; guardado en `localStorage`.
+   Cómo se prueba: pruebas de `TamanoLetra`, build sin advertencias, y en Revit con 2.0, 3.5 y 5.0 mm en una viga y una
+   columna: que nada se encime y que las vistas creadas antes no cambien.
 3. **#260 Título de la viga** — copiar el título que ya tiene columnas (`GeneradorColumna.cs`), con un tipo de texto
    propio más grande. Detalle al llegar a este paso.
 4. **#264 Cotas en una línea** — primero una maqueta (artifact) con 2 o 3 formas; el equipo elige; se anota aquí y
@@ -103,4 +131,9 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin despie
 - [x] Paso 1 (#263) implementado (04-nov): `Revit/Importados.cs` y sus cuatro llamadas. Build Debug 2026 y 2027
       sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos.
 - [ ] Paso 1 (#263) probado en Revit.
-- [ ] Pasos 2 a 5.
+- [x] Paso 2 (#261) implementado (04-nov), sin commit todavía: `TamanoLetra.cs` + 9 pruebas, `Letra.cs`, separaciones
+      con `Letra.Factor`, tipos con el tamaño en el nombre, `letra` en los mensajes y control − / + en `pasos.js`. Build
+      Debug 2026 y 2027 sin advertencias; `dotnet test CQEING-Addins.sln` sin fallos. Desplegado en Revit 2027.
+- [ ] Paso 2 (#261) probado en Revit: 2.0, 3.5 y 5.0 mm en una viga y una columna; nada encimado; las vistas viejas
+      no cambian.
+- [ ] Pasos 3 a 5.
