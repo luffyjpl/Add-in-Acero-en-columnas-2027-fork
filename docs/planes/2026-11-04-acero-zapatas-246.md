@@ -31,9 +31,12 @@ Del código de `main` en `6de33cb`. Lo marcado **por medir** aún no se ha compr
 - **Tres recubrimientos:** `RecubrimientoTemporal.cs` usa `CLEAR_COVER_TOP`, `CLEAR_COVER_BOTTOM` y `CLEAR_COVER_OTHER`.
   **Por medir** que existan y se puedan escribir en una zapata.
 - **Marca del add-in:** `MarcaAcero.cs` usa Extensible Storage con esquema propio para regenerar sin duplicar.
-- **MCP de Revit (2026-11-04):** el usuario pidió conectar `mcp-servers-for-revit` v1.0.0 para leer el modelo y probar
-  código en Revit real. Todavía no está instalado: lo bloqueó el control de permisos de Claude Code. El diagnóstico del
-  paso 5 mide lo mismo sin el MCP.
+- **MCP de Revit (2026-11-04):** el usuario instaló `mcp-servers-for-revit` v1.0.0 para leer el modelo y probar código en
+  Revit real. Revit escucha en el puerto 8080 y `claude mcp list` dice «Connected». Falta activar sus comandos en Revit y
+  usarlo desde una sesión nueva de Claude, con una copia del modelo. Dos detalles al instalar: con `cmd /c npx` el servidor
+  no responde a tiempo, así que se registra con `node <caché de npx>\mcp-server-for-revit\build\index.js`; y en Node 26
+  `better-sqlite3` no carga, lo que solo afecta a las herramientas que guardan datos. Si no conecta, el diagnóstico del
+  paso 5 mide lo mismo.
 - **Medido con el diagnóstico (2026-11-04, `Prueba 080720sfsd26`, Revit 2026.5.10, barra #5, h 350, recubrimientos de 75):**
   - La lectura dio bien las 12 zapatas: 8 de 900 × 2000 y 4 de 1800 × 1800, con contorno, altura, columna y eje correctos.
   - **El modelo no tiene combinadas ni formas atípicas:** esos casos siguen sin probar en Revit.
@@ -110,8 +113,8 @@ Con Revit abierto, la DLL de `bin\Debug\2026` queda bloqueada: para revisar que 
 ## Estado
 
 - [x] Pasos 1 a 7 implementados (2026-11-04), versión prefinal.
-- [ ] Probado en Revit: falta generar acero con el tablero. Solo se midieron en Revit la lectura y la barra inferior de
-      prueba del diagnóstico.
+- [ ] Probado en Revit, en parte. El usuario confirmó (2026-11-04) que el tablero se ve y que los cambios se aplican en el
+      modelo. La lista de depuración de abajo no se confirmó punto por punto, y las combinadas siguen sin probar.
 - [ ] Paso 9, release de respaldo: pendiente de terminar las pruebas.
 
 Comprobado (2026-11-04): compila en Release para 2026 y 2027 con 0 advertencias; `dotnet test CQEING-Addins.sln -c Release`
