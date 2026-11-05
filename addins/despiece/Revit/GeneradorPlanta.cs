@@ -3,7 +3,7 @@ using CQEING.Despiece.Calculo;
 
 namespace CQEING.Despiece.Revit;
 
-/// <summary>La imagen de una planta y dónde cae cada viga en ella, en píxeles.</summary>
+/// <summary>La imagen de una planta y dónde cae cada viga (y cada columna) en ella, en píxeles, por id del elemento.</summary>
 internal sealed record PlantaGenerada(string Ruta, int Ancho, int Alto, IReadOnlyDictionary<string, CajaPixeles> Cajas);
 
 /// <summary>
@@ -44,11 +44,16 @@ internal static class GeneradorPlanta
             // vigas; una vista nueva trae el rango por defecto del tipo. En la copia se muestran y se mira un metro abajo;
             // la planta original no se toca.
             copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_StructuralFraming), false);
+            // Las columnas también, para elegirlas (decisión 13 del plan de columnas). Sus cajas van después de las de
+            // las vigas; la página solo dibuja las del tipo elegido.
+            copia.SetCategoryHidden(new ElementId(BuiltInCategory.OST_StructuralColumns), false);
             if (planta is null || copia.ViewType == ViewType.FloorPlan)
                 MirarBajoElNivel(copia);
 
             List<Element> vigas = new FilteredElementCollector(doc, copia.Id).OfCategory(BuiltInCategory.OST_StructuralFraming)
                 .WhereElementIsNotElementType().ToList();
+            vigas.AddRange(new FilteredElementCollector(doc, copia.Id).OfCategory(BuiltInCategory.OST_StructuralColumns)
+                .WhereElementIsNotElementType().Where(c => c.get_BoundingBox(null) is not null));
             if (vigas.Count == 0)
                 return Exportar(doc, copia, carpeta, [], null, null);
 

@@ -6,6 +6,7 @@ using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using CQEING.Despiece.Calculo;
 using CQEING.Despiece.Revit;
+using CQEING.Despiece.Revit.Columnas;
 
 namespace CQEING.Despiece.Interfaz;
 
@@ -24,6 +25,7 @@ internal sealed class PuenteDespiece
     private bool cerrado;
     private Document? doc;
     private List<VigaContinua> vigas = [];
+    private List<ColumnaLeida> columnas = [];
     private IReadOnlyList<GrupoIguales> grupos = [];
 
     /// <summary>Corre un trabajo del add-in: lo que cambie en el documento mientras tanto no cuenta como cambio del usuario.</summary>
@@ -87,17 +89,18 @@ internal sealed class PuenteDespiece
                 Ver3D(raiz.GetProperty("grupo").GetInt32());
                 break;
             case "irAVista":
-                IrAVista(raiz.GetProperty("grupo").GetInt32(), raiz.GetProperty("seccion").GetBoolean());
+                IrAVista(raiz);
                 break;
         }
     }
 
-    /// <summary>Lo que la página dice que se movió: <c>{ "397193": { dz, tx, tz } }</c>, en metros.</summary>
+    /// <summary>Lo que la página dice que se movió: <c>{ "397193": { dz, tx, tz, dx } }</c>, en metros (<c>dx</c> solo en columnas).</summary>
     private static Dictionary<string, Movimiento> Movimientos(JsonElement raiz)
     {
         var movimientos = new Dictionary<string, Movimiento>();
         foreach (JsonProperty p in raiz.GetProperty("movimientos").EnumerateObject())
-            movimientos[p.Name] = new Movimiento(p.Value.GetProperty("dz").GetDouble(), p.Value.GetProperty("tx").GetDouble(), p.Value.GetProperty("tz").GetDouble());
+            movimientos[p.Name] = new Movimiento(p.Value.GetProperty("dz").GetDouble(), p.Value.GetProperty("tx").GetDouble(), p.Value.GetProperty("tz").GetDouble(),
+                p.Value.TryGetProperty("dx", out JsonElement dx) ? dx.GetDouble() : 0);
         return movimientos;
     }
 
@@ -106,23 +109,38 @@ internal sealed class PuenteDespiece
         if (doc is null)
             return;
         GrupoIguales g = grupos[grupo];
+        if (g.Elementos[0].EsColumna)
+        {
+            var (nombres, yaExistian) = GeneradorColumna.Crear(doc, Columna(g.Elementos[0]), g.Nombre, negros, new DespieceMovible(movimientos, false));
+            Enviar(new { tipo = "vistas", grupo, nombres, yaExistian });
+            return;
+        }
         VistasCreadas v = GeneradorPrevia.Crear(doc, Continua(g.Elementos[0]), g.Nombre, negros, new DespieceMovible(movimientos, false));
         Enviar(new { tipo = "vistas", grupo, longitudinal = v.Longitudinal, seccion = v.Seccion, yaExistian = v.YaExistian });
     }
 
     private void Ver3D(int grupo)
     {
-        if (doc is null || grupo >= grupos.Count)
+        // Columnas no tiene 3D (decisión 11 del plan de columnas): la página no ofrece el botón.
+        if (doc is null || grupo >= grupos.Count || grupos[grupo].Elementos[0].EsColumna)
             return;
         Enviar(new { tipo = "modelo3d", grupo, modelo = Modelo3D.Leer(doc, Continua(grupos[grupo].Elementos[0])) });
     }
 
-    /// <summary>Abre en Revit la vista larga o la sección del grupo. La ventana se minimiza porque queda encima de Revit y taparía la vista.</summary>
-    private void IrAVista(int grupo, bool seccion)
+    /// <summary>
+    /// Abre en Revit una vista del grupo: en la viga la larga o la sección (<c>seccion</c>); en la columna el alzado o una de
+    /// las secciones (<c>cual</c>: 0, 1 o 2). La ventana se minimiza porque queda encima de Revit y taparía la vista.
+    /// </summary>
+    private void IrAVista(JsonElement raiz)
     {
+        int grupo = raiz.GetProperty("grupo").GetInt32();
         if (doc is null || grupo >= grupos.Count)
             return;
-        if (GeneradorPrevia.VistaCreada(doc, grupos[grupo].Nombre, seccion) is not { } vista)
+        GrupoIguales g = grupos[grupo];
+        View? encontrada = g.Elementos[0].EsColumna
+            ? GeneradorColumna.VistaCreada(doc, g.Nombre, raiz.GetProperty("cual").GetInt32())
+            : GeneradorPrevia.VistaCreada(doc, g.Nombre, raiz.GetProperty("seccion").GetBoolean());
+        if (encontrada is not { } vista)
         {
             Enviar(new { tipo = "error", texto = "Esa vista ya no existe en el proyecto." });
             return;
@@ -159,7 +177,8 @@ internal sealed class PuenteDespiece
     private void Cargar(bool refresco)
     {
         vigas = LectorDespiece.Leer(doc!);
-        grupos = AgrupadorIguales.Agrupar(vigas.Select(v => v.Elemento));
+        columnas = LectorColumnas.Leer(doc!);
+        grupos = AgrupadorIguales.Agrupar(vigas.Select(v => v.Elemento).Concat(columnas.Select(c => c.Elemento)));
         List<Level> lista = LectorDespiece.Plantas(doc!);
         pendientes.Clear();
         pendientes.AddRange(lista.Select(p => p.Id.ToString()));
@@ -176,8 +195,9 @@ internal sealed class PuenteDespiece
                 nombre = g.Nombre,
                 tieneAcero = g.TieneAcero,
                 esVigueta = g.Elementos[0].EsVigueta,
+                esColumna = g.Elementos[0].EsColumna,
                 vistaCreada = GeneradorPrevia.VistaCreada(doc!, g.Nombre) is not null,
-                vigas = g.Elementos.SelectMany(e => Continua(e).Vigas).Select(id => id.ToString()),
+                vigas = g.Elementos.SelectMany(Elementos).Select(id => id.ToString()),
                 cantidad = g.Elementos.Count,
                 filas = Filas(g),
             }),
@@ -186,6 +206,12 @@ internal sealed class PuenteDespiece
     }
 
     private VigaContinua Continua(ElementoLeido e) => vigas.First(v => v.Elemento == e);
+
+    /// <summary>Los elementos de Revit que se eligen en la planta: los tramos de la viga o los pisos de la columna.</summary>
+    private IEnumerable<ElementId> Elementos(ElementoLeido e) =>
+        e.EsColumna ? Columna(e).Elementos : Continua(e).Vigas;
+
+    private ColumnaLeida Columna(ElementoLeido e) => columnas.First(c => ReferenceEquals(c.Elemento, e));
 
     private static IEnumerable<object> Filas(GrupoIguales g) => g.Elementos[0].Barras
         .GroupBy(b => (b.Tipo, b.Cantidad, b.LargoMm, b.RectoMm))
@@ -266,8 +292,18 @@ internal sealed class PuenteDespiece
         if (!previas.TryGetValue(clave, out object? listo))
         {
             var movible = new DespieceMovible(Movimientos(raiz), raiz.GetProperty("separar").GetBoolean());
-            PreviaGenerada p = GeneradorPrevia.Generar(doc, Continua(grupos[grupo].Elementos[0]), ventana.CarpetaPrevia, raiz.GetProperty("negros").GetBoolean(), movible);
-            listo = new { tipo = "previa", grupo, clave, capa = p.Capa, longitudinal = Imagen(p.Longitudinal), seccion = Imagen(p.Seccion) };
+            ElementoLeido e = grupos[grupo].Elementos[0];
+            bool negros = raiz.GetProperty("negros").GetBoolean();
+            PreviaGenerada p = e.EsColumna
+                ? GeneradorColumna.Generar(doc, Columna(e), ventana.CarpetaPrevia, negros, movible)
+                : GeneradorPrevia.Generar(doc, Continua(e), ventana.CarpetaPrevia, negros, movible);
+            // En la columna, la primera sección es la de traslapos (puede faltar) y la segunda la de varillas (decisión 16).
+            listo = new
+            {
+                tipo = "previa", grupo, clave, capa = p.Capa, longitudinal = Imagen(p.Longitudinal),
+                seccion = p.Seccion.Length > 0 ? Imagen(p.Seccion) : null,
+                seccionVarillas = p.SeccionVarillas.Length > 0 ? Imagen(p.SeccionVarillas) : null,
+            };
             previas[clave] = listo;
         }
         Enviar(listo);

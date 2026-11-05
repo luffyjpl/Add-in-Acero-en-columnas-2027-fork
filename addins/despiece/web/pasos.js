@@ -6,17 +6,23 @@
   const VERDE = '#1E8E3E', AZUL = '#1F5FAF';
   // Los límites del zoom: 1 es la imagen entera en su recuadro.
   const ZOOM_MIN = 0.35, ZOOM_MAX = 16;
+  // Lo mínimo del dibujo que queda a la vista al moverlo, en píxeles de pantalla.
+  const MARGEN_VISIBLE = 80;
   const TIPOS = [
     { n: 'Vigas', k: 'viga', icon: 'M3 14h30v8H3zM8 14v8M28 14v8' },
-    { n: 'Columnas · pronto', off: true, icon: 'M13 3h10v30H13zM13 12h10M13 24h10' },
+    { n: 'Columnas', k: 'columna', icon: 'M13 3h10v30H13zM13 12h10M13 24h10' },
     { n: 'Viguetas', k: 'vigueta', icon: 'M3 12h30M3 18h30M3 24h30' },
     { n: 'Zapatas · pronto', off: true, icon: 'M6 22h24v9H6zM14 22V6h8v16' }
   ];
   const TEXTOS = {
     1: ['¿Qué vas a despiezar?', 'Muévete entre plantas y haz clic en una viga. Las que llevan el mismo acero se eligen solas, también en otras plantas.'],
     2: ['Revisa el despiece', 'Arrastra las barras y los textos para acomodarlos. Todavía no se creó nada en el proyecto.'],
-    3: ['Vista previa', 'Las vistas quedan en el navegador de Revit, con etiquetas y colores. Tú las arrastras a tu plano.']
+    3: ['Vista previa', 'Las vistas quedan en el navegador de Revit, con etiquetas y colores. Tú las arrastras a tu plano.'],
+    // Solo con columnas: la sección superior va en su propio paso (decisión 17 del plan de columnas).
+    seccion: ['Revisa la sección superior', 'Una con los colores de traslapo y otra con los de cada varilla. Todavía no se creó nada en el proyecto.']
   };
+  /** Los pasos de cada tipo: la columna suma uno para la sección superior (decisión 17 del plan de columnas). */
+  const PASOS = { viga: ['Elegir', 'Revisar', 'Crear vistas'], columna: ['Elegir', 'Alzado', 'Sección', 'Crear vistas'] };
 
   /**
    * Una imagen de Revit que se acerca con la rueda y se mueve arrastrando. El zoom y el desplazamiento viven aquí y se
@@ -61,13 +67,26 @@
 
     /**
      * La imagen se mueve libre en cualquier sentido y a cualquier zoom (Juan, 30-oct: "no me deja arrastrar hacia
-     * arriba"); solo no se deja perder del todo: siempre queda a la vista.
+     * arriba"); solo no se deja perder del todo: siempre queda a la vista. El límite se mide sobre lo que se ve en la
+     * ventana, no sobre la imagen (hallazgo 28 del plan de columnas), y basta con una franja fija a la vista
+     * (hallazgo 34): con una imagen alta y angosta, cualquier exigencia mayor frena el zoom y lo lleva al medio.
      */
     limitar(v) {
-      const { ancho, alto } = this.props;
+      const d = this.dibujo();
       const k = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.k));
-      const rango = (largo, t) => Math.min(Math.max(t, Math.min(0, largo - k * largo) - largo * 0.5), Math.max(0, largo - k * largo) + largo * 0.5);
-      return { k, tx: rango(ancho, v.tx), ty: rango(alto, v.ty) };
+      let x0 = d.x0, x1 = d.x1, y0 = d.y0, y1 = d.y1;
+      const caja = this.lienzo?.getBoundingClientRect();
+      const a = caja?.width ? this.aDibujo(caja.left, caja.top) : null, b = caja?.width ? this.aDibujo(caja.right, caja.bottom) : null;
+      if (a && b) [x0, x1, y0, y1] = [a.x, b.x, a.y, b.y];
+      // Queda a la vista una franja fija de dibujo, MARGEN_VISIBLE píxeles de pantalla (o el dibujo entero si es más chico).
+      // Medido sobre un cuarto de la ventana frenaba casi siempre con una imagen alta y angosta (hallazgo 34).
+      const porPixelX = caja?.width ? (x1 - x0) / caja.width : 1, porPixelY = caja?.height ? (y1 - y0) / caja.height : 1;
+      // El dibujo va de t + k·desde a t + k·hasta: entre los dos bordes de la ventana tiene que quedar la franja.
+      const rango = (t, desde, hasta, v0, v1, porPixel) => {
+        const m = Math.min(MARGEN_VISIBLE * porPixel, k * (hasta - desde));
+        return Math.min(Math.max(t, v0 + m - k * hasta), v1 - m - k * desde);
+      };
+      return { k, tx: rango(v.tx, d.x0, d.x1, x0, x1, porPixelX), ty: rango(v.ty, d.y0, d.y1, y0, y1, porPixelY) };
     }
 
     acercar(factor, x, y) {
@@ -118,11 +137,22 @@
       window.removeEventListener('pointerup', this.alSoltarPuntero);
     }
 
-    render({ ancho, alto, etiqueta, children }) {
+    /**
+     * Lo que ocupa el dibujo en coordenadas de la imagen: la imagen y, si se pasa <c>limites</c>, lo que se dibuja encima
+     * (las barras sacadas y sus textos quedan fuera de la imagen exportada; hallazgo 34 del plan de columnas).
+     */
+    dibujo() {
+      const { ancho, alto, limites } = this.props;
+      const l = limites ?? { x0: 0, y0: 0, x1: ancho, y1: alto };
+      return { x0: Math.min(0, l.x0), y0: Math.min(0, l.y0), x1: Math.max(ancho, l.x1), y1: Math.max(alto, l.y1) };
+    }
+
+    render({ etiqueta, children }) {
+      const d = this.dibujo();
       const estilo = 'width: 36px; height: 36px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; color: #16191D; font: inherit; font-size: 18px; cursor: pointer';
       return html`
         <div style="position: relative; width: 100%; height: 100%">
-          <svg ref=${(el) => (this.lienzo = el)} viewBox="0 0 ${ancho} ${alto}" style="width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none" role="img" aria-label=${etiqueta}
+          <svg ref=${(el) => (this.lienzo = el)} viewBox="${d.x0} ${d.y0} ${d.x1 - d.x0} ${d.y1 - d.y0}" style="width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none" role="img" aria-label=${etiqueta}
             onWheel=${(e) => this.alRueda(e)} onPointerDown=${(e) => this.alPulsar(e)} onDblClick=${() => this.reiniciar()}>
             <g ref=${(el) => { this.capa = el; this.aplicar(); }}>${children}</g>
           </svg>
@@ -133,6 +163,29 @@
           </div>
         </div>`;
     }
+  }
+
+  /**
+   * Lo que ocupa la capa movible, en píxeles de la imagen: los puntos de las barras y una caja aproximada de cada texto
+   * (Arial: unos 0.6 del alto de letra por carácter). Lo que el usuario arrastre después no cuenta.
+   */
+  function limitesCapa(capa) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const sumar = (x, y) => {
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    };
+    const texto = (t) => {
+      const largo = t.texto.length * capa.altoLetra * 0.6 / 2, alto = capa.altoLetra / 2;
+      const [mx, my] = t.girado ? [alto, largo] : [largo, alto];
+      sumar(t.x - mx, t.y - my);
+      sumar(t.x + mx, t.y + my);
+    };
+    capa.piezas.forEach((p) => {
+      p.puntos.forEach(([x, y]) => sumar(x, y));
+      texto(p.etiqueta);
+      p.anexos.forEach(texto);
+    });
+    return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
   /** Un tubo por cada eje de barra, todos en una sola geometría: un objeto por barra giraría peor con cientos de estribos. */
@@ -283,7 +336,7 @@
         this.setState((s) => ({ modelos3d: { ...s.modelos3d, [m.grupo]: m.modelo }, error: null }));
       } else if (m.tipo === 'vistas') {
         // En verde solo cuando Revit ya las tiene.
-        this.setState((s) => ({ creando: false, hecho: m.yaExistian ? 'Esas vistas ya existen: no se duplicaron.' : `Vistas creadas: ${m.longitudinal} y ${m.seccion}. Arrástralas a tu plano.`, hechos: { ...s.hechos, [m.grupo]: true }, error: null }));
+        this.setState((s) => ({ creando: false, hecho: m.yaExistian ? 'Esas vistas ya existen: no se duplicaron.' : `Vistas creadas: ${m.nombres ? m.nombres.join(', ') : `${m.longitudinal} y ${m.seccion}`}. Arrástralas a tu plano.`, hechos: { ...s.hechos, [m.grupo]: true }, error: null }));
       } else if (m.tipo === 'error') {
         this.setState({ error: m.texto, creando: false });
       }
@@ -310,7 +363,7 @@
       this.setState({ modelo: m, grupo: nuevo?.indice ?? null, hechos: hechosNuevos, previas: {}, modelos3d: {}, plantaId: planta, paso: pasoNuevo, error: null });
       if (planta) enviar({ tipo: 'verPlanta', id: planta });
       if (pasoNuevo > 1) enviar(this.mensajePrevia(nuevo, this.state.negros, pasoNuevo));
-      if (pasoNuevo > 1 && this.state.modo3d) enviar({ tipo: 'ver3d', grupo: nuevo.indice });
+      if (pasoNuevo > 1 && this.state.modo3d && !nuevo.esColumna) enviar({ tipo: 'ver3d', grupo: nuevo.indice });
     }
 
     cambiar3d(g) {
@@ -320,11 +373,22 @@
     }
 
     vistaGrande(g) {
-      const { modo3d, modelos3d } = this.state;
+      const { modo3d, modelos3d, paso, vistaFinal } = this.state;
       const datos = modelos3d[g.indice];
+      // En "Crear vistas" de una columna se ve en grande la vista elegida en la lista (decisión 19 del plan de columnas).
+      if (g.esColumna && paso === this.ultimo() && vistaFinal) {
+        const pv = this.previa(g);
+        const i = pv?.[vistaFinal === 1 ? 'seccion' : 'seccionVarillas'];
+        if (!pv) return html`<div style="display: grid; place-items: center; height: 100%; color: #5E6670">Generando la vista en Revit…</div>`;
+        if (!i) return html`<div style="display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; color: #5E6670">No se pudo saber qué varillas traslapan juntas: esta sección no se crea.</div>`;
+        return html`
+          <${Visor} key=${'seccion' + vistaFinal} ancho=${i.ancho} alto=${i.alto} etiqueta="Sección superior de Revit">
+            <image href=${i.url} width=${i.ancho} height=${i.alto} draggable="false"></image>
+          <//>`;
+      }
       return html`
-        ${!modo3d ? this.imagenes(g) : datos ? html`<${Vista3D} key=${g.indice} datos=${datos} />` : html`<div style="display: grid; place-items: center; height: 100%; color: #5E6670">Leyendo el acero en Revit…</div>`}
-        <button type="button" onClick=${() => this.cambiar3d(g)} style="position: absolute; left: 12px; top: 12px; height: 36px; padding: 0 14px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; color: #16191D; font: inherit; cursor: pointer">${modo3d ? 'Plano' : '3D'}</button>`;
+        ${!modo3d || g.esColumna ? this.imagenes(g) : datos ? html`<${Vista3D} key=${g.indice} datos=${datos} />` : html`<div style="display: grid; place-items: center; height: 100%; color: #5E6670">Leyendo el acero en Revit…</div>`}
+        ${g.esColumna ? null : html`<button type="button" onClick=${() => this.cambiar3d(g)} style="position: absolute; left: 12px; top: 12px; height: 36px; padding: 0 14px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; color: #16191D; font: inherit; cursor: pointer">${modo3d ? 'Plano' : '3D'}</button>`}`;
     }
 
     verPlanta(id) {
@@ -333,10 +397,16 @@
       if (!this.state.plantas[id]) enviar({ tipo: 'verPlanta', id });
     }
 
+    /** Cuántos pasos tiene el tipo elegido: el último es el de crear vistas. */
+    ultimo() {
+      return (PASOS[this.state.tipo] ?? PASOS.viga).length;
+    }
+
     irA(paso) {
       const g = this.grupoElegido();
       if (paso > 1 && !g?.tieneAcero) return;
-      this.setState({ paso, hecho: false });
+      // Al entrar a un paso se ve el alzado (decisión 19 del plan de columnas).
+      this.setState({ paso, hecho: false, vistaFinal: 0 });
       if (paso > 1) this.pedirPrevia(g, this.state.negros, paso);
     }
 
@@ -345,9 +415,12 @@
       return this.state.movimientos[g.vigas[0]] ?? {};
     }
 
-    /** El paso 2 trae lo movible aparte y no depende de lo movido; el 3 es la imagen real con todo aplicado. */
+    /**
+     * Los pasos de revisar traen lo movible aparte y no dependen de lo movido; el último es la imagen real con todo
+     * aplicado. La sección de la columna usa la misma previa que el alzado: no se vuelve a generar.
+     */
     mensajePrevia(g, negros, paso) {
-      const separar = paso === 2;
+      const separar = paso > 1 && paso < this.ultimo();
       const movimientos = separar ? {} : this.movimientos(g);
       return { tipo: 'previa', grupo: g.indice, negros, separar, movimientos, clave: `${g.indice}|${negros}|${separar}|${JSON.stringify(movimientos)}` };
     }
@@ -378,8 +451,11 @@
         </div>`;
     }
 
-    /** Arrastra una barra (solo arriba y abajo, con su texto y su gancho) o un texto (libre). El zoom del visor ya viene en la matriz. */
-    arrastrar(e, g, id, esBarra, escala) {
+    /**
+     * Arrastra una barra (con su texto y su gancho: arriba y abajo en la viga, a los lados en la columna, donde
+     * <c>horizontal</c>) o un texto (libre). El zoom del visor ya viene en la matriz.
+     */
+    arrastrar(e, g, id, esBarra, escala, horizontal) {
       if (e.button !== 0) return;
       e.stopPropagation();
       const k = e.currentTarget.getScreenCTM().a;
@@ -392,7 +468,7 @@
         this.setState((s) => {
           const deViga = s.movimientos[clave] ?? {};
           const m = deViga[id] ?? { dz: 0, tx: 0, tz: 0 };
-          const nuevo = esBarra ? { ...m, dz: m.dz + dz } : { ...m, tx: m.tx + dx, tz: m.tz + dz };
+          const nuevo = !esBarra ? { ...m, tx: m.tx + dx, tz: m.tz + dz } : horizontal ? { ...m, dx: (m.dx ?? 0) + dx } : { ...m, dz: m.dz + dz };
           return { movimientos: { ...s.movimientos, [clave]: { ...deViga, [id]: nuevo } } };
         });
       };
@@ -406,20 +482,21 @@
 
     /** Lo movible de la vista larga, encima de la imagen: mismas medidas que da Revit, en píxeles de la imagen. */
     capaMovible(g, capa) {
-      const { escala, altoLetra, piezas } = capa;
+      const { escala, altoLetra, piezas, horizontal } = capa;
+      const cursorBarra = horizontal ? 'ew-resize' : 'ns-resize';
       const movs = this.movimientos(g), negros = this.state.negros;
       const texto = (t, color, extra) => html`
         <text x=${t.x} y=${t.y} font-size=${altoLetra} font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill=${negros ? '#000000' : color} transform=${t.girado ? `rotate(-90 ${t.x} ${t.y})` : null} ...${extra}>${t.texto}</text>`;
       return piezas.map((p) => {
         const m = movs[p.id] ?? { dz: 0, tx: 0, tz: 0 };
         const puntos = p.puntos.map((q) => q.join(',')).join(' ');
-        const alBarra = (e) => this.arrastrar(e, g, p.id, true, escala);
+        const alBarra = (e) => this.arrastrar(e, g, p.id, true, escala, horizontal);
         return html`
-          <g key=${p.id} transform="translate(0 ${-m.dz * escala})">
+          <g key=${p.id} transform="translate(${(m.dx ?? 0) * escala} ${-m.dz * escala})">
             ${puntos ? html`
               <polyline points=${puntos} fill="none" stroke=${p.color} stroke-width="6"></polyline>
-              <polyline points=${puntos} fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke" style="cursor: ns-resize" onPointerDown=${alBarra}></polyline>` : null}
-            ${p.anexos.map((t) => texto(t, p.color, { style: 'cursor: ns-resize', onPointerDown: alBarra }))}
+              <polyline points=${puntos} fill="none" stroke="transparent" stroke-width="18" pointer-events="stroke" style="cursor: ${cursorBarra}" onPointerDown=${alBarra}></polyline>` : null}
+            ${p.anexos.map((t) => texto(t, p.color, { style: 'cursor: ' + cursorBarra, onPointerDown: alBarra }))}
             <g transform="translate(${m.tx * escala} ${-m.tz * escala})">
               ${texto(p.etiqueta, p.color, { style: 'cursor: move', onPointerDown: (e) => this.arrastrar(e, g, p.id, false, escala) })}
             </g>
@@ -437,7 +514,7 @@
 
     /** Si el grupo es de lo que se está despiezando: cada botón deja elegir solo lo suyo. */
     delTipo(g) {
-      return !!g && !!g.esVigueta === (this.state.tipo === 'vigueta');
+      return !!g && (g.esColumna ? 'columna' : g.esVigueta ? 'vigueta' : 'viga') === this.state.tipo;
     }
 
     /** Cambiar de tipo limpia la selección: lo elegido ya no se puede tocar en la planta. */
@@ -471,12 +548,13 @@
       if (!pv) return html`<div style="display: grid; place-items: center; height: 100%; color: #5E6670">Generando la vista en Revit…</div>`;
       const i = pv.longitudinal;
       return html`
-        <${Visor} ancho=${i.ancho} alto=${i.alto} etiqueta="Vista longitudinal de Revit">
+        <${Visor} ancho=${i.ancho} alto=${i.alto} limites=${pv.capa ? limitesCapa(pv.capa) : null} etiqueta="Vista longitudinal de Revit">
           <image href=${i.url} width=${i.ancho} height=${i.alto} draggable="false"></image>
           ${pv.capa ? this.capaMovible(g, pv.capa) : null}
         <//>`;
     }
 
+    /** La sección de la viga, a la derecha de la vista larga. */
     seccion(g) {
       const i = this.previa(g)?.seccion;
       if (!i) return null;
@@ -488,27 +566,51 @@
         </div>`;
     }
 
+    /** Las dos secciones superiores de la columna, lado a lado y grandes, en su propio paso (decisión 17 del plan de columnas). */
+    secciones(g) {
+      const pv = this.previa(g);
+      if (!pv) return html`<div style="flex: 1; display: grid; place-items: center; color: #5E6670">Generando la sección en Revit…</div>`;
+      const caja = (i, titulo) => html`
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0">
+          <span style="font-weight: 600">${titulo}</span>
+          <div style="flex: 1; min-height: 0; position: relative; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px; overflow: hidden">
+            ${i ? html`
+              <${Visor} ancho=${i.ancho} alto=${i.alto} etiqueta=${'Sección superior de Revit: ' + titulo}>
+                <image href=${i.url} width=${i.ancho} height=${i.alto} draggable="false"></image>
+              <//>` : html`<div style="display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; color: #5E6670">No se pudo saber qué varillas traslapan juntas: va solo la sección con los colores de cada varilla.</div>`}
+          </div>
+        </div>`;
+      return html`
+        <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+          ${caja(pv.seccion, 'Traslapos')}
+          ${caja(pv.seccionVarillas, 'Varillas')}
+        </div>`;
+    }
+
     render() {
       const { paso, modelo, plantaId, plantas, hechos, error, hecho, creando, tipo } = this.state;
       const g = this.grupoElegido();
       const ancho = window.innerWidth, alto = window.innerHeight;
       const set = (o) => this.setState(o);
-      const pasos = ['Elegir', 'Revisar', 'Crear vistas'].map((n, i) => {
+      const ultimo = this.ultimo();
+      const enSeccion = tipo === 'columna' && paso === 3;
+      const pasos = (PASOS[tipo] ?? PASOS.viga).map((n, i) => {
         const k = i + 1, on = k === paso, ya = k < paso;
         return { n, num: ya ? '✓' : String(k), color: on ? '#16191D' : '#5E6670', fw: on ? 600 : 400, fondo: on || ya ? AZUL : '#DDE1E6', numC: on || ya ? '#FFFFFF' : '#3F4A57', pick: () => (k === 1 ? set({ paso: 1 }) : this.irA(k)) };
       });
       const tipos = TIPOS.map((t) => ({ ...t, off: !!t.off, borde: t.k === tipo ? AZUL : '#C9CFD6', fondo: t.k === tipo ? '#E4ECF6' : '#FFFFFF', color: t.k === tipo ? '#174A8A' : t.off ? '#6B737C' : '#16191D', cursor: t.off ? 'not-allowed' : 'pointer' }));
-      const elemento = tipo === 'vigueta' ? 'vigueta' : 'viga';
-      const titulo = TEXTOS[paso][0], ayuda = paso === 1 && tipo === 'vigueta' ? TEXTOS[1][1].replace('una viga', 'una vigueta') : TEXTOS[paso][1];
+      const elemento = tipo === 'vigueta' ? 'vigueta' : tipo === 'columna' ? 'columna' : 'viga';
+      const texto = enSeccion ? TEXTOS.seccion : TEXTOS[paso === ultimo ? 3 : paso];
+      const titulo = texto[0], ayuda = paso === 1 && tipo !== 'viga' ? TEXTOS[1][1].replace('una viga', 'una ' + elemento) : texto[1];
       const enEstaPlanta = g ? g.vigas.filter((v) => plantas[plantaId]?.cajas.some((c) => c.viga === v)).length : 0;
       const hechas = modelo ? modelo.grupos.filter((x) => hechos[x.indice] && this.delTipo(x)).length : 0;
-      const puedeSeguir = !creando && (paso === 3 || !!g?.tieneAcero);
+      const puedeSeguir = !creando && (paso === ultimo || !!g?.tieneAcero);
       const back = () => {
         if (paso > 1) set({ paso: paso - 1, hecho: false });
         else enviar({ tipo: 'cerrar' });
       };
       const next = () => {
-        if (paso < 3) return this.irA(paso + 1);
+        if (paso < ultimo) return this.irA(paso + 1);
         if (hecho) return set({ paso: 1, hecho: false, grupo: null });
         set({ creando: true, error: null });
         enviar({ tipo: 'crearVistas', grupo: g.indice, negros: this.state.negros, movimientos: this.movimientos(g) });
@@ -553,7 +655,7 @@
                       <span style="font-weight: 600">${g.nombre}</span>
                       ${g.tieneAcero ? html`
                         <span style="font-size: 12px; color: #5E6670">${g.cantidad === 1 ? 'Acero único' : `${g.cantidad} ${elemento}s con el mismo acero`}</span>
-                        <span style="font-size: 12px; color: #5E6670">${enEstaPlanta} tramos en esta planta, ${g.vigas.length - enEstaPlanta} en otras</span>` : html`
+                        ${g.esColumna ? null : html`<span style="font-size: 12px; color: #5E6670">${enEstaPlanta} tramos en esta planta, ${g.vigas.length - enEstaPlanta} en otras</span>`}` : html`
                         <span style="font-size: 12px; color: #B3261E">Esta ${elemento} no tiene acero: no se puede despiezar.</span>`}
                     </div>` : html`<span style="font-size: 12px; color: #5E6670">Ninguna ${elemento} elegida.</span>`}
                   <div style="display: flex; gap: 14px; font-size: 12px; color: #5E6670">
@@ -563,9 +665,11 @@
                   ${g && (g.vistaCreada || hechos[g.indice]) ? html`
                     <div style="flex-shrink: 0; margin-top: auto; display: flex; flex-direction: column; gap: 6px">
                       <span style="font-weight: 600">Ver en Revit</span>
-                      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
-                        ${[['Vista larga', false], ['Sección', true]].map(([n, seccion]) => html`
-                          <button type="button" onClick=${() => enviar({ tipo: 'irAVista', grupo: g.indice, seccion })} style="height: 36px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; color: #16191D; font: inherit; cursor: pointer">${n}</button>`)}
+                      <div style="display: grid; grid-template-columns: repeat(${g.esColumna ? 3 : 2}, minmax(0, 1fr)); gap: 8px">
+                        ${(g.esColumna
+                          ? ['Alzado', 'Traslapos', 'Varillas'].map((n, cual) => [n, { cual }])
+                          : [['Vista larga', { seccion: false }], ['Sección', { seccion: true }]]).map(([n, cual]) => html`
+                          <button type="button" onClick=${() => enviar({ tipo: 'irAVista', grupo: g.indice, ...cual })} style="height: 36px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; color: #16191D; font: inherit; cursor: pointer">${n}</button>`)}
                       </div>
                     </div>` : null}
                 </div>
@@ -574,13 +678,19 @@
                 </div>
               </div>` : null}
 
-            ${paso > 1 && g ? html`
+            ${enSeccion && g ? html`
+              <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px">
+                ${this.selectorTextos(g)}
+                ${this.secciones(g)}
+              </div>` : null}
+
+            ${paso > 1 && !enSeccion && g ? html`
               <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 16px">
                 <div style="position: relative; min-width: 0; min-height: 0; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px; overflow: hidden">
                   ${this.vistaGrande(g)}
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; overflow: hidden auto">
-                  ${this.seccion(g)}
+                  ${g.esColumna ? null : this.seccion(g)}
                   ${this.selectorTextos(g)}
                   ${paso === 2 ? html`
                     <span style="font-weight: 600">Barras de ${g.nombre}</span>
@@ -590,7 +700,12 @@
                         <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">${f.et}</span><span style="font-size: 12px; color: #5E6670">${f.d}</span></span>
                       </div>`)}` : html`
                     <span style="font-weight: 600">Vistas que se crearán</span>
-                    ${[g.nombre, 'Sección ' + g.nombre].map((n) => html`<div style="padding: 10px; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px">${n}</div>`)}`}
+                    ${g.esColumna
+                      ? [g.nombre, 'Sección ' + g.nombre + ' - traslapos', 'Sección ' + g.nombre + ' - varillas'].map((n, i) => {
+                          const elegida = (this.state.vistaFinal ?? 0) === i;
+                          return html`<button type="button" aria-pressed=${elegida} onClick=${() => this.setState({ vistaFinal: i })} style="padding: 10px; text-align: left; background: ${elegida ? '#E4ECF6' : '#FFFFFF'}; border: 1px solid ${elegida ? AZUL : '#D9DDE2'}; border-radius: 6px; color: ${elegida ? '#174A8A' : '#16191D'}; font: inherit; cursor: pointer">${n}</button>`;
+                        })
+                      : [g.nombre, 'Sección ' + g.nombre].map((n) => html`<div style="padding: 10px; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px">${n}</div>`)}`}
                 </div>
               </div>` : null}
           </div>
@@ -599,7 +714,7 @@
             <button type="button" onClick=${back} style="height: 44px; padding: 0 20px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; font: inherit; color: #16191D; cursor: pointer">${paso === 1 ? 'Cerrar' : 'Atrás'}</button>
             ${error ? html`<span style="color: #B3261E; font-weight: 500">${error}</span>` : null}
             ${hecho && !error ? html`<span style="color: #1E7A3C; font-weight: 500">${hecho}</span>` : null}
-            <button type="button" disabled=${!puedeSeguir} onClick=${next} style="height: 44px; padding: 0 24px; border: 0; border-radius: 6px; background: ${puedeSeguir ? AZUL : '#AEB5BD'}; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer">${paso === 3 ? (hecho ? 'Despiezar otro' : 'Crear vistas') : 'Siguiente'}</button>
+            <button type="button" disabled=${!puedeSeguir} onClick=${next} style="height: 44px; padding: 0 24px; border: 0; border-radius: 6px; background: ${puedeSeguir ? AZUL : '#AEB5BD'}; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer">${paso === ultimo ? (hecho ? 'Despiezar otro' : 'Crear vistas') : 'Siguiente'}</button>
           </div>
         </div>`;
     }
