@@ -92,9 +92,8 @@ Continúan la numeración del plan de #247.
 6. **#254, generar** — archivos en `Revit/` — se escribe con lo medido en el paso 5.
 7. **#250 y #252, catálogo y tablero** — archivos en `Tablero/` — cómo se prueba: en Revit, con el modelo abierto.
 8. **Cerrar el plan** — actualizar **Estado** y dejar la lista de depuración.
-9. **Release de respaldo para Juan** (2026-11-04, usuario) — solo después de terminar y probar. Se decide con el usuario
-   cómo publicarla: `docs/guia-addins-cqeing.md` pone la etiqueta sobre `main` después de unir el PR, y `-rc.N` publica una
-   prueba que el gestor no muestra.
+9. **Respaldo para Juan** (2026-11-04, usuario) — no se publica una release: Juan lo despliega desde el PR #267 con
+   `gh pr checkout 267` y `tools/desplegar-local.ps1`. La etiqueta `acero-zapatas-v0.1.0` queda para #255.
 
 ## Cómo probarlo
 
@@ -115,10 +114,11 @@ Con Revit abierto, la DLL de `bin\Debug\2026` queda bloqueada: para revisar que 
 - [x] Pasos 1 a 7 implementados (2026-11-04), versión prefinal.
 - [ ] Probado en Revit, en parte. El usuario confirmó (2026-11-04) que el tablero se ve y que los cambios se aplican en el
       modelo. La lista de depuración de abajo no se confirmó punto por punto, y las combinadas siguen sin probar.
-- [ ] Paso 9, release de respaldo: pendiente de terminar las pruebas.
+- [x] Paso 9, respaldo para Juan: desde el PR #267, sin publicar.
 
-Comprobado (2026-11-04): compila en Release para 2026 y 2027 con 0 advertencias; `dotnet test CQEING-Addins.sln -c Release`
-da 1540 pruebas correctas en 7 proyectos, 46 de ellas de zapatas; `node --check` pasa en `zapatas.js`.
+Comprobado (2026-11-04), sobre `main` en `50d0db3`: compila en Release para 2026 y 2027 con 0 advertencias;
+`dotnet test CQEING-Addins.sln -c Release` da 1573 pruebas correctas en 7 proyectos, 46 de ellas de zapatas; `node --check`
+pasa en `zapatas.js`.
 
 ### Lista de depuración en Revit
 
