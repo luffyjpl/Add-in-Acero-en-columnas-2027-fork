@@ -87,11 +87,14 @@ internal static class GeneradorPrevia
     private const double Asomo = 0.20 * M;
     private const double ColaEje = 0.3 * M * Proporcion;
     private const double CabezaEje = 0.8 * M * Proporcion;
-    private static double CotaLuces => 0.35 * M * Proporcion * Letra.Factor;
-    private static double CotaTotal => 0.75 * M * Proporcion * Letra.Factor;
-    // Debajo de las cotas de ejes: la cadena de columnas y luces libres y, al final, el largo de la viga.
-    private static double CotaColumnas => 1.15 * M * Proporcion * Letra.Factor;
-    private static double CotaViga => 1.55 * M * Proporcion * Letra.Factor;
+    // Las cotas (#264, opción A de la maqueta): abajo una sola línea, con las caras de columnas y luces libres escritas
+    // arriba de ella y los ejes debajo; arriba de todo, el largo completo de la viga.
+    // De lo más bajo del dibujo a la línea (sus números van arriba, como antes la fila de luces).
+    private static double CotaLinea => 0.35 * M * Proporcion * Letra.Factor;
+    // Debajo de la línea: los números de los ejes y la nota del total entre ejes.
+    private static double BajoLinea => 0.35 * M * Proporcion * Letra.Factor;
+    // De lo más alto (las barras de arriba) a la cota del largo de la viga.
+    private static double CotaArriba => 0.35 * M * Proporcion * Letra.Factor;
     private const double AlturaPlano = 0.03 * M;
 
     /// <summary>Un bastón va más adentro que la capa exterior por más de esto.</summary>
@@ -374,9 +377,10 @@ internal static class GeneradorPrevia
         Recortar(vista, centro, largo / 2 + 1.0 * M, largo / 2 + 1.0 * M, alto / 2 + asomo + HolguraRecorte, alto / 2 + asomo + HolguraRecorte);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Levels), true);
         doc.Regenerate();
-        AjustarEjes(doc, vista, Math.Max(tope, max.Z) + CabezaEje, Math.Min(fondo, min.Z) - CotaViga - ColaEje);
-        Cotar(doc, vista, centro, derecha, largo, min, max, Math.Min(fondo, min.Z), tipos);
-        CotarColumnas(doc, vista, viga, centro, derecha, min, max, Math.Min(fondo, min.Z), tipos);
+        double techo = Math.Max(tope, max.Z), suelo = Math.Min(fondo, min.Z);
+        AjustarEjes(doc, vista, techo + CotaArriba + CabezaEje, suelo - CotaLinea - BajoLinea - ColaEje);
+        Cotar(doc, vista, centro, derecha, largo, min, max, suelo, tipos);
+        CotarColumnas(doc, vista, viga, centro, derecha, min, max, suelo, techo, tipos);
         vista.DisplayStyle = DisplayStyle.FlatColors;
         AplicarMovimientos(doc, sacadas, sueltas, movible, derecha);
         if (movible.Separar)
@@ -499,11 +503,12 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>
-    /// La cadena columna, luz libre, columna… y, más abajo, el largo completo de la viga (Juan, 31-oct). Las medidas se
+    /// La cadena columna, luz libre, columna… en la línea de abajo y, arriba de todo, el largo completo de la viga (Juan,
+    /// 31-oct; ubicación de #264). Las medidas se
     /// toman contra planos de referencia puestos en las caras de las columnas, solo en esta vista. Si Revit no acepta las
     /// cotas, se deshace lo hecho y la vista queda sin ellas: no vale tumbar la vista previa por esto.
     /// </summary>
-    private static void CotarColumnas(Document doc, View vista, VigaContinua viga, XYZ centro, XYZ derecha, XYZ min, XYZ max, double fondo, TiposPropios tipos)
+    private static void CotarColumnas(Document doc, View vista, VigaContinua viga, XYZ centro, XYZ derecha, XYZ min, XYZ max, double fondo, double techo, TiposPropios tipos)
     {
         double a = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), b = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
         List<Element> apoyos = Apoyos(doc, viga, derecha, min, max);
@@ -524,7 +529,7 @@ internal static class GeneradorPrevia
             blanco.SetProjectionLineColor(new Color(255, 255, 255));
             List<Reference> planos = marcas.Select(s =>
             {
-                ReferencePlane plano = doc.Create.NewReferencePlane(En(s, min.Z + AlturaPlano), En(s, fondo - CotaViga - AlturaPlano), vista.ViewDirection, vista);
+                ReferencePlane plano = doc.Create.NewReferencePlane(En(s, min.Z + AlturaPlano), En(s, fondo - CotaLinea - AlturaPlano), vista.ViewDirection, vista);
                 vista.SetElementOverrides(plano.Id, blanco);
                 return plano.GetReference();
             }).ToList();
@@ -539,10 +544,11 @@ internal static class GeneradorPrevia
                 if (tipos.CotaCorta is { } tipo)
                     cota.DimensionType = tipo;
             }
-            // Con un solo tramo la cadena y el total dirían lo mismo.
+            // Con un solo tramo la cadena y el total dirían lo mismo. La cadena va en la línea de abajo, junto con los ejes;
+            // el largo, arriba de todo (#264). Las líneas de referencia cortas no cruzan las barras de arriba.
             if (tramos.Count > 1)
-                Cota(planos, fondo - CotaColumnas);
-            Cota([planos[0], planos[^1]], fondo - CotaViga);
+                Cota(planos, fondo - CotaLinea);
+            Cota([planos[0], planos[^1]], techo + CotaArriba);
             prueba.Commit();
         }
         catch (Exception e)
@@ -597,7 +603,10 @@ internal static class GeneradorPrevia
         }
     }
 
-    /// <summary>Las luces entre ejes y el total, debajo de todo. Son cotas de Revit, ligadas a los ejes (#222). Con menos de dos ejes no hay qué acotar.</summary>
+    /// <summary>
+    /// Las luces entre ejes, en la línea de abajo con los números debajo, y el total en una nota (#264). Son cotas de Revit,
+    /// ligadas a los ejes (#222). Con menos de dos ejes no hay qué acotar.
+    /// </summary>
     private static void Cotar(Document doc, View vista, XYZ centro, XYZ derecha, double largo, XYZ min, XYZ max, double fondo, TiposPropios tipos)
     {
         double desde = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), hasta = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
@@ -608,7 +617,7 @@ internal static class GeneradorPrevia
         if (ejes.Count < 2)
             return;
 
-        void Cota(IEnumerable<Grid> entre, double z)
+        Dimension Cota(IEnumerable<Grid> entre, double z)
         {
             var referencias = new ReferenceArray();
             foreach (Grid g in entre)
@@ -617,11 +626,56 @@ internal static class GeneradorPrevia
             Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(medio - derecha * (largo / 2), medio + derecha * (largo / 2)), referencias);
             if (tipos.Cota is { } tipo)
                 cota.DimensionType = tipo;
+            return cota;
         }
 
-        Cota(ejes, fondo - CotaLuces);
+        // Una sola cadena en la línea de abajo, con los números debajo de ella: arriba van los de las caras (#264).
+        double linea = fondo - CotaLinea;
+        Dimension cadena = Cota(ejes, linea);
+        doc.Regenerate();
+        PasarTextoAbajo(cadena, linea);
+        // El total entre ejes, en una nota al final de la línea, del lado de los ejes: así no se pierde ninguna medida.
         if (ejes.Count > 2)
-            Cota([ejes[0], ejes[^1]], fondo - CotaTotal);
+        {
+            double total = Math.Abs(ejes[^1].Curve.GetEndPoint(0).DotProduct(derecha) - ejes[0].Curve.GetEndPoint(0).DotProduct(derecha));
+            XYZ punto = new XYZ(centro.X, centro.Y, linea - AireNota) + derecha * (largo / 2 + 0.10 * M * Letra.Factor);
+            TextNote.Create(doc, vista.Id, punto, "Ejes " + Cadena(total), tipos.Nota(HorizontalTextAlignment.Left));
+        }
+    }
+
+    /// <summary>
+    /// Pasa los números de una cota debajo de su línea, como reflejados (#264). Revit los pone arriba; se mueve su punto de
+    /// arrastre (<c>TextPosition</c>, API pública desde 2015) al otro lado, a la misma distancia más el alto de la letra.
+    /// Si Revit no deja mover alguno, queda arriba. Se registran las posiciones para medirlas en Revit (plan de #266, paso 4).
+    /// </summary>
+    private static void PasarTextoAbajo(Dimension cota, double linea)
+    {
+        double alto = Letra.Mm / 1000 * EscalaLongitudinal * M;
+        // El punto es la base del texto, 0.002 m sobre la línea (medido el 05-nov). Reflejado, la base baja 1.5 veces el alto:
+        // medio alto de letra de aire entre la línea y el número (decisión 10 del plan de #266).
+        XYZ Abajo(XYZ p) => new(p.X, p.Y, linea - (p.Z - linea) - 1.5 * alto);
+        try
+        {
+            if (cota.NumberOfSegments == 0)
+            {
+                if (cota.IsTextPositionAdjustable() && cota.TextPosition is { } p)
+                {
+                    cota.TextPosition = Abajo(p);
+                    Registro.Paso($"cotas: texto de ejes {(p.Z - linea) * 0.3048:0.000} m sobre la línea, pasado abajo");
+                }
+                return;
+            }
+            foreach (DimensionSegment segmento in cota.Segments)
+                if (segmento.IsTextPositionAdjustable() && segmento.TextPosition is { } p)
+                {
+                    segmento.TextPosition = Abajo(p);
+                    Registro.Paso($"cotas: texto de ejes {(p.Z - linea) * 0.3048:0.000} m sobre la línea, pasado abajo");
+                }
+        }
+        catch (Exception e)
+        {
+            Registro.Paso("cotas: no se pudo pasar el texto de ejes abajo: " + e.Message);
+        }
     }
 
     /// <summary>
