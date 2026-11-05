@@ -92,9 +92,16 @@ public static class Geometria
     /// Dónde corta la recta «coordenada <paramref name="enY"/> = <paramref name="cota"/>» al polígono: tramos [desde,
     /// hasta] sobre la otra coordenada, ordenados.
     /// </summary>
-    public static List<(double Desde, double Hasta)> Cortes(IReadOnlyList<Punto> p, bool enY, double cota)
+    public static List<(double Desde, double Hasta)> Cortes(IReadOnlyList<Punto> p, bool enY, double cota) => CortesAnillos([p], enY, cota);
+
+    /// <summary>
+    /// Como <see cref="Cortes"/>, con varios anillos a la vez (un contorno y sus vacíos, #954): los tramos quedan por
+    /// fuera de los vacíos (regla par-impar).
+    /// </summary>
+    public static List<(double Desde, double Hasta)> CortesAnillos(IEnumerable<IReadOnlyList<Punto>> anillos, bool enY, double cota)
     {
         var w = new List<double>();
+        foreach (IReadOnlyList<Punto> p in anillos)
         for (int i = 0; i < p.Count; i++)
         {
             Punto a = p[i], b = p[(i + 1) % p.Count];

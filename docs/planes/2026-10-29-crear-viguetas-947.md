@@ -150,6 +150,33 @@ encontraba cómo elegir varios paneles.
       se crean continuas.
     - Viga que termina dentro del panel (alguna punta adentro, a más de 50 mm del borde, como la viga corta de P4): la
       vigueta se parte ahí, cada pieza llega a su eje y al crear no se unen (`Vigueta.TopeDesde` / `TopeHasta`).
+31. **Una vigueta en la punta de la viga que termina dentro del panel** (04-nov, prueba del usuario en la columna
+    P1-P4-P6: al repartir todas con la fórmula, la punta de la viga corta quedaba suelta entre dos viguetas y dejaba un
+    vacío; con las viguetas del modelo sí había una en la punta). Completa la decisión 30:
+    - Por cada viga que termina dentro de algún panel de la fila o columna (misma regla de la decisión 30: punta
+      adentro, a más de 50 mm del borde), va una vigueta **por dentro de la viga**: su cara de afuera al ras de la
+      punta, o sea su eje medio ancho de vigueta hacia el lado de la viga (`PlanificadorViguetas.Puntas`).
+      ~~Eje en la punta~~: en la prueba del 04-nov la mitad de la vigueta quedaba fuera de la viga; en el modelo de
+      referencia queda por dentro.
+    - Esa vigueta se parte en piezas en la viga corta, como las demás, para poder quitar solo la de arriba o la de
+      abajo (decisión 25), pero **sin tope**: si quedan las dos, se crean unidas, de punta a punta; si se quita una, la
+      otra llega al eje de la viga (`Partir`: corte sin tope si la vigueta está a medio ancho o menos de la punta).
+      ~~No se partía~~: en la prueba del 04-nov no se podía quitar solo un lado de esa vigueta.
+    - **Reparto parejo con una vigueta en la punta** (`PlanificadorViguetas.Repartir` y `Parejo`): se busca la menor
+      cantidad de viguetas, todas a la misma separación (no más que el eje a eje elegido) y con los dos libres de
+      extremo iguales (no más que el libre máximo), en la que una cae justo en la punta. Con n viguetas y la de la punta
+      en el lugar k (desde 0): separación s = (libre − 2·t) / (n − 1 − 2k), con t la distancia del borde libre al eje
+      de la punta; extremos = (libre − ancho − (n − 1)·s) / 2. Se prueba desde la cantidad de la fórmula hasta 6 más.
+      Ejemplo de P4 (modelo de referencia): libre 3,48 m, punta a 1,05 m → 5 viguetas a 0,69 m, extremos 0,31 m.
+    - Si no hay reparto parejo posible, la fórmula del Excel en todo el ancho más la vigueta de la punta (si una de la
+      fórmula queda pegada a ella, a menos de dos anchos entre ejes, se quita esa). Con varias puntas, la primera arma
+      el reparto parejo y las demás se suman así si no caen sobre una vigueta.
+      ~~Fórmula a cada lado de la punta, por separado~~ (salían 4 desparejas) y ~~fórmula en todo el ancho más la
+      punta~~ (seguían saliendo 4 en Z1): en el modelo de referencia son 5, parejas, a 0,69 m.
+    - La vigueta de la punta corre por toda la fila o columna: los demás paneles de la línea se alinean con el primero
+      (decisión 17), que ya la incluye. Pasa de largo por la punta de la viga (no la cruza) y se crea continua; las del
+      lado donde pasa la viga siguen parándose en ella (decisión 30).
+    - Si en la línea ya hay viguetas que seguir (decisiones 16 y 28), se siguen ellas, como antes.
 26. ~~**Release**: publicar `acero-vigas-v1.5.0`.~~ Ver la decisión 27.
 27. **Add-in propio, `crear-viguetas`** (03-nov, pedido del usuario: «que sea libre, que aparezca en el gestor para
     descargar y no se descargue junto con otro»). Cambia la decisión 1: deja de ser un botón de «Acero en vigas».
@@ -285,6 +312,27 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin acero-
       y `LaVigaQueCruzaElPanelDeLadoALadoNoParaLasViguetas`; `dotnet test` sin fallos (Viguetas.Calculo 28). Desplegado
       para Revit 2027.
 - [ ] Probar la decisión 30 en Revit, en P4: falta.
+
+### Correcciones del 04-nov (decisión 31)
+
+- [x] Vigueta fija en la punta de cada viga que termina dentro del panel y fórmula a cada lado. Pruebas nuevas o
+      cambiadas: `UnaVigaQueCruzaParteLaViguetaEnDosLados` (ahora 0,65 / 1,20 / 1,70 m),
+      `BorrarUnLadoDejaLaViguetaHastaLaViga` y `LaViguetaEnLaPuntaDeLaVigaCortaCorrePorTodaLaColumna`.
+- [x] Compilado para Revit 2027 sin advertencias y desplegado con `desplegar-local.ps1` (04-nov).
+- [x] Probado en Revit (04-nov): la vigueta salía centrada en la punta, con media vigueta fuera de la viga. Corregido:
+      va por dentro (0,625 / 1,15 / 1,675 m en la prueba del panel; 1,75 m en la de la columna).
+- [x] Corrección desplegada para Revit 2027 (04-nov).
+- [x] Probado en Revit (04-nov): la vigueta queda por dentro de la viga, bien; pero no se podía quitar solo un lado.
+      Corregido: se parte en la viga corta sin tope (prueba `QuitarUnLadoDeLaViguetaDeLaPuntaDejaElOtroHastaElEje`).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (30).
+- [x] Probado en Revit (04-nov): se quita solo un lado, bien. Pero el reparto a cada lado de la punta daba 4 viguetas
+      desparejas y el modelo tiene 5. Corregido: fórmula en todo el ancho más la de la punta (0,75 / 1,15 / 1,55 m en
+      la prueba del panel; 0,80 / 1,60 / 1,95 / 2,40 / 3,20 m en la de la columna).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (31).
+- [x] Probado en Revit (04-nov, Z1 y Z2): en Z1 seguían saliendo 4. Corregido con el reparto parejo (prueba de la
+      columna con el ancho de P4: 3,48 m da 5 a 0,69 m y extremos de 0,31 m).
+- [x] Desplegado para Revit 2027 (04-nov); `dotnet test` de Viguetas.Calculo sin fallos (31).
+- [ ] Probar de nuevo en Z1 (deben salir 5 a 0,69 m): falta.
 - [ ] Unir `main` en la rama, commit, PR, y publicar `crear-viguetas-v1.0.0` y `acero-vigas-v1.5.0`.
 
 Pendiente: commit, PR y versión (`acero-vigas` 1.2.0) cuando el usuario lo pida; detectar vacíos desde el modelo

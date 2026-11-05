@@ -24,8 +24,27 @@ public sealed record PiezaModelo(string Id, string Elemento, double Desde, doubl
 /// <summary>Una columna del piso como su caja en planta, en mm.</summary>
 public sealed record ColumnaPiso(string Id, Punto Min, Punto Max);
 
-/// <summary>Lo que se lee de un nivel de Revit para «Crear viguetas» (#948). <paramref name="Cota"/> en mm.</summary>
-public sealed record PisoLeido(string Id, string Nombre, double Cota, IReadOnlyList<ArmazonPiso> Armazon, IReadOnlyList<ColumnaPiso> Columnas);
+/// <summary>Un suelo del nivel (#954): sus contornos en planta, en mm (el primero es el de afuera).</summary>
+public sealed record SueloPiso(string Id, IReadOnlyList<IReadOnlyList<Punto>> Contornos);
+
+/// <summary>
+/// Un punto que se puede elegir para armar una zona (#954). <paramref name="Tipo"/>: <c>columna</c>, <c>cruce</c>,
+/// <c>viga</c>, <c>vigueta</c> o <c>suelo</c> (<see cref="PisoViguetas.Puntos"/>).
+/// </summary>
+public sealed record PuntoPiso(Punto P, string Tipo);
+
+/// <summary>Una zona que armó el usuario con puntos (#954): su contorno y sus vacíos, por ejes, en mm.</summary>
+public sealed record ZonaPuntos(string Id, IReadOnlyList<Punto> Contorno, IReadOnlyList<IReadOnlyList<Punto>> Vacios);
+
+/// <summary>
+/// Lo que se lee de un nivel de Revit para «Crear viguetas» (#948). <paramref name="Cota"/> en mm. <paramref name="Suelos"/>:
+/// los suelos del nivel (#954).
+/// </summary>
+public sealed record PisoLeido(string Id, string Nombre, double Cota, IReadOnlyList<ArmazonPiso> Armazon, IReadOnlyList<ColumnaPiso> Columnas,
+    IReadOnlyList<SueloPiso>? Suelos = null)
+{
+    public IReadOnlyList<SueloPiso> LosSuelos => Suelos ?? [];
+}
 
 /// <summary>Un nivel en la lista de pisos: cuántos elementos de armazón tiene.</summary>
 public sealed record PisoResumen(string Id, string Nombre, double Cota, int Armazon);
@@ -47,29 +66,191 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         .Where(a => !a.Creada && (viguetasComoBorde || !a.EsVigueta))
         .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)));
 
-    public Panel? Panel(string id) => Paneles.FirstOrDefault(p => p.Id == id) ?? perimetros.FirstOrDefault(p => p.Id == id);
+    public Panel? Panel(string id) =>
+        Paneles.FirstOrDefault(p => p.Id == id) ?? perimetros.FirstOrDefault(p => p.Id == id) ?? zonas.FirstOrDefault(p => p.Id == id);
 
     private List<Panel> perimetros = [];
 
     /// <summary>
     /// Arma el perímetro de trabajo con los elementos de armazón que eligió el usuario (decisión 24): vigas, viguetas de
     /// borde o voladizos, menos los creados por el add-in. Cada cara cerrada es un perímetro (Z1, Z2…) y reemplaza a los
-    /// anteriores. Vacío si no cierran.
+    /// anteriores y a las zonas por puntos (usan los mismos ids). Vacío si no cierran.
     /// </summary>
     public IReadOnlyList<Panel> Perimetro(IEnumerable<string> ids)
     {
         HashSet<string> elegidos = ids.ToHashSet();
+        zonas = [];
         perimetros = DetectorPaneles.Detectar(Piso.Armazon.Where(a => elegidos.Contains(a.Id) && !a.Creada)
                 .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)))
             .Select((p, i) => p with { Id = $"Z{i + 1}" }).ToList();
         return perimetros;
     }
 
+    /// <summary>A menos de esto (mm), dos puntos que se pueden elegir son el mismo (#954).</summary>
+    private const double MismoPunto = 30;
+
+    /// <summary>
+    /// Los puntos que se pueden elegir para armar zonas (#954, decisión 2): centro de cada columna, cruces de ejes del
+    /// armazón, extremos del armazón y vértices de los suelos, en ese orden de preferencia. Lo creado por el add-in no da
+    /// puntos. Tipos: <c>columna</c>, <c>cruce</c> (de dos vigas), <c>viga</c> (extremo de viga), <c>vigueta</c>
+    /// (extremo de vigueta o cruce con una) y <c>suelo</c>.
+    /// </summary>
+    public IReadOnlyList<PuntoPiso> Puntos => puntos ??= ArmarPuntos();
+
+    private IReadOnlyList<PuntoPiso>? puntos;
+
+    private List<PuntoPiso> ArmarPuntos()
+    {
+        var lista = new List<PuntoPiso>();
+        void Sumar(Punto p, string tipo)
+        {
+            if (lista.All(x => Geometria.Distancia(x.P, p) > MismoPunto))
+                lista.Add(new PuntoPiso(new Punto(Math.Round(p.X, 1), Math.Round(p.Y, 1)), tipo));
+        }
+        foreach (ColumnaPiso c in Piso.Columnas)
+            Sumar(new Punto((c.Min.X + c.Max.X) / 2, (c.Min.Y + c.Max.Y) / 2), "columna");
+        List<ArmazonPiso> propio = Piso.Armazon.Where(a => !a.Creada).ToList();
+        for (int i = 0; i < propio.Count; i++)
+            for (int j = i + 1; j < propio.Count; j++)
+                if (Cruce(propio[i], new BordePanel(propio[j].Id, propio[j].Desde, propio[j].Hasta, propio[j].Ancho), incluirPuntas: true) is double t)
+                    Sumar(propio[i].En(t), propio[i].EsVigueta || propio[j].EsVigueta ? "vigueta" : "cruce");
+        foreach (ArmazonPiso a in propio)
+        {
+            Sumar(a.Desde, a.EsVigueta ? "vigueta" : "viga");
+            Sumar(a.Hasta, a.EsVigueta ? "vigueta" : "viga");
+        }
+        foreach (SueloPiso s in Piso.LosSuelos)
+            foreach (Punto p in s.Contornos.SelectMany(c => c))
+                Sumar(p, "suelo");
+        return lista;
+    }
+
+    /// <summary>Un lado de una zona va sobre un elemento si las puntas del elemento están a medio ancho más esto (mm), o menos, de la línea del lado.</summary>
+    private const double SobreElEje = 30;
+
+    private List<Panel> zonas = [];
+
+    /// <summary>
+    /// Arma las zonas por puntos (#954, decisiones 4 a 6) y reemplaza a las anteriores. Los lados que van sobre un
+    /// elemento de armazón se corren medio ancho de ese elemento; los lados libres llevan una vigueta de borde de
+    /// <paramref name="ancho"/> con la cara al ras del lado, hacia adentro de la losa. Los vacíos se restan de la zona
+    /// con la misma regla. Borra los perímetros «Por vigas»: usan los mismos ids.
+    /// </summary>
+    public IReadOnlyList<Panel> Zonas(IEnumerable<ZonaPuntos> pedidas, double ancho)
+    {
+        perimetros = [];
+        zonas = pedidas.Where(z => z.Contorno.Count >= 3).Select(z => Zona(z, ancho)).OfType<Panel>().ToList();
+        return zonas;
+    }
+
+    private Panel? Zona(ZonaPuntos z, double ancho)
+    {
+        List<Punto> eje = Orientar(z.Contorno, antihorario: true);
+        (List<Punto> libre, List<Punto> apoyo, List<(Punto, Punto)> bordes) = Correr(eje, ancho);
+        if (libre.Count < 3 || Geometria.Area(libre) <= 0)
+            return null;
+        var huecosEje = new List<IReadOnlyList<Punto>>();
+        var huecosLibre = new List<IReadOnlyList<Punto>>();
+        var apoyos = new List<IReadOnlyList<Punto>> { apoyo };
+        foreach (IReadOnlyList<Punto> v in z.Vacios.Where(v => v.Count >= 3))
+        {
+            // Horario: correr «hacia adentro» del anillo agranda el vacío, o sea, va hacia adentro de la losa.
+            List<Punto> hueco = Orientar(v, antihorario: false);
+            (List<Punto> huecoLibre, List<Punto> huecoApoyo, List<(Punto, Punto)> bordesHueco) = Correr(hueco, ancho);
+            huecosEje.Add(hueco);
+            huecosLibre.Add(huecoLibre);
+            apoyos.Add(huecoApoyo);
+            bordes.AddRange(bordesHueco);
+        }
+        return new Panel(z.Id, eje, libre, huecosEje, huecosLibre, bordes, apoyos);
+    }
+
+    /// <summary>
+    /// Corre cada lado de <paramref name="anillo"/> hacia su izquierda: medio ancho del elemento sobre el que va o, si es un
+    /// lado libre, un <paramref name="ancho"/> de vigueta, y en ese caso suma la vigueta de borde (su eje a medio ancho).
+    /// También devuelve el anillo de apoyo (decisión 4): los lados sobre armazón quedan en su eje y los libres, en el eje
+    /// de su vigueta de borde.
+    /// </summary>
+    private (List<Punto> Libre, List<Punto> Apoyo, List<(Punto, Punto)> Bordes) Correr(List<Punto> anillo, double ancho)
+    {
+        var corrimientos = new List<double>();
+        var alApoyo = new List<double>();
+        var bordes = new List<(Punto, Punto)>();
+        for (int i = 0; i < anillo.Count; i++)
+        {
+            Punto a = anillo[i], b = anillo[(i + 1) % anillo.Count];
+            if (Debajo(a, b) is (double cara, double eje))
+            {
+                corrimientos.Add(cara);
+                alApoyo.Add(eje);
+                continue;
+            }
+            corrimientos.Add(ancho);
+            alApoyo.Add(ancho / 2);
+            double largo = Geometria.Distancia(a, b);
+            (double nx, double ny) = (-(b.Y - a.Y) / largo * ancho / 2, (b.X - a.X) / largo * ancho / 2);
+            bordes.Add((new Punto(a.X + nx, a.Y + ny), new Punto(b.X + nx, b.Y + ny)));
+        }
+        return (Geometria.HaciaAdentro(anillo, corrimientos), Geometria.HaciaAdentro(anillo, alApoyo), bordes);
+    }
+
+    /// <summary>Un elemento cuenta como paralelo a un lado si el ángulo entre los dos es de esto (seno, unos 2°) o menos.</summary>
+    private const double Paralelo = 0.035;
+
+    /// <summary>
+    /// Si el lado a–b va sobre armazón (decisión 4): cuánto se corre el libre hacia la izquierda del lado (hasta la cara de
+    /// adentro del elemento) y cuánto el apoyo (hasta su eje). Null si es un lado libre. Cuentan los elementos paralelos al
+    /// lado con sus dos puntas a no más de medio ancho + 30 mm de su línea (el lado pasa por el cuerpo del elemento,
+    /// aunque no por su eje), y entre todos tienen que cubrir más de la mitad del lado (las vigas van una por vano). Si son
+    /// varios, manda el de la cara más adentro.
+    /// </summary>
+    private (double Cara, double Eje)? Debajo(Punto a, Punto b)
+    {
+        double lado = Geometria.Distancia(a, b);
+        if (lado < 1)
+            return null;
+        (double ux, double uy) = ((b.X - a.X) / lado, (b.Y - a.Y) / lado);
+        // Distancia con signo a la línea del lado: positiva a su izquierda, hacia adentro de la losa.
+        double Izquierda(Punto p) => -(p.X - a.X) * uy + (p.Y - a.Y) * ux;
+        double A(Punto p) => (p.X - a.X) * ux + (p.Y - a.Y) * uy;
+        var tramos = new List<(double Desde, double Hasta)>();
+        (double Cara, double Eje)? debajo = null;
+        foreach (ArmazonPiso x in Piso.Armazon.Where(x => !x.Creada))
+        {
+            double largo = Geometria.Distancia(x.Desde, x.Hasta);
+            if (largo < 1 || Math.Abs(((x.Hasta.X - x.Desde.X) * uy - (x.Hasta.Y - x.Desde.Y) * ux) / largo) > Paralelo)
+                continue;
+            double s0 = Izquierda(x.Desde), s1 = Izquierda(x.Hasta), tope = x.Ancho / 2 + SobreElEje;
+            if (Math.Abs(s0) > tope || Math.Abs(s1) > tope)
+                continue;
+            double desde = Math.Max(0, Math.Min(A(x.Desde), A(x.Hasta))), hasta = Math.Min(lado, Math.Max(A(x.Desde), A(x.Hasta)));
+            if (hasta - desde < 1)
+                continue;
+            tramos.Add((desde, hasta));
+            double eje = (s0 + s1) / 2, cara = eje + x.Ancho / 2;
+            if (debajo is not (double c, _) || cara > c)
+                debajo = (cara, eje);
+        }
+        if (debajo is not (double caraAdentro, double ejeApoyo) || Unir(tramos).Sum(t => t.Hasta - t.Desde) <= lado / 2)
+            return null;
+        return (Math.Max(0, caraAdentro), ejeApoyo);
+    }
+
+    private static List<Punto> Orientar(IReadOnlyList<Punto> p, bool antihorario) =>
+        (Geometria.Area(p) > 0) == antihorario ? [.. p] : [.. p.Reverse()];
+
     /// <summary>
     /// Lo que puede atravesar una vigueta (decisión 14): todo el armazón del piso menos lo que creó el add-in. Los bordes
     /// del panel no la cortan: lo cruzan fuera del tramo libre.
     /// </summary>
     public IReadOnlyList<BordePanel> Cruces { get; } = piso.Armazon.Where(a => !a.Creada)
+        .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)).ToList();
+
+    /// <summary>
+    /// Las vigas del piso (armazón propio que no es vigueta): las paralelas a las viguetas que quedan dentro de una zona
+    /// parten su reparto (#954, decisión 10).
+    /// </summary>
+    public IReadOnlyList<BordePanel> Vigas { get; } = piso.Armazon.Where(a => !a.Creada && !a.EsVigueta)
         .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)).ToList();
 
     /// <summary>Viguetas de la misma línea a menos de esto (mm) se toman como una sola guía.</summary>
@@ -148,8 +329,11 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         return restos.Where(t => (t.Item2 - t.Item1) * largo >= RestoMinimo).ToList();
     }
 
-    /// <summary>Dónde cruza el eje de <paramref name="otra"/> a <paramref name="a"/>, como fracción de su largo.</summary>
-    private static double? Cruce(ArmazonPiso a, BordePanel otra)
+    /// <summary>
+    /// Dónde cruza el eje de <paramref name="otra"/> a <paramref name="a"/>, como fracción de su largo. Con
+    /// <paramref name="incluirPuntas"/>, también si se tocan en una punta (para los puntos del piso).
+    /// </summary>
+    private static double? Cruce(ArmazonPiso a, BordePanel otra, bool incluirPuntas = false)
     {
         (double dx, double dy) = (a.Hasta.X - a.Desde.X, a.Hasta.Y - a.Desde.Y);
         (double ex, double ey) = (otra.Hasta.X - otra.Desde.X, otra.Hasta.Y - otra.Desde.Y);
@@ -158,7 +342,8 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
             return null;
         (double fx, double fy) = (otra.Desde.X - a.Desde.X, otra.Desde.Y - a.Desde.Y);
         double t = (fx * ey - fy * ex) / det, u = (fx * dy - fy * dx) / det;
-        return t > 0 && t < 1 && u >= 0 && u <= 1 ? t : null;
+        double margen = incluirPuntas ? 1e-6 : 0;
+        return t > -margen && t < 1 + margen && u >= -margen && u <= 1 + margen && (incluirPuntas || (t > 0 && t < 1)) ? t : null;
     }
 
     /// <summary>Une tramos [desde, hasta] que se tocan o se superponen.</summary>
