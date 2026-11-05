@@ -85,10 +85,12 @@ internal static class CreadorBarras
         IList<Curve> curvas = r.GetCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
         if (curvas.Count < 2)
             return false;
+        // Las puntas con gancho se miran en Revit, no en el plan: al reutilizar una forma que tiene el gancho en el otro
+        // extremo, Revit invierte la barra y el gancho pedido al final queda en su inicio (medido el 05-nov).
         bool volteo = false;
-        if (p.GanchoInicio != TipoGancho.Sin)
+        if (r.GetHookTypeId(0) != ElementId.InvalidElementId)
             volteo |= Voltear(r, 0, curvas[0].GetEndPoint(0).Z, zBarra, p.Capa);
-        if (p.GanchoFin != TipoGancho.Sin)
+        if (r.GetHookTypeId(1) != ElementId.InvalidElementId)
             volteo |= Voltear(r, 1, curvas[^1].GetEndPoint(1).Z, zBarra, p.Capa);
         return volteo;
     }
@@ -98,8 +100,11 @@ internal static class CreadorBarras
         bool haciaAdentro = capa == Posicion.Superior ? zPunta < zBarra : zPunta > zBarra;
         if (haciaAdentro)
             return false;
-        RebarTerminationOrientation actual = r.GetTerminationOrientation(extremo);
-        r.SetTerminationOrientation(extremo, actual == RebarTerminationOrientation.Right ? RebarTerminationOrientation.Left : RebarTerminationOrientation.Right);
+        // Se gira la punta media vuelta sobre el eje de la barra. SetTerminationOrientation no sirve: con la forma de Revit
+        // que se reutiliza (useExistingShapeIfPossible), Revit lo ignora sin avisar y el gancho de la capa superior quedaba
+        // saliendo por encima de la viga (medido en Revit 2026 el 05-nov: Left vuelve a Right; girar 180° sí lo voltea).
+        double giro = (r.GetTerminationRotationAngle(extremo) + Math.PI) % (2 * Math.PI);
+        r.SetTerminationRotationAngle(extremo, giro);
         return true;
     }
 
