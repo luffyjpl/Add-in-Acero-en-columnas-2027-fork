@@ -70,8 +70,17 @@ namespace CQEING.CotasPlanta.Revit
 
                 try
                 {
-                    canvas.Doc.Create.NewDimension(canvas.View, line, references, canvas.Styles.For(chain.Kind));
+                    Dimension dimension = canvas.Doc.Create.NewDimension(canvas.View, line, references, canvas.Styles.For(chain.Kind));
                     created++;
+                    if (chain.TextAt is not null || chain.TextRow > 0)
+                    {
+                        double textAt = chain.TextAt ?? (from + to) / 2;
+                        double rowFeet = Units.ToFeet(canvas.Paper(canvas.Settings.TextSizeMm * TextRowFactor) * chain.TextRow);
+                        if (!TryMoveText(canvas.Doc, dimension, line, Units.ToFeet(textAt - from), rowFeet))
+                        {
+                            problems.Add($"{name}: comparte línea con otro voladizo y su texto no se pudo correr; muévelo a mano.");
+                        }
+                    }
                 }
                 catch (Exception ex) when (ex is Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
                 {
@@ -109,7 +118,8 @@ namespace CQEING.CotasPlanta.Revit
                     array.Append(reference);
                     usable.Add(point);
                 }
-                else if (chain.Kind == ChainKind.Viguetas && point.Kind != RefKind.Axis)
+                // Solo el eje de una vigueta es prescindible; en una cadena unida, la cara de un voladizo no lo es.
+                else if (point.Kind == RefKind.ElementCenter)
                 {
                     skippedJoists++;
                 }
@@ -120,6 +130,37 @@ namespace CQEING.CotasPlanta.Revit
             }
 
             return (array, usable, missingRequired, skippedJoists);
+        }
+
+        /// <summary>Alto de un renglón de texto, en veces la altura del texto (texto + aire).</summary>
+        private const double TextRowFactor = 1.4;
+
+        /// <summary>
+        /// Mueve el texto de una cota de un solo tramo: queda a <paramref name="alongFeet"/> del inicio de
+        /// la línea y <paramref name="awayFeet"/> más lejos de ella, del mismo lado donde Revit lo puso.
+        /// Así dos voladizos del mismo eje comparten línea con sus textos lado a lado.
+        /// </summary>
+        private static bool TryMoveText(Document doc, Dimension dimension, Line line, double alongFeet, double awayFeet)
+        {
+            if (dimension.NumberOfSegments > 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                doc.Regenerate();
+                XYZ text = dimension.TextPosition;
+                XYZ start = line.GetEndPoint(0);
+                XYZ offset = text - (start + line.Direction * (text - start).DotProduct(line.Direction));
+                XYZ away = offset.GetLength() > 1e-9 ? offset.Normalize() * awayFeet : XYZ.Zero;
+                dimension.TextPosition = start + line.Direction * alongFeet + offset + away;
+                return true;
+            }
+            catch (Exception ex) when (ex is Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

@@ -46,6 +46,8 @@ namespace CQEING.CotasPlanta.Revit
             var view = (ViewPlan)doc.GetElement(source.Duplicate(ViewDuplicateOption.Duplicate));
             view.Name = ViewNameFor(source);
             view.ViewTemplateId = ElementId.InvalidElementId;
+            // Antes de dibujar: todas las distancias "de papel" se convierten con esta escala.
+            view.Scale = settings.ViewScale;
             // Sin recorte: la leyenda y las cotas exteriores no deben quedar cortadas.
             view.CropBoxActive = false;
             ShowOnlyPlanCategories(view);

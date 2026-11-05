@@ -23,6 +23,9 @@ namespace CQEING.CotasPlanta.Revit
             _event = ExternalEvent.Create(this);
         }
 
+        /// <summary>La planta (id de la vista de origen) ya tiene su vista de cotas.</summary>
+        public event Action<long>? Generated;
+
         /// <summary>Pide generar la vista de cotas de una planta. Se ejecuta cuando Revit esté libre.</summary>
         public void Raise(long viewId, CotasSettings settings)
         {
@@ -58,6 +61,7 @@ namespace CQEING.CotasPlanta.Revit
                     app.ActiveUIDocument.ActiveView = (View)_doc.GetElement(new ElementId(result.ViewId));
                 }
 
+                Generated?.Invoke(request.ViewId);
                 TaskDialog.Show("Cotas de planta", Summary(result));
             }
             catch (Exception ex)

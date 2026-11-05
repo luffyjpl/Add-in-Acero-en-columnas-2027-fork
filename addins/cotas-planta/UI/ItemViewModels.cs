@@ -5,12 +5,21 @@ using CQEING.CotasPlanta.Revit;
 
 namespace CQEING.CotasPlanta.UI
 {
-    /// <summary>Una fila de la lista de plantas.</summary>
-    public sealed class PlanItemViewModel
+    /// <summary>
+    /// Una fila de la lista de plantas. Primero se eligen las plantas que van a salir en planos
+    /// y luego se acotan una por una, cada una con su escala.
+    /// </summary>
+    public sealed class PlanItemViewModel : ObservableObject
     {
+        private bool _isChosen;
+        private bool _isGenerated;
+        private int _scale;
+
         public PlanItemViewModel(PlanEntry entry)
         {
             Entry = entry;
+            _isGenerated = entry.HasCotasView;
+            _scale = entry.Scale;
         }
 
         public PlanEntry Entry { get; }
@@ -18,6 +27,21 @@ namespace CQEING.CotasPlanta.UI
         public string Name => Entry.Name;
         public string Level => Entry.Level;
         public string Meta => Entry.Meta;
+
+        /// <summary>Esta planta va a salir en planos.</summary>
+        public bool IsChosen { get => _isChosen; set => Set(ref _isChosen, value); }
+
+        /// <summary>Ya tiene su vista de cotas.</summary>
+        public bool IsGenerated
+        {
+            get => _isGenerated;
+            set { if (Set(ref _isGenerated, value)) OnPropertyChanged(nameof(StatusText)); }
+        }
+
+        public string StatusText => IsGenerated ? "Generada" : "Pendiente";
+
+        /// <summary>Escala de su vista de cotas. Arranca con la de la planta.</summary>
+        public int Scale { get => _scale; set => Set(ref _scale, value); }
     }
 
     /// <summary>Una fila de la matriz "Cotas por lado".</summary>

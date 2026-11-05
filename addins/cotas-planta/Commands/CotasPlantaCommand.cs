@@ -56,6 +56,7 @@ namespace CQEING.CotasPlanta.Commands
                 viewId => geometries[viewId],
                 request.Raise,
                 app.ActiveUIDocument!.ActiveView?.Id.Value);
+            request.Generated += viewModel.MarkGenerated;
 
             _openWindow = new MainWindow(viewModel);
             _openWindow.SetOwner(app.MainWindowHandle);

@@ -9,6 +9,13 @@
     <Copyright>© CQEING</Copyright>
   </PropertyGroup>
 
+  <!-- Las pruebas son otro proyecto (net8.0 sin Revit): no se compilan dentro del add-in. -->
+  <ItemGroup>
+    <Compile Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
+  </ItemGroup>
+
   <ItemGroup>
     <Content Include="Resources\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="CQEING.CotasPlanta.addin" CopyToOutputDirectory="PreserveNewest" />

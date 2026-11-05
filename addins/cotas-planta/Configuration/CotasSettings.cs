@@ -43,6 +43,8 @@ namespace CQEING.CotasPlanta.Configuration
     /// <summary>Colores y textos compartidos por la vista previa y Revit.</summary>
     public static class Palette
     {
+        /// <summary>Negro de las cotas: en los planos las cotas y sus textos van en negro.</summary>
+        public static readonly Rgb Ink = new(0, 0, 0);
         public static readonly Rgb Column = new(242, 140, 40);
         public static readonly Rgb SlabTint = new(242, 243, 245);
         public static readonly Rgb SlabEdge = new(170, 176, 184);
@@ -88,8 +90,20 @@ namespace CQEING.CotasPlanta.Configuration
         /// <summary>Separación en papel (mm) entre cadenas del mismo lado.</summary>
         public double SpacingMm { get; init; } = 7;
 
-        /// <summary>Altura de texto en papel (mm) de rótulos y leyenda.</summary>
+        /// <summary>
+        /// Altura de texto en papel (mm) de rótulos y leyenda. No cambia con la escala:
+        /// al cambiar la escala crece o se achica el dibujo, el texto se queda igual.
+        /// </summary>
         public double TextSizeMm { get; init; } = 2.5;
+
+        /// <summary>Escala de la vista de cotas (el 50 de 1:50).</summary>
+        public int ViewScale { get; init; } = 50;
+
+        /// <summary>
+        /// Cada tipo de cadena con su color. Apagado, todas van en negro, como se entregan los planos.
+        /// En Revit el color del tipo de cota pinta la línea y el texto a la vez.
+        /// </summary>
+        public bool ColoredChains { get; init; }
 
         /// <summary>Tolerancia (m) para decidir que un elemento está sobre un eje.</summary>
         public double OnAxisToleranceM { get; init; } = 0.05;
@@ -128,6 +142,12 @@ namespace CQEING.CotasPlanta.Configuration
             new SideLayout(PlanSide.Right, new[] { ChainKind.EjeAEje }),
             new SideLayout(PlanSide.Bottom, Array.Empty<ChainKind>()),
         };
+
+        /// <summary>Escalas que se ofrecen para la vista de cotas.</summary>
+        public static IReadOnlyList<int> ScaleOptions { get; } = new[] { 20, 25, 50, 75, 100, 125, 200 };
+
+        /// <summary>Color con que se dibuja una cadena: el de su tipo o negro.</summary>
+        public Rgb DimensionColor(ChainKind kind) => ColoredChains ? Palette.ChainColor(kind) : Palette.Ink;
 
         /// <summary>Convierte milímetros de papel a metros de modelo según la escala de la vista.</summary>
         public static double PaperToModel(double paperMm, int viewScale) => paperMm * viewScale / 1000.0;

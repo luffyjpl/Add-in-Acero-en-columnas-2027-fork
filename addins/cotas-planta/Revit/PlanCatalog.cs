@@ -7,25 +7,39 @@ using Autodesk.Revit.DB;
 namespace CQEING.CotasPlanta.Revit
 {
     /// <summary>Una planta del proyecto tal como se muestra en la lista.</summary>
-    public sealed record PlanEntry(long Id, string Name, string Level, int Scale, string Meta);
+    /// <param name="HasCotasView">Ya tiene su vista «Cotas &lt;planta&gt;».</param>
+    public sealed record PlanEntry(long Id, string Name, string Level, int Scale, string Meta, bool HasCotasView);
 
     /// <summary>Lista las plantas (arquitectónicas y estructurales) ordenadas por nivel.</summary>
     internal static class PlanCatalog
     {
         private const double ParallelTolerance = 0.999;
 
-        public static IReadOnlyList<PlanEntry> List(Document doc) =>
-            new FilteredElementCollector(doc)
+        public static IReadOnlyList<PlanEntry> List(Document doc)
+        {
+            List<ViewPlan> views = new FilteredElementCollector(doc)
                 .OfClass(typeof(ViewPlan))
                 .Cast<ViewPlan>()
-                .Where(v => !v.IsTemplate && v.GenLevel is not null
+                .Where(v => !v.IsTemplate)
+                .ToList();
+
+            var generated = views
+                .Where(v => v.Name.StartsWith(PlanViewGenerator.NamePrefix))
+                .Select(v => v.Name)
+                .ToHashSet();
+
+            return views
+                .Where(v => v.GenLevel is not null
                     && (v.ViewType == ViewType.FloorPlan || v.ViewType == ViewType.EngineeringPlan)
                     // Las vistas que genera este add-in no son plantas de origen.
                     && !v.Name.StartsWith(PlanViewGenerator.NamePrefix))
                 .OrderBy(v => v.GenLevel.Elevation)
                 .ThenBy(v => v.Name)
-                .Select(v => new PlanEntry(v.Id.Value, v.Name, LevelText(v.GenLevel), v.Scale, Meta(v)))
+                .Select(v => new PlanEntry(
+                    v.Id.Value, v.Name, LevelText(v.GenLevel), v.Scale, Meta(v),
+                    generated.Contains(PlanViewGenerator.ViewNameFor(v))))
                 .ToList();
+        }
 
         public static IReadOnlyList<string> LinearDimensionTypeNames(Document doc) =>
             new FilteredElementCollector(doc)
