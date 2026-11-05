@@ -362,6 +362,7 @@
     if (p && p.modelo && p.modelo.length) {
       p.modelo.forEach((m) => {
         const a = S.piso.armazon.find((x) => x.id === m.elemento), ancho = a ? a.ancho : 100;
+        if (m.quitada && !S.editar) return;
         h += m.quitada
           ? barra(m.desde, m.hasta, ancho * 1.6, `class="ghost corte" data-a="${esc(m.id)}" ${ns}`, 'Este tramo se quita al crear · clic para dejarlo')
           : barra(m.desde, m.hasta, ancho, `class="existente quitable" data-a="${esc(m.id)}"`, 'Vigueta del modelo · con Eliminar viguetas, clic para quitar este tramo');
@@ -371,7 +372,9 @@
 
     if (p) {
       const enX = p.direccion === 'X';
+      // Decisión 12: lo eliminado solo se ve (punteado, para restaurarlo) en «Eliminar viguetas».
       p.viguetas.forEach((g) => {
+        if (g.borrada && !S.editar) return;
         h += g.borrada
           ? barra(g.ejeDesde, g.ejeHasta, p.ancho, `class="ghost" data-v="${esc(g.id)}" ${ns}`, 'Eliminada · clic para restaurar')
           : barra(g.ejeDesde, g.ejeHasta, p.ancho, `class="vg" data-v="${esc(g.id)}"`, `Vigueta ${g.id} · Tipo ${g.tipo} · ${fmt(g.largo)} m libres`);
@@ -381,12 +384,23 @@
       });
       // Las viguetas de borde de los lados libres (decisión 7): se quitan y se restauran como las demás.
       (p.bordes || []).forEach((g) => {
+        if (g.borrada && !S.editar) return;
         h += g.borrada
           ? barra(g.desde, g.hasta, p.ancho, `class="ghost" data-v="${esc(g.id)}" ${ns}`, 'Vigueta de borde eliminada · clic para restaurar')
           : barra(g.desde, g.hasta, p.ancho, `class="vg vb" data-v="${esc(g.id)}"`, `Vigueta de borde ${g.id} · ${fmt(g.largo)} m entre ejes`);
       });
-      const r = pan && p.paneles.find((x) => x.id === pan.id);
-      if (r) h += cotas(pan, r, p, fs);
+      // Decisión 18: una zona repartida por regiones trae un reparto por región; cada una lleva sus cotas en su lugar.
+      // Las regiones con el mismo reparto (mismo ancho y mismas viguetas) llevan sus cotas una sola vez, en la de más arriba
+      // o más a la izquierda, para que no se repitan en cada panel.
+      const deEste = pan ? p.paneles.filter((x) => x.id === pan.id) : [];
+      const vistas = new Set();
+      (deEste.some((x) => x.region) ? deEste.filter((x) => x.region).sort((a, b) => (enX ? a.region.wDesde - b.region.wDesde : b.region.wHasta - a.region.wHasta)) : deEste.slice(0, 1))
+        .forEach((r) => {
+          const clave = r.region ? [r.region.desde, r.region.hasta, r.cantidad, r.libreExtremos].map(Math.round).join('|') : '';
+          if (vistas.has(clave)) return;
+          vistas.add(clave);
+          h += cotas(pan, r, p, fs);
+        });
     }
     if (porPuntos()) {
       S.zonasArm.forEach((x) => {
@@ -444,15 +458,24 @@
     pintar();
   }
 
-  /** Cotas del panel principal: libre en los extremos, eje a eje y el total, como en la maqueta. */
+  /**
+   * Cotas del panel principal: libre en los extremos, eje a eje y el total, como en la maqueta. Con <r.region> (decisión
+   * 18), las de esa región: su ancho, sus viguetas y al costado de donde empieza a lo largo. Cada cota dice lo que mide.
+   */
   function cotas(pan, r, p, fs) {
-    const c = caja(pan.libre), b = p.ancho, enY = p.direccion === 'X';
-    const ejes = [...new Set(p.viguetas.filter((g) => g.panel === pan.id).map((g) => g.cota))].sort((x, y) => x - y);
+    const c = caja(pan.libre), b = p.ancho, enY = p.direccion === 'X', g0 = r.region;
+    const W = (q) => (enY ? q[0] : q[1]);
+    const enRegion = (g) => !g0 || (g.cota >= g0.desde && g.cota <= g0.hasta
+      && Math.min(Math.max(W(g.desde), W(g.hasta)), g0.wHasta) - Math.max(Math.min(W(g.desde), W(g.hasta)), g0.wDesde) > 1);
+    const ejes = [...new Set(p.viguetas.filter((g) => g.panel === pan.id && !g.borrada && enRegion(g)).map((g) => g.cota))].sort((x, y) => x - y);
     if (!ejes.length) return '';
-    const desde = enY ? c.y0 : c.x0, hasta = enY ? c.y1 : c.x1;
-    const tramos = [[desde, ejes[0] - b / 2, r.libreExtremos, 'lib']];
-    for (let i = 0; i + 1 < ejes.length; i++) tramos.push([ejes[i], ejes[i + 1], r.ejeAEje, 'eje']);
-    tramos.push([ejes[ejes.length - 1] + b / 2, hasta, r.libreExtremos, 'lib']);
+    const desde = g0 ? g0.desde : enY ? c.y0 : c.x0, hasta = g0 ? g0.hasta : enY ? c.y1 : c.x1;
+    const tramos = [[desde, ejes[0] - b / 2, ejes[0] - b / 2 - desde, 'lib']];
+    for (let i = 0; i + 1 < ejes.length; i++) tramos.push([ejes[i], ejes[i + 1], ejes[i + 1] - ejes[i], 'eje']);
+    tramos.push([ejes[ejes.length - 1] + b / 2, hasta, hasta - (ejes[ejes.length - 1] + b / 2), 'lib']);
+    // Al costado de la región, a lo largo: a la izquierda (↔ X) o arriba (↕ Y).
+    c.x0 = enY && g0 ? g0.wDesde : c.x0;
+    c.y1 = !enY && g0 ? g0.wHasta : c.y1;
     const t = fs * 0.3, d1 = fs * 2, d2 = fs * 4;
     const ln = (x1, y1, x2, y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" vector-effect="non-scaling-stroke"/>`;
     const txt = (x, y, s, rot) => `<text x="${x}" y="${y}" text-anchor="middle" font-size="${fs * 0.72}" class="halo" stroke-width="${fs * 0.25}" ${rot ? `transform="rotate(-90 ${x} ${y})"` : ''}>${s}</text>`;
@@ -519,7 +542,12 @@
       else if (S.paneles.join() !== id) elegir([id]);
     }
   });
+  // Decisión 14: el trazo también se cierra con Enter, clic derecho o doble clic, sin volver al primer punto.
+  const puedeCerrar = () => porPuntos() && !S.editar && S.trazo.length >= 3;
+  pv.addEventListener('contextmenu', (e) => { if (puedeCerrar()) { e.preventDefault(); cerrarTrazo(); } });
+  pv.addEventListener('dblclick', () => { if (puedeCerrar()) cerrarTrazo(); });
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && puedeCerrar()) { e.preventDefault(); cerrarTrazo(); return; }
     if (e.key !== 'Escape') return;
     if (S.editar) S.editar = false;
     else if (S.trazo.length || S.conVacio) { S.trazo = []; S.conVacio = false; }
@@ -545,7 +573,7 @@
     const n = S.trazo.length, que = S.conVacio ? 'del vacío' : 'del contorno';
     const avisoPuntos = porPuntos() && !S.editar && S.piso
       ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${n
-        ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${n >= 3 ? 'Clic en el primero o <b>Cerrar contorno</b> para terminar.' : 'Sigue marcando puntos.'}`
+        ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${n >= 3 ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : 'Sigue marcando puntos.'}`
         : S.conVacio ? 'Marca los puntos del <b>vacío</b>, dentro de una zona: las viguetas paran en él.'
           : S.zonas.length ? `<b>${esc(lista(S.zonas.map((z) => z.id)))}</b> armada${S.zonas.length > 1 ? 's' : ''}. Marca otra zona, separada o no, o un <b>＋ Vacío</b>.`
             : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${n >= 3 ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
@@ -575,8 +603,15 @@
     // Decisión 20: un libre de extremo mayor que el máximo se avisa.
     const grandes = p ? p.paneles.filter((r) => Math.max(r.libreExtremos, r.libreFinal) > r.libreMaximo + 1) : [];
     if (grandes.length && V.ok) pie = `<span class="msg-warn">${esc(lista(grandes.map((r) => r.id)))}: queda un libre de ${fmt(Math.max(grandes[0].libreExtremos, grandes[0].libreFinal))} m, más que el máximo de ${fmt(grandes[0].libreMaximo)} m.</span>${pie}`;
-    $('mt').innerHTML = `<div class="mt-row">${m('Viguetas a crear', p ? p.lineas : '—')}${m('Eje a eje', p && p.paneles.length ? fmt(p.paneles[0].ejeAEje) + ' m' : '—')}${m('Libre en extremos', ext)}</div>
+    $('mt').innerHTML = `<div class="mt-row">${m('Viguetas a crear', p ? p.lineas : '—')}${m('Eje a eje', p && p.paneles.length ? ejeAEje(p) : '—')}${m('Libre en extremos', ext)}</div>
       <div class="mt-foot">${pie}<span class="tag" title="Cada panel: cantidad = REDONDEAR.MENOS(libre / eje a eje); extremos = (libre − ((cantidad − 1) · eje a eje + ancho)) / 2; si pasan del libre máximo se agrega una vigueta.">${origen(p)}</span></div>`;
+  }
+  /** El eje a eje de la propuesta: uno solo o, si cada panel o región tiene el suyo, del menor al mayor. */
+  function ejeAEje(p) {
+    const vals = p.paneles.filter((r) => r.cantidad > 1).map((r) => r.ejeAEje);
+    if (!vals.length) return `${fmt(p.paneles[0].ejeAEje)} m`;
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    return Math.round(lo) === Math.round(hi) ? `${fmt(lo)} m` : `${fmt(lo)}–${fmt(hi)} m`;
   }
   /** De dónde salen las líneas: la fórmula, las del primer panel de la línea o las viguetas que ya están. */
   function origen(p) {
@@ -584,6 +619,8 @@
     const siguen = p.paneles.filter((r) => r.origen === 'Existentes').map((r) => r.id);
     const alineadas = p.paneles.filter((r) => r.origen === 'Alineado');
     if (siguen.length) return `${esc(lista(siguen))}: siguen las viguetas que ya están`;
+    // Decisión 25: en una zona, los paneles siguen las líneas del de al lado (a través de la viga) que manda.
+    if (alineadas.some((r) => r.region)) return 'Fórmula del Excel · los paneles siguen las líneas del vecino que manda (vacío o viga corta)';
     if (alineadas.length) return `Fórmula del Excel en ${esc(alineadas[0].guia)} · ${esc(lista(alineadas.map((r) => r.id)))} alineadas con ${esc(alineadas[0].guia)}`;
     return `Fórmula del Excel de Carlos · libre máx. ${fmt(p.paneles[0].libreMaximo)} m`;
   }

@@ -10,13 +10,15 @@ public sealed record BordePanel(string Id, Punto Desde, Punto Hasta, double Anch
 /// </summary>
 /// <remarks>
 /// Una zona por puntos (#954) puede traer vacíos (<paramref name="HuecosEje"/> por ejes y <paramref name="HuecosLibre"/>
-/// entre caras) y viguetas de borde en sus lados libres (<paramref name="Bordes"/>, por su eje). <paramref name="Apoyos"/>:
+/// entre caras) y viguetas de borde en sus lados libres (<paramref name="Bordes"/> las del contorno y
+/// <paramref name="BordesVacios"/> las de los vacíos, por su eje). <paramref name="Apoyos"/>:
 /// el contorno y los vacíos por los ejes de lo que sostiene cada lado (la viga o la vigueta de borde); hasta ahí llegan
 /// las líneas de Revit de las viguetas.
 /// </remarks>
 public sealed record Panel(string Id, IReadOnlyList<Punto> Eje, IReadOnlyList<Punto> Libre,
     IReadOnlyList<IReadOnlyList<Punto>>? HuecosEje = null, IReadOnlyList<IReadOnlyList<Punto>>? HuecosLibre = null,
-    IReadOnlyList<(Punto Desde, Punto Hasta)>? Bordes = null, IReadOnlyList<IReadOnlyList<Punto>>? Apoyos = null)
+    IReadOnlyList<(Punto Desde, Punto Hasta)>? Bordes = null, IReadOnlyList<IReadOnlyList<Punto>>? Apoyos = null,
+    IReadOnlyList<(Punto Desde, Punto Hasta)>? BordesVacios = null)
 {
     public double AreaLibre => Geometria.Area(Libre);
 
@@ -28,7 +30,11 @@ public sealed record Panel(string Id, IReadOnlyList<Punto> Eje, IReadOnlyList<Pu
 
     public IReadOnlyList<IReadOnlyList<Punto>> AnillosLibre => [Libre, .. HuecosLibre ?? []];
 
-    public IReadOnlyList<(Punto Desde, Punto Hasta)> ViguetasDeBorde => Bordes ?? [];
+    /// <summary>Las viguetas de borde: primero las del contorno y después las de los vacíos (en ese orden van sus ids).</summary>
+    public IReadOnlyList<(Punto Desde, Punto Hasta)> ViguetasDeBorde => [.. Bordes ?? [], .. BordesVacios ?? []];
+
+    /// <summary>Cuántas de <see cref="ViguetasDeBorde"/> son del contorno: las que siguen son de los vacíos.</summary>
+    public int BordesDelContorno => Bordes?.Count ?? 0;
 }
 
 /// <summary>

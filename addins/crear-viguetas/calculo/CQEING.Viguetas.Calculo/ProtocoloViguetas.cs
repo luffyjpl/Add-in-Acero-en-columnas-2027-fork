@@ -133,6 +133,7 @@ public static class ProtocoloViguetas
                     id = r.Panel, libre = r.Libre, cantidad = r.Reparto.Cantidad, ejeAEje = r.Reparto.EjeAEje,
                     libreExtremos = r.Reparto.LibreExtremos, libreFinal = r.LibreOtroExtremo, libreMaximo = r.Reparto.LibreMaximo,
                     origen = r.Origen, guia = r.Guia,
+                    region = r.Region is null ? null : new { desde = r.Region.Desde, hasta = r.Region.Hasta, wDesde = r.Region.WDesde, wHasta = r.Region.WHasta },
                 }),
                 viguetas = p.Viguetas.Select(v => new
                 {

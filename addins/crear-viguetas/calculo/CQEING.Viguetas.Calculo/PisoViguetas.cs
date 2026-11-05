@@ -91,8 +91,8 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
 
     /// <summary>
     /// Los puntos que se pueden elegir para armar zonas (#954, decisión 2): centro de cada columna, cruces de ejes del
-    /// armazón, extremos del armazón y vértices de los suelos, en ese orden de preferencia. Lo creado por el add-in no da
-    /// puntos. Tipos: <c>columna</c>, <c>cruce</c> (de dos vigas), <c>viga</c> (extremo de viga), <c>vigueta</c>
+    /// armazón, extremos del armazón, puntas de las viguetas que creó el add-in (decisión 24) y vértices de los suelos, en
+    /// ese orden de preferencia. Lo creado por el add-in no da cruces. Tipos: <c>columna</c>, <c>cruce</c> (de dos vigas), <c>viga</c> (extremo de viga), <c>vigueta</c>
     /// (extremo de vigueta o cruce con una) y <c>suelo</c>.
     /// </summary>
     public IReadOnlyList<PuntoPiso> Puntos => puntos ??= ArmarPuntos();
@@ -118,6 +118,12 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         {
             Sumar(a.Desde, a.EsVigueta ? "vigueta" : "viga");
             Sumar(a.Hasta, a.EsVigueta ? "vigueta" : "viga");
+        }
+        // Decisión 24: las puntas de las viguetas que creó el add-in también se pueden elegir.
+        foreach (ArmazonPiso a in Piso.Armazon.Where(a => a.Creada))
+        {
+            Sumar(a.Desde, "vigueta");
+            Sumar(a.Hasta, "vigueta");
         }
         foreach (SueloPiso s in Piso.LosSuelos)
             foreach (Punto p in s.Contornos.SelectMany(c => c))
@@ -145,24 +151,114 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
 
     private Panel? Zona(ZonaPuntos z, double ancho)
     {
-        List<Punto> eje = Orientar(z.Contorno, antihorario: true);
+        List<Punto> eje = Orientar(Enderezar(z.Contorno.Select(AlEje).ToList()), antihorario: true);
         (List<Punto> libre, List<Punto> apoyo, List<(Punto, Punto)> bordes) = Correr(eje, ancho);
         if (libre.Count < 3 || Geometria.Area(libre) <= 0)
             return null;
         var huecosEje = new List<IReadOnlyList<Punto>>();
         var huecosLibre = new List<IReadOnlyList<Punto>>();
         var apoyos = new List<IReadOnlyList<Punto>> { apoyo };
+        var bordesVacios = new List<(Punto, Punto)>();
         foreach (IReadOnlyList<Punto> v in z.Vacios.Where(v => v.Count >= 3))
         {
             // Horario: correr «hacia adentro» del anillo agranda el vacío, o sea, va hacia adentro de la losa.
-            List<Punto> hueco = Orientar(v, antihorario: false);
+            List<Punto> hueco = Orientar(Enderezar(v.Select(AlEje).ToList()), antihorario: false);
             (List<Punto> huecoLibre, List<Punto> huecoApoyo, List<(Punto, Punto)> bordesHueco) = Correr(hueco, ancho);
             huecosEje.Add(hueco);
             huecosLibre.Add(huecoLibre);
             apoyos.Add(huecoApoyo);
-            bordes.AddRange(bordesHueco);
+            bordesVacios.AddRange(bordesHueco);
         }
-        return new Panel(z.Id, eje, libre, huecosEje, huecosLibre, bordes, apoyos);
+        return new Panel(z.Id, eje, libre, huecosEje, huecosLibre, bordes, apoyos, bordesVacios);
+    }
+
+    /// <summary>Un lado va «casi derecho» si se inclina esto (tangente, unos 5°) o menos respecto de X o de Y.</summary>
+    private const double CasiDerecho = 0.0875;
+
+    /// <summary>
+    /// Decisión 20 (sin diagonales): cada lado casi horizontal toma una sola y, y cada lado casi vertical una sola x (el
+    /// promedio de los lados casi derechos seguidos en la misma dirección). Los lados más inclinados quedan como están.
+    /// Después se quitan los vértices repetidos o en línea.
+    /// </summary>
+    private static List<Punto> Enderezar(List<Punto> p)
+    {
+        int n = p.Count;
+        if (n < 3)
+            return p;
+        // Para cada lado: 'H' casi horizontal, 'V' casi vertical, ' ' inclinado.
+        char Tipo(int i)
+        {
+            Punto a = p[i], b = p[(i + 1) % n];
+            double dx = Math.Abs(b.X - a.X), dy = Math.Abs(b.Y - a.Y);
+            return dy <= CasiDerecho * dx ? 'H' : dx <= CasiDerecho * dy ? 'V' : ' ';
+        }
+        char[] tipos = Enumerable.Range(0, n).Select(Tipo).ToArray();
+        double[] xs = p.Select(q => q.X).ToArray(), ys = p.Select(q => q.Y).ToArray();
+        foreach (char t in "HV")
+        {
+            // Cadenas de lados seguidos del mismo tipo: todos sus vértices toman el promedio.
+            bool[] visto = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (tipos[i] != t || visto[i])
+                    continue;
+                int inicio = i;
+                while (tipos[(inicio - 1 + n) % n] == t && (inicio - 1 + n) % n != i)
+                    inicio = (inicio - 1 + n) % n;
+                var vertices = new List<int>();
+                int j = inicio;
+                do
+                {
+                    visto[j] = true;
+                    vertices.Add(j);
+                    j = (j + 1) % n;
+                }
+                while (tipos[(j - 1 + n) % n] == t && tipos[j] == t && j != inicio);
+                vertices.Add(j);
+                double medio = vertices.Average(k => t == 'H' ? p[k].Y : p[k].X);
+                foreach (int k in vertices)
+                    if (t == 'H')
+                        ys[k] = medio;
+                    else
+                        xs[k] = medio;
+            }
+        }
+        var r = new List<Punto>();
+        for (int i = 0; i < n; i++)
+        {
+            var q = new Punto(xs[i], ys[i]);
+            if (r.Count == 0 || Geometria.Distancia(r[^1], q) > 1)
+                r.Add(q);
+        }
+        if (r.Count > 1 && Geometria.Distancia(r[0], r[^1]) <= 1)
+            r.RemoveAt(r.Count - 1);
+        return r.Count >= 3 ? Geometria.SinColineales(r) : r;
+    }
+
+    /// <summary>
+    /// Decisión 13: un punto que cae dentro del cuerpo de un elemento del armazón (a medio ancho + <see cref="SobreElEje"/>
+    /// de su eje, o menos, y entre sus puntas) se corre al eje del más cercano. Así un vértice del suelo pegado a una viga
+    /// no deja un lado inclinado que la cruce con una vigueta de borde encima.
+    /// </summary>
+    private Punto AlEje(Punto p)
+    {
+        Punto mejor = p;
+        double menor = double.MaxValue;
+        foreach (ArmazonPiso x in Piso.Armazon.Where(x => !x.Creada))
+        {
+            double largo = Geometria.Distancia(x.Desde, x.Hasta);
+            if (largo < 1)
+                continue;
+            (double ux, double uy) = ((x.Hasta.X - x.Desde.X) / largo, (x.Hasta.Y - x.Desde.Y) / largo);
+            double a = (p.X - x.Desde.X) * ux + (p.Y - x.Desde.Y) * uy;
+            if (a < -SobreElEje || a > largo + SobreElEje)
+                continue;
+            var q = new Punto(x.Desde.X + a * ux, x.Desde.Y + a * uy);
+            double d = Geometria.Distancia(p, q);
+            if (d <= x.Ancho / 2 + SobreElEje && d < menor)
+                (mejor, menor) = (q, d);
+        }
+        return mejor;
     }
 
     /// <summary>
@@ -259,13 +355,16 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     /// <summary>
     /// Las cotas de las viguetas que ya están (del modelo o creadas por el add-in), paralelas a
     /// <paramref name="direccion"/>, dentro o fuera de lo elegido (decisiones 16 y 28): las viguetas nuevas van en esas
-    /// mismas líneas. El planificador usa solo las que caen dentro de cada panel.
+    /// mismas líneas. El planificador usa solo las que caen dentro de cada panel. Las creadas por el add-in dentro de
+    /// <paramref name="elegidos"/> no cuentan: «Crear» las va a reemplazar (#954, decisión 21).
     /// </summary>
-    public List<double> Guias(Direccion direccion)
+    public List<double> Guias(Direccion direccion, IEnumerable<Panel>? elegidos = null)
     {
         bool enX = direccion == Direccion.X;
+        List<Panel> reemplazo = elegidos?.ToList() ?? [];
+        bool SeReemplaza(ArmazonPiso a) => a.Creada && reemplazo.Any(p => Geometria.Dentro(p.Eje, a.En(0.5)));
         List<double> cotas = Piso.Armazon
-            .Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX))
+            .Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX) && !SeReemplaza(a))
             .Select(a => enX ? a.En(0.5).Y : a.En(0.5).X)
             .OrderBy(c => c).ToList();
         var juntas = new List<double>();

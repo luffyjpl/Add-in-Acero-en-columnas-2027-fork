@@ -16,7 +16,9 @@ public static class RepartoViguetas
 
     /// <summary>
     /// n = REDONDEAR.MENOS(libre / eje a eje); extremos = (libre − ((n − 1) · eje a eje + ancho)) / 2. Si los extremos
-    /// pasan de eje a eje − ancho, se agrega una vigueta y se recalculan. Null si los datos no sirven.
+    /// pasan de eje a eje − ancho, se agrega una vigueta y se recalculan. Como en el Excel, n puede ser 0: si el libre
+    /// cabe sin vigueta (no pasa de eje a eje − ancho), no va ninguna (#954, decisión 15); entonces
+    /// <see cref="Reparto.LibreExtremos"/> es el libre entero. Null si los datos no sirven.
     /// </summary>
     public static Reparto? Calcular(double libre, double ejeAEje, double ancho)
     {
@@ -25,7 +27,10 @@ public static class RepartoViguetas
         double maximo = ejeAEje - ancho;
         double Extremo(int n) => (libre - ((n - 1) * ejeAEje + ancho)) / 2;
 
-        int cantidad = Math.Max(1, (int)Math.Floor(libre / ejeAEje + Margen));
+        int cantidad = (int)Math.Floor(libre / ejeAEje + Margen);
+        if (cantidad == 0 && libre <= maximo + Margen)
+            return new Reparto(0, ejeAEje, libre, maximo);
+        cantidad = Math.Max(1, cantidad);
         if (Extremo(cantidad) > maximo + Margen)
             cantidad++;
         double extremos = Extremo(cantidad);
