@@ -69,6 +69,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CQEING.Zapatas.Calculo", "a
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CQEING.Zapatas.Calculo.Tests", "addins\acero-zapatas\calculo\CQEING.Zapatas.Calculo.Tests\CQEING.Zapatas.Calculo.Tests.csproj", "{37D7250B-DC94-40EB-85FF-1736F2C6EEBF}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "cotas-planta", "cotas-planta", "{303003D1-D401-6EAE-1520-B002681AFEE3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CQEING.CotasPlanta.Tests", "addins\cotas-planta\Tests\CQEING.CotasPlanta.Tests\CQEING.CotasPlanta.Tests.csproj", "{A2DCD0E5-530E-4503-B999-789C54740609}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -331,6 +335,18 @@ Global
 		{37D7250B-DC94-40EB-85FF-1736F2C6EEBF}.Release|x64.Build.0 = Release|Any CPU
 		{37D7250B-DC94-40EB-85FF-1736F2C6EEBF}.Release|x86.ActiveCfg = Release|Any CPU
 		{37D7250B-DC94-40EB-85FF-1736F2C6EEBF}.Release|x86.Build.0 = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|x64.Build.0 = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Debug|x86.Build.0 = Debug|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|x64.ActiveCfg = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|x64.Build.0 = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|x86.ActiveCfg = Release|Any CPU
+		{A2DCD0E5-530E-4503-B999-789C54740609}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -365,5 +381,6 @@ Global
 		{D21EA7C5-A481-4282-BD48-9D12C93A3B82} = {357D3CDA-01CE-B9B9-0C27-C0F46BBF2B79}
 		{6A8775AC-7960-459D-80E1-9BEFA3266DEA} = {357D3CDA-01CE-B9B9-0C27-C0F46BBF2B79}
 		{37D7250B-DC94-40EB-85FF-1736F2C6EEBF} = {357D3CDA-01CE-B9B9-0C27-C0F46BBF2B79}
+		{A2DCD0E5-530E-4503-B999-789C54740609} = {303003D1-D401-6EAE-1520-B002681AFEE3}
 	EndGlobalSection
 EndGlobal

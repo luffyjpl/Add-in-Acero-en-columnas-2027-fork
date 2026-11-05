@@ -32,6 +32,8 @@ namespace CQEING.CotasPlanta.UI
         private bool _tintSlab;
         private bool _longTicks;
         private bool _useShortNames;
+        private bool _coloredChains;
+        private bool _onlyChosen;
         private string? _selectedDimensionType;
         private PreviewScene? _scene;
         private IReadOnlyList<LegendEntry> _legend = Array.Empty<LegendEntry>();
@@ -54,7 +56,14 @@ namespace CQEING.CotasPlanta.UI
             Plans = new ObservableCollection<PlanItemViewModel>(plans.Select(p => new PlanItemViewModel(p)));
             PlansView = CollectionViewSource.GetDefaultView(Plans);
             PlansView.Filter = item => item is PlanItemViewModel p
+                && (!_onlyChosen || p.IsChosen)
                 && (_searchText.Length == 0 || p.Name.Contains(_searchText, StringComparison.CurrentCultureIgnoreCase));
+            ScaleOptions = CotasSettings.ScaleOptions.Concat(Plans.Select(p => p.Scale)).Distinct().OrderBy(s => s).ToList();
+
+            foreach (PlanItemViewModel plan in Plans)
+            {
+                plan.PropertyChanged += OnPlanChanged;
+            }
 
             Sides = SideOrder
                 .Select(s => new SideRowViewModel(s.Side, s.Label,
@@ -69,6 +78,7 @@ namespace CQEING.CotasPlanta.UI
             _tintSlab = defaults.TintSlab;
             _longTicks = defaults.LongTicks;
             _useShortNames = defaults.BeamNaming == BeamNaming.Short;
+            _coloredChains = defaults.ColoredChains;
             DimensionTypes = dimensionTypes;
             _selectedDimensionType = dimensionTypes.FirstOrDefault();
 
@@ -89,6 +99,7 @@ namespace CQEING.CotasPlanta.UI
         public ICollectionView PlansView { get; }
         public IReadOnlyList<SideRowViewModel> Sides { get; }
         public IReadOnlyList<string> DimensionTypes { get; }
+        public IReadOnlyList<int> ScaleOptions { get; }
         public ICommand GenerateCommand { get; }
         public ICommand CloseCommand { get; }
 
@@ -101,10 +112,95 @@ namespace CQEING.CotasPlanta.UI
                 {
                     OnPropertyChanged(nameof(PreviewTitle));
                     OnPropertyChanged(nameof(ScaleText));
+                    OnPropertyChanged(nameof(SelectedScale));
                     OnPropertyChanged(nameof(GenerateLabel));
                     CommandManager.InvalidateRequerySuggested();
                     Refresh();
                 }
+            }
+        }
+
+        /// <summary>Escala de la planta que se está viendo. El texto no cambia de tamaño, solo el dibujo.</summary>
+        public int SelectedScale
+        {
+            get => SelectedPlan?.Scale ?? new CotasSettings().ViewScale;
+            set
+            {
+                if (SelectedPlan is not null)
+                {
+                    SelectedPlan.Scale = value;
+                }
+            }
+        }
+
+        /// <summary>Muestra en la lista solo las plantas elegidas para planos.</summary>
+        public bool OnlyChosen
+        {
+            get => _onlyChosen;
+            set
+            {
+                if (Set(ref _onlyChosen, value))
+                {
+                    PlansView.Refresh();
+                }
+            }
+        }
+
+        public string ChosenCountText
+        {
+            get
+            {
+                int chosen = Plans.Count(p => p.IsChosen);
+                int done = Plans.Count(p => p.IsChosen && p.IsGenerated);
+                return chosen == 0 ? "Marca las plantas que van en planos" : $"{chosen} elegidas · {done} generadas";
+            }
+        }
+
+        /// <summary>
+        /// La planta ya tiene su vista de cotas: se marca y, si era una de las elegidas,
+        /// se pasa a la siguiente elegida que falte.
+        /// </summary>
+        public void MarkGenerated(long viewId)
+        {
+            PlanItemViewModel? plan = Plans.FirstOrDefault(p => p.Id == viewId);
+            if (plan is null)
+            {
+                return;
+            }
+
+            plan.IsGenerated = true;
+            if (plan.IsChosen && plan == SelectedPlan)
+            {
+                int index = Plans.IndexOf(plan);
+                PlanItemViewModel? next = Plans.Skip(index + 1).Concat(Plans.Take(index))
+                    .FirstOrDefault(p => p.IsChosen && !p.IsGenerated);
+                if (next is not null)
+                {
+                    SelectedPlan = next;
+                }
+            }
+        }
+
+        private void OnPlanChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(PlanItemViewModel.IsChosen):
+                    OnPropertyChanged(nameof(ChosenCountText));
+                    if (OnlyChosen)
+                    {
+                        PlansView.Refresh();
+                    }
+
+                    break;
+                case nameof(PlanItemViewModel.IsGenerated):
+                    OnPropertyChanged(nameof(ChosenCountText));
+                    break;
+                case nameof(PlanItemViewModel.Scale) when sender == SelectedPlan:
+                    OnPropertyChanged(nameof(SelectedScale));
+                    OnPropertyChanged(nameof(ScaleText));
+                    Refresh();
+                    break;
             }
         }
 
@@ -137,6 +233,7 @@ namespace CQEING.CotasPlanta.UI
         public bool IncludeJoists { get => _includeJoists; set { if (Set(ref _includeJoists, value)) Refresh(); } }
         public bool TintSlab { get => _tintSlab; set { if (Set(ref _tintSlab, value)) Refresh(); } }
         public bool LongTicks { get => _longTicks; set { if (Set(ref _longTicks, value)) Refresh(); } }
+        public bool ColoredChains { get => _coloredChains; set { if (Set(ref _coloredChains, value)) Refresh(); } }
 
         public bool UseShortNames
         {
@@ -172,7 +269,7 @@ namespace CQEING.CotasPlanta.UI
         public string SegmentsText { get => _segmentsText; private set => Set(ref _segmentsText, value); }
 
         public string PreviewTitle => SelectedPlan is null ? "Vista previa" : $"Vista previa · {SelectedPlan.Name} ({SelectedPlan.Level})";
-        public string ScaleText => SelectedPlan is null ? "" : "Escala 1:" + SelectedPlan.Entry.Scale;
+        public string ScaleText => SelectedPlan is null ? "" : "Escala 1:" + SelectedPlan.Scale;
         public string FirstOffsetText => $"{FirstOffsetMm:0} mm";
         public string SpacingText => $"{SpacingMm:0} mm";
 
@@ -190,6 +287,8 @@ namespace CQEING.CotasPlanta.UI
             IncludeJoists = IncludeJoists,
             TintSlab = TintSlab,
             LongTicks = LongTicks,
+            ColoredChains = ColoredChains,
+            ViewScale = SelectedScale,
             BeamNaming = UseShortNames ? BeamNaming.Short : BeamNaming.Section,
             BaseDimensionTypeName = SelectedDimensionType,
             Sides = Sides.Select(s => s.ToLayout()).ToList(),
@@ -209,7 +308,7 @@ namespace CQEING.CotasPlanta.UI
             IReadOnlyList<ChainSpec> chains = ChainPlanner.Plan(geometry, settings);
             IReadOnlyList<LegendEntry> legend = LegendContent.Build(geometry, chains, settings);
 
-            Scene = new PreviewScene(geometry, chains, settings, SelectedPlan.Entry.Scale);
+            Scene = new PreviewScene(geometry, chains, settings);
             Legend = legend.Where(e => e.Symbol != LegendSymbol.Beam).ToList();
             BeamLegend = legend.Where(e => e.Symbol == LegendSymbol.Beam).Select(e => e.Label).ToList();
             ChainsText = chains.Count == 1 ? "1 cadena" : $"{chains.Count} cadenas";

@@ -194,6 +194,12 @@
                         <TextBlock DockPanel.Dock="Right" Text="{Binding PlanCountText}" FontSize="12" Foreground="{StaticResource Muted}"/>
                         <TextBlock Text="PLANTAS" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/>
                     </DockPanel>
+                    <DockPanel DockPanel.Dock="Top" Margin="8,0,8,8">
+                        <CheckBox DockPanel.Dock="Right" IsChecked="{Binding OnlyChosen}" Content="Solo elegidas" FontSize="12"
+                                  ToolTip="Muestra solo las plantas marcadas para planos."/>
+                        <TextBlock Text="{Binding ChosenCountText}" FontSize="12" Foreground="{StaticResource Muted}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
                         <TextBox x:Name="Search" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                  MinHeight="34" Padding="8,0" VerticalContentAlignment="Center" BorderBrush="#C3CAD2"/>
@@ -216,12 +222,18 @@
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
                             <DataTemplate DataType="{x:Type ui:PlanItemViewModel}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock FontSize="12" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis">
-                                        <Run Text="{Binding Level, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Meta, Mode=OneWay}"/>
-                                    </TextBlock>
-                                </StackPanel>
+                                <DockPanel>
+                                    <CheckBox DockPanel.Dock="Left" IsChecked="{Binding IsChosen}" VerticalAlignment="Center" Margin="0,0,8,0"
+                                              ToolTip="Esta planta va en planos"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource Muted}"
+                                               VerticalAlignment="Top" Margin="6,2,0,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock FontSize="12" Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding Level, Mode=OneWay}"/><Run Text=" · "/><Run Text="{Binding Meta, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DockPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
@@ -286,7 +298,16 @@
 
             <!-- Configuración -->
             <Border Grid.Column="4" Style="{StaticResource Card}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="16,0">
+                        <Border Style="{StaticResource Section}">
+                            <DockPanel>
+                                <TextBlock Text="Escala 1:" VerticalAlignment="Center" Margin="0,0,8,0"
+                                           ToolTip="El texto se queda en 2.5 mm en el papel: al cambiar la escala solo cambia el tamaño del dibujo."/>
+                                <ComboBox ItemsSource="{Binding ScaleOptions}" SelectedItem="{Binding SelectedScale}" MinHeight="30" VerticalContentAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+
                         <Border Style="{StaticResource Section}">
                             <StackPanel>
                                 <TextBlock Text="COTAS POR LADO" Style="{StaticResource Caps}"
@@ -371,6 +392,8 @@
                                 <CheckBox IsChecked="{Binding MarkVoids}" Content="Marcar vacíos con X" Margin="0,2"/>
                                 <CheckBox IsChecked="{Binding TintSlab}" Content="Losa en gris tenue" Margin="0,2"/>
                                 <CheckBox IsChecked="{Binding LongTicks}" Content="Trazo diagonal largo en cotas" Margin="0,2"/>
+                                <CheckBox IsChecked="{Binding ColoredChains}" Content="Cotas de colores (por tipo)" Margin="0,2"
+                                          ToolTip="Apagado, todas las cotas y sus textos van en negro, como se entregan los planos."/>
                             </StackPanel>
                         </Border>
 
@@ -382,6 +405,7 @@
                             </DockPanel>
                         </Border>
                     </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
     </DockPanel>

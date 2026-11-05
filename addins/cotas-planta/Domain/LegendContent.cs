@@ -13,7 +13,9 @@ namespace CQEING.CotasPlanta.Domain
     {
         public static IReadOnlyList<LegendEntry> Build(PlanGeometry geometry, IReadOnlyList<ChainSpec> chains, CotasSettings settings)
         {
+            // Con todas las cotas en negro no hay colores que explicar.
             var entries = chains
+                .Where(_ => settings.ColoredChains)
                 .Select(c => c.Kind)
                 .Distinct()
                 .OrderBy(k => k)

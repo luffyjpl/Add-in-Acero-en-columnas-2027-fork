@@ -1,0 +1,6 @@
+<Project>
+  <!--
+    Corta la herencia de addins/Directory.Build.props: las pruebas solo compilan Domain/ y Configuration/,
+    que no usan Revit ni WPF. Así corren en net8.0 puro, sin Revit instalado.
+  -->
+</Project>

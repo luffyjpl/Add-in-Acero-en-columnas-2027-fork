@@ -10,7 +10,10 @@ using CQEING.CotasPlanta.Domain;
 namespace CQEING.CotasPlanta.UI
 {
     /// <summary>Lo que dibuja la vista previa.</summary>
-    public sealed record PreviewScene(PlanGeometry Geometry, IReadOnlyList<ChainSpec> Chains, CotasSettings Settings, int ViewScale);
+    public sealed record PreviewScene(PlanGeometry Geometry, IReadOnlyList<ChainSpec> Chains, CotasSettings Settings)
+    {
+        public int ViewScale => Settings.ViewScale;
+    }
 
     /// <summary>
     /// Vista previa de la planta con las cotas tal como quedarán.
@@ -141,10 +144,19 @@ namespace CQEING.CotasPlanta.UI
 
         public static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
 
-        public static Brush Chain(ChainKind kind) => ChainBrushes[kind];
+        /// <summary>Pincel de una cadena con el color que le da la configuración (el de su tipo o negro).</summary>
+        public static Brush Chain(Rgb color)
+        {
+            if (!ChainBrushes.TryGetValue(color, out Brush? brush))
+            {
+                brush = Frozen(ToColor(color));
+                ChainBrushes[color] = brush;
+            }
 
-        private static readonly Dictionary<ChainKind, Brush> ChainBrushes =
-            Enum.GetValues<ChainKind>().ToDictionary(k => k, k => Frozen(ToColor(Palette.ChainColor(k))));
+            return brush;
+        }
+
+        private static readonly Dictionary<Rgb, Brush> ChainBrushes = new();
 
         private static Brush Frozen(Color color)
         {
@@ -352,10 +364,10 @@ namespace CQEING.CotasPlanta.UI
             }
         }
 
-        /// <summary>Línea de cota, líneas de extensión, trazos diagonales y valores, en el color de su tipo.</summary>
+        /// <summary>Línea de cota, líneas de extensión, trazos diagonales y valores, en negro o en el color de su tipo.</summary>
         private void PaintChain(ChainSpec chain)
         {
-            Brush brush = Ink.Chain(chain.Kind);
+            Brush brush = Ink.Chain(Settings.DimensionColor(chain.Kind));
             var line = new Pen(brush, 0.7);
             var extension = new Pen(new SolidColorBrush(((SolidColorBrush)brush).Color) { Opacity = 0.6 }, 0.5);
             var tick = new Pen(brush, 1.4);
@@ -396,8 +408,12 @@ namespace CQEING.CotasPlanta.UI
                 double offset = gap + (!fits && raiseNext ? textPx * 1.15 : 0);
                 raiseNext = !fits && !raiseNext;
 
-                Point mid = points[i] + (points[i + 1] - points[i]) / 2 - toPlan * offset;
-                DrawText(text, mid, textPx, brush, rotate: !horizontal, bold: true);
+                // En el medio del tramo, salvo que comparta línea con otro voladizo: entonces lado a lado con su texto.
+                Point center = chain.TextAt is { } textAt && chain.SegmentCount == 1
+                    ? (horizontal ? P(textAt, at) : P(at, textAt))
+                    : points[i] + (points[i + 1] - points[i]) / 2;
+                Point mid = center - toPlan * (offset + chain.TextRow * textPx * 1.4);
+                DrawText(text, mid, textPx, brush, rotate: !horizontal);
             }
         }
 

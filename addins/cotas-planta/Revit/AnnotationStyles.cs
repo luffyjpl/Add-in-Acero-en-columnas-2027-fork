@@ -43,16 +43,20 @@ namespace CQEING.CotasPlanta.Revit
                 ?? throw new InvalidOperationException("El proyecto no tiene tipos de cota lineal.");
 
             Dictionary<ChainKind, DimensionType> dimensionTypes = Enum.GetValues<ChainKind>()
-                .ToDictionary(kind => kind, kind => EnsureDimensionType(linear, baseType, kind));
+                .ToDictionary(kind => kind, kind => EnsureDimensionType(linear, baseType, kind, settings.DimensionColor(kind)));
 
             return new AnnotationStyles(dimensionTypes, EnsureTextType(doc, settings), EnsureVoidLine(doc));
         }
 
-        private static DimensionType EnsureDimensionType(IEnumerable<DimensionType> existing, DimensionType baseType, ChainKind kind)
+        /// <summary>
+        /// Los tipos son del add-in y se comparten entre vistas: cambiar el color aquí cambia también
+        /// las vistas de cotas que ya existen.
+        /// </summary>
+        private static DimensionType EnsureDimensionType(IEnumerable<DimensionType> existing, DimensionType baseType, ChainKind kind, Rgb color)
         {
             string name = Prefix + Palette.ChainLabel(kind);
             DimensionType type = existing.FirstOrDefault(t => t.Name == name) ?? (DimensionType)baseType.Duplicate(name);
-            type.get_Parameter(BuiltInParameter.LINE_COLOR)?.Set(ToRevitInt(Palette.ChainColor(kind)));
+            type.get_Parameter(BuiltInParameter.LINE_COLOR)?.Set(ToRevitInt(color));
             return type;
         }
 
@@ -71,6 +75,7 @@ namespace CQEING.CotasPlanta.Revit
             }
 
             type.get_Parameter(BuiltInParameter.TEXT_SIZE)?.Set(UnitUtils.ConvertToInternalUnits(settings.TextSizeMm, UnitTypeId.Millimeters));
+            type.get_Parameter(BuiltInParameter.LINE_COLOR)?.Set(ToRevitInt(Palette.Ink));
             type.get_Parameter(BuiltInParameter.TEXT_BACKGROUND)?.Set(1); // 1 = transparente
             return type.Id;
         }

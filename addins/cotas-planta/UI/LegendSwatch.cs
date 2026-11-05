@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using CQEING.CotasPlanta.Configuration;
 using CQEING.CotasPlanta.Domain;
 
 namespace CQEING.CotasPlanta.UI
@@ -23,8 +24,10 @@ namespace CQEING.CotasPlanta.UI
             switch (Entry?.Symbol)
             {
                 case LegendSymbol.Chain when Entry.Kind is { } kind:
-                    var line = new Pen(Ink.Chain(kind), 1);
-                    var tick = new Pen(Ink.Chain(kind), 1.4);
+                    // Las cadenas solo salen en la leyenda cuando van con colores.
+                    Brush brush = Ink.Chain(Palette.ChainColor(kind));
+                    var line = new Pen(brush, 1);
+                    var tick = new Pen(brush, 1.4);
                     dc.DrawLine(line, new Point(1, h / 2), new Point(w - 1, h / 2));
                     dc.DrawLine(tick, new Point(1, h / 2 + 4), new Point(7, h / 2 - 4));
                     dc.DrawLine(tick, new Point(w - 7, h / 2 + 4), new Point(w - 1, h / 2 - 4));
