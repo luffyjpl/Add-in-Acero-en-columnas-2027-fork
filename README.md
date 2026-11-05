@@ -9,6 +9,7 @@ por add-in.
 | `addins/imagenes/` | Imágenes por actividad del presupuesto. |
 | `addins/acero-vigas/` | Acero en vigas: barras con traslapos a múltiplos de corte, bastones y estribos, por pórtico. |
 | `addins/despiece/` | Despiece: vistas de despiece de vigas y columnas, listas para llevar al plano. |
+| `addins/cotas-planta/` | Cotas de planta: genera la vista «Cotas &lt;planta&gt;» con cotas libres, eje a eje, voladizos, viguetas y total por color, con vista previa. |
 | `addins/gestor-revit/` | **No es un add-in:** el botón «Gestor de add-ins» (panel «Gestor») que el gestor instala solo dentro de Revit. Viaja en el paquete del gestor y no se publica con etiqueta propia. |
 | `addins/compartido/` | Código común: la pestaña CQEING del ribbon (se compila dentro de cada add-in). |
 | `gestor/` | App de escritorio que instala, actualiza y revierte los add-ins (en construcción). |

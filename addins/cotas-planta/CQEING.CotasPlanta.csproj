@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Año de Revit, framework, API por NuGet y salida bin/<config>/<año>/: addins/Directory.Build.props. -->
+  <PropertyGroup>
+    <AssemblyName>CQEING.CotasPlanta</AssemblyName>
+    <RootNamespace>CQEING.CotasPlanta</RootNamespace>
+    <Company>CQEING</Company>
+    <Product>CQEING - Cotas de planta</Product>
+    <Copyright>© CQEING</Copyright>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="CQEING.CotasPlanta.addin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
