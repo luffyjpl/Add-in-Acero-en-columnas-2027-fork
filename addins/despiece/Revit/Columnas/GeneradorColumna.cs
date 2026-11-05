@@ -58,7 +58,8 @@ internal static class GeneradorColumna
         GeneradorPrevia.textosNegros = negros;
         try
         {
-            View alzado = Alzado(doc, columna, TiposPropios.Crear(doc, false), movible);
+            TiposPropios tipos = TiposPropios.Crear(doc, false);
+            View alzado = Alzado(doc, columna, tipos, movible);
             Registro.Paso("columna: exportando el alzado");
             string ruta = ExportadorImagen.Exportar(doc, alzado, carpeta);
             object? capa = null;
@@ -76,8 +77,20 @@ internal static class GeneradorColumna
                     ruta = ExportadorImagen.Exportar(doc, alzado, carpeta);
                 }
             }
-            // La sección superior llega en el paso 5 del plan.
-            return new PreviaGenerada(ruta, "", capa);
+            // Las dos secciones superiores (decisión 16): la de traslapos solo si se supo el grupo de las varillas.
+            List<Rebar> barras = new FilteredElementCollector(doc).OfClass(typeof(Rebar)).Cast<Rebar>()
+                .Where(b => columna.Elementos.Contains(b.GetHostId())).ToList();
+            string traslapos = "";
+            if (columna.Varillas.Any(v => v.Grupo is not null))
+            {
+                Registro.Paso("columna: exportando la sección de traslapos");
+                traslapos = ExportadorImagen.Exportar(doc, SeccionColumna.Crear(doc, columna, barras, tipos, true), carpeta);
+            }
+            else
+                Registro.Paso("columna: sin grupos de traslapo, no va la sección de traslapos");
+            Registro.Paso("columna: exportando la sección de varillas");
+            string varillas = ExportadorImagen.Exportar(doc, SeccionColumna.Crear(doc, columna, barras, tipos, false), carpeta);
+            return new PreviaGenerada(ruta, traslapos, capa, varillas);
         }
         finally
         {
@@ -85,6 +98,55 @@ internal static class GeneradorColumna
             Registro.Paso("columna: deshaciendo");
             t.RollBack();
         }
+    }
+
+    /// <summary>Los nombres de las vistas de un grupo: el alzado y las dos secciones (paso 6 del plan).</summary>
+    public static string[] Nombres(string nombre) => [nombre, $"Sección {nombre} - traslapos", $"Sección {nombre} - varillas"];
+
+    /// <summary>
+    /// Deja las vistas de la columna en el navegador de Revit, iguales a la vista previa (paso 6 del plan): el alzado con lo
+    /// movido aplicado y las dos secciones (la de traslapos solo si se supo el grupo de las varillas). No coloca nada en
+    /// las hojas. Si ya existe alguna, no crea nada, como en la viga: reemplazarla podría borrar lo hecho a mano.
+    /// </summary>
+    public static (IReadOnlyList<string> Nombres, bool YaExistian) Crear(Document doc, ColumnaLeida columna, string nombre, bool negros, DespieceMovible movible)
+    {
+        string[] todos = Nombres(nombre);
+        bool conTraslapos = columna.Varillas.Any(v => v.Grupo is not null);
+        string[] nombres = conTraslapos ? todos : [todos[0], todos[2]];
+        var existentes = new HashSet<string>(new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>().Where(v => !v.IsTemplate).Select(v => v.Name));
+        if (nombres.Any(existentes.Contains))
+            return (nombres, true);
+
+        using var t = new Transaction(doc, "Crear vistas de despiece de columna");
+        t.Start();
+        GeneradorPrevia.textosNegros = negros;
+        try
+        {
+            TiposPropios tipos = TiposPropios.Crear(doc, true);
+            Alzado(doc, columna, tipos, movible).Name = todos[0];
+            List<Rebar> barras = new FilteredElementCollector(doc).OfClass(typeof(Rebar)).Cast<Rebar>()
+                .Where(b => columna.Elementos.Contains(b.GetHostId())).ToList();
+            if (conTraslapos)
+                SeccionColumna.Crear(doc, columna, barras, tipos, true).Name = todos[1];
+            SeccionColumna.Crear(doc, columna, barras, tipos, false).Name = todos[2];
+            if (t.Commit() != TransactionStatus.Committed)
+                throw new InvalidOperationException("Revit no aceptó las vistas.");
+            Registro.Paso("columna: vistas creadas " + string.Join("; ", nombres));
+            return (nombres, false);
+        }
+        finally
+        {
+            GeneradorPrevia.textosNegros = false;
+            if (t.HasStarted() && !t.HasEnded())
+                t.RollBack();
+        }
+    }
+
+    /// <summary>Una de las vistas que dejó <see cref="Crear"/>: <paramref name="cual"/> es 0 (alzado), 1 (traslapos) o 2 (varillas). Null si no existe.</summary>
+    public static View? VistaCreada(Document doc, string nombre, int cual)
+    {
+        string buscado = Nombres(nombre)[cual];
+        return new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>().FirstOrDefault(v => !v.IsTemplate && v.Name == buscado);
     }
 
     /// <summary>

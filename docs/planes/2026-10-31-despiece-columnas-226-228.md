@@ -36,11 +36,11 @@ De #227:
 - [x] Color por número de barra (`ColoresDiametro`).
 
 De #228:
-- [ ] Sección superior con barras, ganchos y estribo; concreto gris.
-- [ ] Cotas de dimensiones (`0.40 x 0.40`) y de recubrimiento.
-- [ ] Estribo sacado aparte, solo con sus medidas; una barra de cada tipo.
-- [ ] Dos secciones por columna: una con colores de traslapo (intercalados) y otra, igual, con colores por varilla.
-- [ ] Los colores de traslapo no coinciden con ningún color de varilla de la paleta.
+- [x] Sección superior con barras y estribo; concreto gris. Sin ganchos por pedido de Luciano (decisión 17): confirmar con Santiago.
+- [x] Cotas de dimensiones (`0.40 x 0.40`) y de recubrimiento (en la columna circular no hay cotas: no tiene caras planas).
+- [x] Estribo sacado aparte, solo con sus medidas, y también los menores (decisión 18); una barra de cada tipo.
+- [x] Dos secciones por columna: una con colores de traslapo (intercalados) y otra, igual, con colores por varilla.
+- [x] Los colores de traslapo no coinciden con ningún color de varilla de la paleta.
 
 Generales (#217): todo lo hace el add-in; vistas reales y editables; sin rellenos ni líneas que imiten nada; nunca se
 editan tipos existentes del proyecto; `dotnet test CQEING-Addins.sln` sin fallos y compilación sin advertencias.
@@ -239,6 +239,35 @@ bien (nombre, ganchos, traslapos y zoom):*
     lo tienen hacia adelante o atrás; el detalle de frente no lo dibuja. **Pendiente**, sin decidir: verlo en la
     captura con las líneas ya bien armadas antes de proponer algo.
 
+35. **Los números de las cotas salen diminutos** (04-nov 20:22, Luciano, en el estribo aparte de la sección: "los
+    números de cota están saliendo súper pequeños, mira si en algún otro lado es igual"). Pasa en todas las cotas del
+    despiece: las del detalle del estribo, las de ancho y alto de la sección y las del alzado (en las capturas se ve la
+    línea pero casi no el número), y en la viga, que usa los mismos tipos. Causa: `TiposPropios.EnMetros` duplica el
+    tipo de cota del proyecto y hereda su tamaño de texto; las notas del despiece usan 2.5 mm. **Corrección:** los
+    tipos de cota propios (`CQ Despiece - metros` y su versión corta) llevan siempre el texto a 2.5 mm, como las notas
+    (son tipos del despiece: no se toca ninguno del proyecto). La traza anota el tamaño que traía el original
+    (`tipos: texto de cota …`). Cambia también en la viga: solo se agranda el número.
+36. **Con el número legible, las medidas de los ganchos tapan el dibujo del estribo aparte** (04-nov 20:39, Luciano:
+    "está el número tapando los ganchos"; en la columna de los ejes 1 y 6, los `0.08` del estribo y los `0.11` de la
+    grapa). Primero se pensó apagar esas medidas (`SegmentLengthDimensionsForHooksEnabled = false`), pero Luciano
+    prefiere que se vean sin tapar ("¿no hay alguna forma de hacer que aparezcan sin tapar lo otro?"). **Corrección:**
+    el tipo `CQ Despiece sin etiqueta` pone el número del lado de afuera de la línea de cota
+    (`SegmentLengthDimensionTextPosition = BendingDetailDimensionTextPosition.OutsideOfDimensionLine`, pública en la
+    API 2027). La separación de la cota al tramo (`SegmentLengthDimensionsOffset`) no dice su unidad en la
+    documentación: no se toca a ciegas; la traza anota la que trae el tipo (`tipos: separación de las medidas …`) y,
+    si con el número afuera no alcanza, se ajusta con ese dato. **Probado (04-nov 20:45): igual que antes.** La traza
+    dio `separación de las medidas del detalle 0,0098` pies = **3 mm**, el valor de papel que trae Revit por defecto:
+    la unidad es de papel. Con el número a 2.5 mm, 3 mm no lo saca del dibujo. Se sube a **6 mm** (0.006 / 0.3048
+    pies). El apilado de estribos mide cada detalle con `get_BoundingBox`, así que el espacio extra se respeta.
+    **Probado (04-nov 20:59): siguen encimadas.** Los dos ganchos del estribo están en la misma esquina y Revit pone
+    sus medidas solas, una sobre otra. **Solución final, la de la viga:** el detalle no muestra la medida de los
+    ganchos (`SegmentLengthDimensionsForHooksEnabled = false`; en la viga ya no la mostraba, probado el 3-nov) y su
+    largo va en texto con `GeneradorPrevia.EtiquetarGancho`, que en la viga lo pone donde hay espacio (el de adentro
+    del otro lado de las patas, el de afuera al costado). Se generalizó para usar el "arriba" de la vista
+    (`vista.UpDirection`) en vez de Z: en la sección de la viga "arriba" es Z y da lo mismo; en la planta es Y. Se
+    deshicieron el número afuera y los 6 mm. Solo el estribo principal lleva estos textos, como en la viga; el gancho
+    de la grapa va en su texto (`G= 0.11`).
+
 ## Decisiones
 
 <!-- Las marcadas "por confirmar" las decide Luciano al revisar este plan. -->
@@ -364,6 +393,55 @@ bien (nombre, ganchos, traslapos y zoom):*
     - Varias columnas con el mismo acero se separan con **coma**: `Col 1-6, 2-6 - (0.30x0.30)`. Con guion
       (`Col 1-6-2-6`) no se sabría dónde termina cada una. Vigas y viguetas siguen con guion (`V A-B`).
 
+16. **Cómo se arma la sección superior** (2026-11-04, Claude, al empezar el paso 5; #228 pide "sección superior con
+    barras, ganchos y estribo"; se ajusta con la captura de Santiago, #218):
+    - **Dónde se corta:** "superior" es el extremo de arriba, donde las varillas terminan con su gancho doblado hacia
+      adentro. Planta propia (decisión 9), con el corte **1 cm debajo del tope de la pila**, para que el concreto
+      salga cortado (gris) y los ganchos, que están debajo del corte, se vean desde arriba. El rango de vista baja
+      0.50 m: alcanza los estribos de arriba. El nivel de la planta es el más alto que está por debajo del corte.
+    - **Qué se ve:** solo la pila y su acero; el acero visible a través del concreto (`SetUnobscuredInView`). Las
+      barras verticales que terminan más de 0.15 m debajo del corte (las piezas de abajo) se ocultan, para no ver
+      dos círculos por varilla. Detalle **fino**: con detalle medio una barra vertical vista desde arriba es solo un
+      punto (en la viga se cortaba, aquí se mira). Sin rayado del concreto (solo el gris), sin ejes, niveles ni marcas.
+    - **Etiquetas:** una por barra, `1 #4`, con flecha, como en la sección de la viga: las de la mitad de arriba en una
+      fila encima de la columna y las de abajo en una fila debajo.
+    - **Cotas:** ancho y alto con cotas de Revit contra las caras del elemento de arriba (`ComputeReferences`,
+      hallazgo 12), y el recubrimiento en texto (`0.04 · 0.22 · 0.04`), igual que la viga. En una columna circular no
+      hay caras planas: se omiten y se anota en la traza.
+    - **Estribo aparte**, a la derecha, con sus medidas (tipo `CQ Despiece sin etiqueta`, rotación 0, hallazgo 21) y
+      debajo `46 #3 L= 0.99 G= 0.08` (cantidad total de la pila). Es el de más tramos que se vea en la planta.
+    - **Dos veces:** la misma planta duplicada. En la **primera**, barras y etiquetas en el color de su grupo de
+      traslapo (A cian `#00ACC1`, B gris `#9E9E9E`, decisiones 3 y 4) y debajo una leyenda `Traslapo A` / `Traslapo B`
+      en esos colores. En la **segunda**, el color de cada diámetro. Si la columna no tiene grupos (decisión 4: no se
+      pudo saber), la primera no se crea y la página lo avisa. Un conjunto de Revit con barras de los dos grupos
+      (hecho a mano) se pinta con el grupo de la mayoría y se anota en la traza.
+    - **En la página:** a la derecha, las dos imágenes una debajo de otra, con su título ("Traslapos" y "Varillas").
+      `PreviaGenerada` suma la segunda sección (por defecto vacía, la viga sigue igual). *Reemplazado por la
+      decisión 17.*
+
+17. **Sección sin ganchos y en un paso propio** (2026-11-04, Luciano, al ver la primera sección: "siento que se está
+    tomando mucho espacio, creo que estaría bien si se agrega un paso más en columna, para que se vea en otra pantalla
+    y quepa todo bien. También sería mejor que se muestre sin ganchos"). Cambia dos puntos de la decisión 16:
+    - **Sin ganchos:** el corte baja hasta debajo de donde empiezan los ganchos de arriba: 3 cm debajo del final del
+      tramo recto más bajo de las barras que llegan arriba (`GeneradorPrevia.Mayor`), y nunca más arriba que 1 cm
+      bajo el tope. Las barras salen cortadas (círculos) y los ganchos, que quedan sobre el corte, no se ven. #228
+      pedía "barras, ganchos y estribo"; queda anotado para confirmar con Santiago (#218).
+    - **Un paso más con columnas:** `Elegir · Alzado · Sección · Crear vistas`. El paso 2 muestra el alzado y la
+      lista de barras; el 3, las dos secciones lado a lado, grandes; el 4 es el de crear vistas. Con vigas y viguetas
+      siguen los 3 pasos de siempre. La sección usa la misma vista previa del paso 2 (no se vuelve a generar).
+
+18. **También los estribos menores aparte** (2026-11-04, Luciano, al ver la sección: "todo bien, pero falta que
+    muestre los estribos menores también"). Como `ResumirEstribos` en la viga: cada forma de estribo de la columna
+    (tipo, forma y largo), primero el principal y después las demás de más a menos tramos, se dibuja aparte a la
+    derecha, apiladas hacia abajo, cada una con su texto `N #3 L= … G= …` (cantidad en toda la columna). Si ninguna de
+    una forma se ve en la planta, va solo el texto (Revit no dibuja el detalle de una barra que no se ve).
+
+19. **En "Crear vistas" se elige cuál ver** (2026-11-04, Luciano: "ahí al final no se pueden ver las de traslapos ni
+    varillas, propongo que donde dice los nombres de las vistas a la derecha se pueda dar clic y se vea esa"). Con
+    columnas, los tres nombres de "Vistas que se crearán" son botones: el elegido se ve en grande a la izquierda (el
+    alzado, con lo movido aplicado, o una de las dos secciones). Al entrar al paso queda elegido el alzado. Con vigas
+    no cambia (la sección ya se ve al costado).
+
 ## Plan paso a paso
 
 0. **Preparar la rama** — en `C:\Proyecto\addins-despiece-col`: `git fetch` y mezclar `origin/main` si avanzó;
@@ -429,7 +507,19 @@ bien (nombre, ganchos, traslapos y zoom):*
 
 6. **Crear las vistas en el navegador** — `Crear` para columnas: 3 vistas por grupo (alzado + 2 secciones), con el
    nombre del grupo; si ya existen, no se crean (igual que vigas). — cómo se prueba: aparecen en el navegador con el
-   nombre correcto; volver a crearlas no duplica.
+   nombre correcto; volver a crearlas no duplica. Detalle (04-nov, al empezar el paso):
+   - **Nombres:** el alzado `Col 1-6 - (0.30x0.30)` (el del grupo); las secciones `Sección Col 1-6 - (0.30x0.30) -
+     traslapos` y `… - varillas`, los mismos que ya muestra el paso 4. Sin grupos de traslapo, la de traslapos no se
+     crea. Las comas y los paréntesis de los nombres los acepta Revit (lo prohibido es `\ : { } [ ] | ; < > ? ` ~`);
+     la barra de la decisión 12 ya no se usa (decisión 15).
+   - **`GeneradorColumna.Crear`**, como `GeneradorPrevia.Crear`: si ya existe alguna de las vistas con esos nombres
+     (de cualquier tipo de vista), no crea nada; si no, en una transacción que se confirma, con los tipos propios
+     definitivos (`TiposPropios.Crear(doc, true)`), el alzado con lo movido aplicado y las secciones.
+   - **`PuenteDespiece`:** `crearVistas` de una columna va a `GeneradorColumna.Crear` (se quita el aviso de la
+     decisión 13) y responde con la lista de nombres creados (`nombres`); la página la muestra. `irAVista` de una
+     columna recibe cuál (`alzado`, `traslapos` o `varillas`) y busca la vista por nombre entre todas las vistas.
+   - **`pasos.js`:** el mensaje "Vistas creadas" usa `nombres` si viene; en "Ver en Revit" de una columna, tres botones
+     (Alzado, Traslapos, Varillas).
 
 7. **Cierre** — build sin advertencias, `dotnet test CQEING-Addins.sln`, deploy, prueba completa en Revit, Estado de
    este plan, comentario en #226–#228 con capturas. Publicar versión solo si Luciano lo pide (etiqueta
@@ -513,5 +603,30 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin despie
 - [x] **Paso 4 cerrado (04-nov)**, probado en Revit con la columna de los ejes 1 y 6 y la circular 781574. Commit en
   la rama `columnas/despiece-226-228` a pedido de Luciano (sin push). Quedan issues #245 (largos no redondos) y #256
   (estribos a 0.13 en vez de 0.14) para el add-in de columnas, y la regresión de vigas para el paso 7.
-- [ ] Pasos 5 y 6 implementados.
-- [ ] Probado en Revit.
+- [x] Paso 5 (04-nov): implementado como dice la decisión 16. `Revit/Columnas/SeccionColumna.cs` (nuevo);
+  `GeneradorColumna.Generar` exporta las dos secciones; `PreviaGenerada` suma `SeccionVarillas` (vacía en la viga);
+  `PuenteDespiece` manda `seccionVarillas`; `pasos.js` muestra las dos con título en la columna (la viga igual). En
+  `GeneradorPrevia.cs` pasan a `internal` `Gancho`, `Cadena` y `Caras`. Miembros nuevos de la API comprobados en la
+  documentación de 2027 (`SetCutForegroundPatternVisible`, `SetSurfaceForegroundPatternVisible`, `ViewPlan.Create`,
+  `PlanViewRange.SetOffset/SetLevelId`, `TextNote.AddLeader`, `Rebar.SetUnobscuredInView`). Compila contra 2026 sin
+  advertencias (Revit abierto). Desplegado y visto en Revit (04-nov 19:38): funciona; Luciano pidió un paso propio
+  para la sección y sin ganchos (decisión 17). Hecho: `SeccionColumna.Corte` (debajo de los ganchos) y en
+  `pasos.js` `PASOS` con 4 pasos para columnas y `secciones(g)` (las dos lado a lado). La pantalla nueva se probó
+  fuera de Revit (página de prueba en `127.0.0.1`). Desplegado y visto en Revit: "todo bien, pero falta que muestre
+  los estribos menores también" (decisión 18): `SacarEstribo` apila cada forma de estribo. En "Crear vistas" los
+  nombres se pueden elegir para ver cada vista (decisión 19, `vistaFinal` en `pasos.js`); probado fuera de Revit
+  (clic en cada nombre cambia la vista grande). Desplegado y visto en Revit (04-nov): "ya todo bien".
+- [x] Paso 6 (04-nov): implementado como dice su detalle en el plan paso a paso: `GeneradorColumna.Crear`,
+  `Nombres` y `VistaCreada`; `PuenteDespiece` (`crearVistas` y `irAVista` de columnas; se quitó el aviso de la
+  decisión 13); `pasos.js` (mensaje con `nombres`, "Ver en Revit" con Alzado, Traslapos y Varillas). Compila contra
+  2026 sin advertencias (Revit abierto). Además, números de cota a 2.5 mm (hallazgo 35, `ConTextoLegible` en
+  `GeneradorPrevia.cs`) y largo de los ganchos del estribo aparte en texto, como en la viga (hallazgo 36). Probado
+  por Luciano en Revit 2027 (04-nov, "ya todo bien"): cotas legibles, crear las vistas, volver a crear sin duplicar e
+  ir a cada vista desde "Ver en Revit".
+- [~] Paso 7 (cierre, 04-nov): Luciano probó todo en Revit 2027 ("ya todo lo probé"). Dice que los números de las
+  cotas **siguen pequeños** y dejó una issue aparte (#261, "números de las etiquetas más grandes en vigas y
+  columnas"); el hallazgo 35 queda como mejora parcial. Commit, mezcla de `origin/main` (solo cambió
+  `CQEING-Addins.sln`, sin conflictos en el despiece), push y PR a pedido de Luciano.
+  **Pendiente:** comentar en #226–#228 con capturas; confirmar con Santiago (#218) la sección sin ganchos (decisión
+  17) y si A/B es lo que él llama barra interna/externa; #245 y #256 quedan para el add-in de columnas.
+- [x] Probado en Revit 2027 por Luciano (04-nov), columnas de los ejes 1 y 6 y circular 781574 de `Prueba 08072026`.

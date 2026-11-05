@@ -6,8 +6,11 @@ using CQEING.Vigas.Calculo.Modelo;
 
 namespace CQEING.Despiece.Revit;
 
-/// <summary>Las dos imágenes de la vista previa.</summary>
-internal sealed record PreviaGenerada(string Longitudinal, string Seccion, object? Capa = null);
+/// <summary>
+/// Las imágenes de la vista previa. <paramref name="SeccionVarillas"/>: solo en la columna, la segunda sección superior
+/// (con los colores de cada varilla); en ella <paramref name="Seccion"/> es la de los colores de traslapo (decisión 16).
+/// </summary>
+internal sealed record PreviaGenerada(string Longitudinal, string Seccion, object? Capa = null, string SeccionVarillas = "");
 
 /// <summary>
 /// Lo que se puede mover en la vista larga (Juan, 31-oct). <paramref name="Movimientos"/> va por pieza, en metros.
@@ -874,7 +877,7 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>El largo del gancho que da Revit para esta barra (el más largo de sus dos puntas), en pies; 0 si no tiene.</summary>
-    private static double Gancho(Rebar b)
+    internal static double Gancho(Rebar b)
     {
         if (b.Document.GetElement(b.GetTypeId()) is not RebarBarType tipo)
             return 0;
@@ -888,21 +891,26 @@ internal static class GeneradorPrevia
     /// primer tramo (<see cref="BendingDetailSegmentsRepresentation.Unfold"/>) queda por fuera, junto a la esquina de las
     /// patas, y su largo va al lado, fuera del estribo.
     /// </summary>
-    private static void EtiquetarGancho(Document doc, View vista, Rebar estribo, XYZ centroDetalle, double centroZ, TiposPropios tipos)
+    internal static void EtiquetarGancho(Document doc, View vista, Rebar estribo, XYZ centroDetalle, double centroZ, TiposPropios tipos)
     {
         IList<Curve> curvas = Curvas(estribo, false);
         if (curvas.Count == Curvas(estribo, true).Count)
             return;
         XYZ derecha = vista.RightDirection;
+        // "Arriba" es el de la vista: Z en la sección de la viga, Y en la planta de la sección de columna (hallazgo 36 del
+        // plan de columnas). En la viga da lo mismo que antes, cuando se usaba Z.
+        XYZ arriba = vista.UpDirection;
+        double Alto(XYZ p) => p.DotProduct(arriba);
+        XYZ En(double z) => centroDetalle + arriba * (z - Alto(centroDetalle));
         List<XYZ> puntos = curvas.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
-        double minZ = puntos.Min(p => p.Z), maxZ = puntos.Max(p => p.Z), centroEstribo = (minZ + maxZ) / 2;
+        double minZ = puntos.Min(Alto), maxZ = puntos.Max(Alto), centroEstribo = (minZ + maxZ) / 2;
         double minX = puntos.Min(p => p.DotProduct(derecha)), maxX = puntos.Max(p => p.DotProduct(derecha)), centroX = (minX + maxX) / 2;
         List<XYZ> puntas = new[] { curvas[0], curvas[^1] }.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
-        bool patasAbajo = puntas.Average(p => p.Z) < centroEstribo;
+        bool patasAbajo = puntas.Average(Alto) < centroEstribo;
         string texto = (Gancho(estribo) * 0.3048).ToString("0.00", CultureInfo.InvariantCulture);
 
-        double z = centroZ + (patasAbajo ? puntas.Max(p => p.Z) - centroEstribo + BajaNota + AireNota : puntas.Min(p => p.Z) - centroEstribo - SubeNota - AireNota);
-        TextNote dentro = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, z), texto, tipos.Nota(HorizontalTextAlignment.Center));
+        double z = centroZ + (patasAbajo ? puntas.Max(Alto) - centroEstribo + BajaNota + AireNota : puntas.Min(Alto) - centroEstribo - SubeNota - AireNota);
+        TextNote dentro = TextNote.Create(doc, vista.Id, En(z), texto, tipos.Nota(HorizontalTextAlignment.Center));
         Pintar(vista, dentro.Id, estribo, null);
 
         if (new[] { 0, 1 }.Count(i => estribo.GetHookTypeId(i) != ElementId.InvalidElementId) < 2)
@@ -910,7 +918,7 @@ internal static class GeneradorPrevia
         bool patasDerecha = puntas.Average(p => p.DotProduct(derecha)) > centroX;
         double x = (patasDerecha ? maxX - centroX + AireNota : minX - centroX - AireNota);
         double zFuera = centroZ + (patasAbajo ? minZ - centroEstribo - SubeNota - AireNota : maxZ - centroEstribo + BajaNota + AireNota);
-        TextNote fuera = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, zFuera) + derecha * x, texto,
+        TextNote fuera = TextNote.Create(doc, vista.Id, En(zFuera) + derecha * x, texto,
             tipos.Nota(patasDerecha ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Right));
         Pintar(vista, fuera.Id, estribo, null);
     }
@@ -969,10 +977,10 @@ internal static class GeneradorPrevia
             Cadena(bajoEje - zAbajo, altoEje - bajoEje, zArriba - altoEje), vertical);
     }
 
-    private static string Cadena(params double[] pies) => string.Join(" · ", pies.Select(p => (p * 0.3048).ToString("0.00", CultureInfo.InvariantCulture)));
+    internal static string Cadena(params double[] pies) => string.Join(" · ", pies.Select(p => (p * 0.3048).ToString("0.00", CultureInfo.InvariantCulture)));
 
     /// <summary>Las caras planas de la viga con referencia, para acotarlas en esta vista.</summary>
-    private static List<PlanarFace> Caras(Element viga, View vista)
+    internal static List<PlanarFace> Caras(Element viga, View vista)
     {
         var caras = new List<PlanarFace>();
         foreach (GeometryObject g in viga.get_Geometry(new Options { ComputeReferences = true, View = vista }))
@@ -1162,6 +1170,10 @@ internal sealed class TiposPropios
         // Desplegado, como dibuja el estribo Juan (31-oct): en "Estándar" los dos ganchos de 135° quedan encimados en la
         // esquina y no se ve la forma. Se fija siempre: los proyectos que ya traen este tipo lo tienen en "Estándar".
         barra.SegmentsRepresentation = BendingDetailSegmentsRepresentation.Unfold;
+        // Sin la medida de los ganchos en el detalle: con el número legible se encimaban sobre los ganchos. Su largo va en
+        // texto aparte (EtiquetarGancho), como ya se hacía en la viga, donde el detalle no los mostraba (hallazgo 36 del plan
+        // de columnas).
+        barra.SegmentLengthDimensionsForHooksEnabled = false;
         DimensionType? metros = null;
         foreach (Parameter p in barra.Parameters)
         {
@@ -1181,7 +1193,7 @@ internal sealed class TiposPropios
         if (nota is null)
         {
             nota = (TextNoteType)notas[0].Duplicate(nombreNota);
-            nota.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(0.0025 / 0.3048);
+            nota.get_Parameter(BuiltInParameter.TEXT_SIZE).Set(TamanoTexto);
             nota.get_Parameter(BuiltInParameter.TEXT_BACKGROUND).Set(1);
         }
         DimensionType? corta = null;
@@ -1206,11 +1218,29 @@ internal sealed class TiposPropios
     private static DimensionType EnMetros(Document doc, DimensionType original, string nombre)
     {
         if (original.Name == nombre)
-            return original;
+            return ConTextoLegible(original);
         if (new FilteredElementCollector(doc).OfClass(typeof(DimensionType)).Cast<DimensionType>().FirstOrDefault(d => d.Name == nombre) is { } existente)
-            return existente;
+            return ConTextoLegible(existente);
         var copia = (DimensionType)original.Duplicate(nombre);
         copia.SetUnitsFormatOptions(new FormatOptions(UnitTypeId.Meters) { UseDefault = false, Accuracy = 0.01, SuppressTrailingZeros = false });
-        return copia;
+        return ConTextoLegible(copia);
     }
+
+    /// <summary>
+    /// El número de la cota del mismo tamaño que las notas (2.5 mm): el tipo duplicado hereda el del proyecto, que puede
+    /// ser diminuto (hallazgo 35 del plan de columnas). Es un tipo del despiece: no se toca ninguno del proyecto.
+    /// </summary>
+    private static DimensionType ConTextoLegible(DimensionType tipo)
+    {
+        Parameter? tamano = tipo.get_Parameter(BuiltInParameter.TEXT_SIZE);
+        if (tamano is null || tamano.IsReadOnly)
+            return tipo;
+        Registro.Paso($"tipos: texto de cota de «{tipo.Name}» {tamano.AsDouble() * 304.8:0.00} mm");
+        if (Math.Abs(tamano.AsDouble() - TamanoTexto) > 1e-6)
+            tamano.Set(TamanoTexto);
+        return tipo;
+    }
+
+    /// <summary>El tamaño de las notas del despiece, en pies.</summary>
+    private const double TamanoTexto = 0.0025 / 0.3048;
 }

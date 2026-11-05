@@ -89,7 +89,7 @@ internal sealed class PuenteDespiece
                 Ver3D(raiz.GetProperty("grupo").GetInt32());
                 break;
             case "irAVista":
-                IrAVista(raiz.GetProperty("grupo").GetInt32(), raiz.GetProperty("seccion").GetBoolean());
+                IrAVista(raiz);
                 break;
         }
     }
@@ -108,9 +108,13 @@ internal sealed class PuenteDespiece
     {
         if (doc is null)
             return;
-        if (SinVistasDeColumna(grupo))
-            return;
         GrupoIguales g = grupos[grupo];
+        if (g.Elementos[0].EsColumna)
+        {
+            var (nombres, yaExistian) = GeneradorColumna.Crear(doc, Columna(g.Elementos[0]), g.Nombre, negros, new DespieceMovible(movimientos, false));
+            Enviar(new { tipo = "vistas", grupo, nombres, yaExistian });
+            return;
+        }
         VistasCreadas v = GeneradorPrevia.Crear(doc, Continua(g.Elementos[0]), g.Nombre, negros, new DespieceMovible(movimientos, false));
         Enviar(new { tipo = "vistas", grupo, longitudinal = v.Longitudinal, seccion = v.Seccion, yaExistian = v.YaExistian });
     }
@@ -123,12 +127,20 @@ internal sealed class PuenteDespiece
         Enviar(new { tipo = "modelo3d", grupo, modelo = Modelo3D.Leer(doc, Continua(grupos[grupo].Elementos[0])) });
     }
 
-    /// <summary>Abre en Revit la vista larga o la sección del grupo. La ventana se minimiza porque queda encima de Revit y taparía la vista.</summary>
-    private void IrAVista(int grupo, bool seccion)
+    /// <summary>
+    /// Abre en Revit una vista del grupo: en la viga la larga o la sección (<c>seccion</c>); en la columna el alzado o una de
+    /// las secciones (<c>cual</c>: 0, 1 o 2). La ventana se minimiza porque queda encima de Revit y taparía la vista.
+    /// </summary>
+    private void IrAVista(JsonElement raiz)
     {
+        int grupo = raiz.GetProperty("grupo").GetInt32();
         if (doc is null || grupo >= grupos.Count)
             return;
-        if (GeneradorPrevia.VistaCreada(doc, grupos[grupo].Nombre, seccion) is not { } vista)
+        GrupoIguales g = grupos[grupo];
+        View? encontrada = g.Elementos[0].EsColumna
+            ? GeneradorColumna.VistaCreada(doc, g.Nombre, raiz.GetProperty("cual").GetInt32())
+            : GeneradorPrevia.VistaCreada(doc, g.Nombre, raiz.GetProperty("seccion").GetBoolean());
+        if (encontrada is not { } vista)
         {
             Enviar(new { tipo = "error", texto = "Esa vista ya no existe en el proyecto." });
             return;
@@ -197,19 +209,9 @@ internal sealed class PuenteDespiece
 
     /// <summary>Los elementos de Revit que se eligen en la planta: los tramos de la viga o los pisos de la columna.</summary>
     private IEnumerable<ElementId> Elementos(ElementoLeido e) =>
-        e.EsColumna ? columnas.First(c => ReferenceEquals(c.Elemento, e)).Elementos : Continua(e).Vigas;
+        e.EsColumna ? Columna(e).Elementos : Continua(e).Vigas;
 
-    /// <summary>
-    /// Crear las vistas de una columna llega en el paso 6 del plan de columnas (decisión 13): hasta entonces una columna no
-    /// va al generador de vigas; se avisa y no se toca el modelo.
-    /// </summary>
-    private bool SinVistasDeColumna(int grupo)
-    {
-        if (!grupos[grupo].Elementos[0].EsColumna)
-            return false;
-        Enviar(new { tipo = "error", texto = "Crear las vistas de columnas todavía no está: por ahora solo se ve la vista previa." });
-        return true;
-    }
+    private ColumnaLeida Columna(ElementoLeido e) => columnas.First(c => ReferenceEquals(c.Elemento, e));
 
     private static IEnumerable<object> Filas(GrupoIguales g) => g.Elementos[0].Barras
         .GroupBy(b => (b.Tipo, b.Cantidad, b.LargoMm, b.RectoMm))
@@ -293,10 +295,15 @@ internal sealed class PuenteDespiece
             ElementoLeido e = grupos[grupo].Elementos[0];
             bool negros = raiz.GetProperty("negros").GetBoolean();
             PreviaGenerada p = e.EsColumna
-                ? GeneradorColumna.Generar(doc, columnas.First(c => ReferenceEquals(c.Elemento, e)), ventana.CarpetaPrevia, negros, movible)
+                ? GeneradorColumna.Generar(doc, Columna(e), ventana.CarpetaPrevia, negros, movible)
                 : GeneradorPrevia.Generar(doc, Continua(e), ventana.CarpetaPrevia, negros, movible);
-            // La columna todavía no trae sección (paso 5 del plan de columnas).
-            listo = new { tipo = "previa", grupo, clave, capa = p.Capa, longitudinal = Imagen(p.Longitudinal), seccion = p.Seccion.Length > 0 ? Imagen(p.Seccion) : null };
+            // En la columna, la primera sección es la de traslapos (puede faltar) y la segunda la de varillas (decisión 16).
+            listo = new
+            {
+                tipo = "previa", grupo, clave, capa = p.Capa, longitudinal = Imagen(p.Longitudinal),
+                seccion = p.Seccion.Length > 0 ? Imagen(p.Seccion) : null,
+                seccionVarillas = p.SeccionVarillas.Length > 0 ? Imagen(p.SeccionVarillas) : null,
+            };
             previas[clave] = listo;
         }
         Enviar(listo);
