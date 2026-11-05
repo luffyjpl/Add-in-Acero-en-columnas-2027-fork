@@ -92,8 +92,9 @@ Continúan la numeración del plan de #247.
 6. **#254, generar** — archivos en `Revit/` — se escribe con lo medido en el paso 5.
 7. **#250 y #252, catálogo y tablero** — archivos en `Tablero/` — cómo se prueba: en Revit, con el modelo abierto.
 8. **Cerrar el plan** — actualizar **Estado** y dejar la lista de depuración.
-9. **Respaldo para Juan** (2026-11-04, usuario) — no se publica una release: Juan lo despliega desde el PR #267 con
-   `gh pr checkout 267` y `tools/desplegar-local.ps1`. La etiqueta `acero-zapatas-v0.1.0` queda para #255.
+9. **Release para Juan** (2026-11-04, usuario, a pedido de Juan) — unir el PR #267 con el build en verde y publicar
+   `acero-zapatas-v0.1.0`, para que Juan lo instale desde el gestor. Se adelanta a la prueba con Santiago de #255, que
+   sigue pendiente: lo que salga se corrige con una versión nueva.
 
 ## Cómo probarlo
 
@@ -114,7 +115,7 @@ Con Revit abierto, la DLL de `bin\Debug\2026` queda bloqueada: para revisar que 
 - [x] Pasos 1 a 7 implementados (2026-11-04), versión prefinal.
 - [ ] Probado en Revit, en parte. El usuario confirmó (2026-11-04) que el tablero se ve y que los cambios se aplican en el
       modelo. La lista de depuración de abajo no se confirmó punto por punto, y las combinadas siguen sin probar.
-- [x] Paso 9, respaldo para Juan: desde el PR #267, sin publicar.
+- [ ] Paso 9, release `acero-zapatas-v0.1.0`: en curso; es prefinal y la prueba con Santiago (#255) sigue pendiente.
 
 Comprobado (2026-11-04), sobre `main` en `50d0db3`: compila en Release para 2026 y 2027 con 0 advertencias;
 `dotnet test CQEING-Addins.sln -c Release` da 1573 pruebas correctas en 7 proyectos, 46 de ellas de zapatas; `node --check`
