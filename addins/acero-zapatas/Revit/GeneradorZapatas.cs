@@ -5,9 +5,6 @@ using CQEING.Zapatas.Calculo;
 
 namespace CQEING.Zapatas.Revit;
 
-/// <summary>Lo que eligió el modelador en el catálogo: la forma y el gancho por dirección; null es la opción automática.</summary>
-internal sealed record EleccionTipos(string? FormaX, string? FormaY, string? GanchoX, string? GanchoY);
-
 /// <summary>El resultado de generar, para el mensaje del tablero.</summary>
 internal sealed record ResumenGeneracion(bool Hecho, int Zapatas, int Conjuntos, int Barras, IReadOnlyList<string> Fallas);
 
@@ -23,7 +20,9 @@ internal static class GeneradorZapatas
     /// <summary>Diferencia con el plan a partir de la cual se avisa, en mm.</summary>
     private const double ToleranciaMm = 1;
 
-    public static ResumenGeneracion Generar(Document doc, IReadOnlyList<ZapataLeida> zapatas, ConfigParrillas config, EleccionTipos eleccion, Reglas reglas, View vista)
+    /// <param name="tipos">La forma y el gancho de cada parrilla y dirección (decisión 30 del plan de 2026-11-05). Las patas
+    /// de cada forma ya vienen en <paramref name="config"/> (<see cref="ProtocoloZapatas.ConTipos"/>).</param>
+    public static ResumenGeneracion Generar(Document doc, IReadOnlyList<ZapataLeida> zapatas, ConfigParrillas config, TiposElegidos tipos, Reglas reglas, View vista)
     {
         var fallas = new List<string>();
         Dictionary<int, RebarBarType> barras = TiposZapata.Barras(doc, reglas);
@@ -33,7 +32,7 @@ internal static class GeneradorZapatas
         if (fallas.Count > 0)
             return new ResumenGeneracion(false, 0, 0, 0, fallas);
 
-        config = TiposZapata.ConDoblados(doc, config, reglas);
+        config = ProtocoloZapatas.ConTipos(config, tipos, TiposZapata.Catalogo(doc, reglas));
         var manejo = new ManejoFallas();
         using var t = new Transaction(doc, NombreTransaccion);
         FailureHandlingOptions opciones = t.GetFailureHandlingOptions();
@@ -56,9 +55,8 @@ internal static class GeneradorZapatas
                 PonerRecubrimientos(doc, host, config.Recubrimientos);
                 foreach (ConjuntoBarras c in r.Conjuntos)
                 {
-                    bool enX = c.Direccion == Direccion.X;
-                    RebarShape? forma = doc.GetElement(Id(enX ? eleccion.FormaX : eleccion.FormaY)) as RebarShape;
-                    RebarHookType? gancho = doc.GetElement(Id(enX ? eleccion.GanchoX : eleccion.GanchoY)) as RebarHookType;
+                    RebarShape? forma = doc.GetElement(Id(tipos.Forma(c.Parrilla, c.Direccion))) as RebarShape;
+                    RebarHookType? gancho = doc.GetElement(Id(tipos.Gancho(c.Parrilla, c.Direccion))) as RebarHookType;
                     Rebar barra = Crear(doc, host, z, c, config.Recubrimientos, barras[c.Numero], forma, gancho, fallas)
                         ?? throw new InvalidOperationException($"{z.Nombre}: Revit no pudo crear la parrilla {c.Parrilla} en {c.Direccion}.");
                     MarcaZapata.Marcar(barra, $"{c.Parrilla} {c.Direccion} {c.Capa}");
@@ -112,15 +110,17 @@ internal static class GeneradorZapatas
         IList<Curve> curvas;
         if (c.Terminacion == Terminacion.Pata90)
         {
-            // La punta llega al recubrimiento opuesto; las curvas van por el eje de la barra (decisiones 12 y 23).
+            // Las curvas van por el eje de la barra (decisión 23), con la pata del largo del motor (decisión 29). La U lleva
+            // pata en las dos puntas y la L solo al inicio, y la otra punta llega al recubrimiento (decisión 37).
             double punta = c.Parrilla == Parrilla.Inferior ? zBarra + c.Pata - d / 2 : zBarra - c.Pata + d / 2;
-            double xi = c.Desde + d / 2, xf = c.Hasta - d / 2;
+            double xi = c.Desde + d / 2, xf = c.Patas == Patas.Ambas ? c.Hasta - d / 2 : c.Hasta;
             curvas = new List<Curve>
             {
                 Line.CreateBound(Punto(z, c, xi, y, punta), Punto(z, c, xi, y, zBarra)),
                 Line.CreateBound(Punto(z, c, xi, y, zBarra), Punto(z, c, xf, y, zBarra)),
-                Line.CreateBound(Punto(z, c, xf, y, zBarra), Punto(z, c, xf, y, punta)),
             };
+            if (c.Patas == Patas.Ambas)
+                curvas.Add(Line.CreateBound(Punto(z, c, xf, y, zBarra), Punto(z, c, xf, y, punta)));
         }
         else
         {
@@ -133,22 +133,23 @@ internal static class GeneradorZapatas
                 terminaciones.TerminationOrientationAtEnd = RebarTerminationOrientation.Right;
             }
         }
-        if (forma is not null && c.Terminacion == Terminacion.Pata90)
+        Rebar? r = null;
+        if (forma is not null)
         {
+            // La forma elegida, si Revit la acepta con estas curvas (H8 y H9: con 135° o 180° solo se ofrecen rectas).
             try
             {
-                if (Rebar.CreateFromCurvesAndShape(doc, forma, barra, host, normal, curvas, terminaciones) is { } conForma)
-                    return conForma;
+                r = Rebar.CreateFromCurvesAndShape(doc, forma, barra, host, normal, curvas, terminaciones);
             }
             catch (Exception e) when (e is Autodesk.Revit.Exceptions.ApplicationException or Autodesk.Revit.Exceptions.ArgumentException)
             {
                 // Se usa la automática y se avisa abajo.
             }
-            string aviso = $"La forma «{forma.Name}» no admite una barra en U de estas medidas: se usó la que Revit reconoce.";
-            if (!fallas.Contains(aviso))
+            string aviso = $"La forma «{forma.Name}» no admite esta barra: se usó la que Revit reconoce.";
+            if (r is null && !fallas.Contains(aviso))
                 fallas.Add(aviso);
         }
-        Rebar? r = Rebar.CreateFromCurves(doc, RebarStyle.Standard, barra, host, normal, curvas, terminaciones, useExistingShapeIfPossible: true, createNewShape: true);
+        r ??= Rebar.CreateFromCurves(doc, RebarStyle.Standard, barra, host, normal, curvas, terminaciones, useExistingShapeIfPossible: true, createNewShape: true);
         if (r is not null && c.Terminacion is Terminacion.Gancho135 or Terminacion.Gancho180)
         {
             doc.Regenerate();

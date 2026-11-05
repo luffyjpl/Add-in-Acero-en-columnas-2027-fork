@@ -70,9 +70,9 @@ internal static class PruebaAutomatica
         ZapataLeida? rectangular = todas.FirstOrDefault(z => z.Forma == FormaZapata.Rectangular && SinAcero(z));
         ZapataLeida? aMano = todas.FirstOrDefault(z => !SinAcero(z));
         int rebarAntes = new FilteredElementCollector(doc).OfClass(typeof(Rebar)).GetElementCount();
-        ConfigParrillas Cfg(double rec = 75, int n = 5, double sep = 150, bool sup = true, Terminacion t = Terminacion.Pata90) =>
-            new(new ConfigDireccion(n, sep, t), new ConfigDireccion(n, sep, t), Recubrimientos.Global(rec), sup);
-        EleccionTipos Auto = new(null, null, null, null);
+        ConfigParrillas Cfg(double rec = 75, int n = 5, double sep = 150, bool sup = true, Terminacion t = Terminacion.Pata90, LargoPata largo = LargoPata.Cuadro) =>
+            new(new ConfigDireccion(n, sep, t), new ConfigDireccion(n, sep, t), Recubrimientos.Global(rec), sup, LargoPata: largo);
+        TiposElegidos Auto = TiposElegidos.Automaticos;
 
         if (cuadrada is not null)
             Caso(doc, "1 Cuadrada 1.80 x 1.80", () => Generar(doc, vista, [cuadrada], Cfg(), Auto));
@@ -125,7 +125,7 @@ internal static class PruebaAutomatica
             if (f17 is not null)
                 Caso(doc, "9 Forma 17 elegida", () =>
                 {
-                    Generar(doc, vista, [rectangular], Cfg(), new EleccionTipos(f17, f17, null, null));
+                    Generar(doc, vista, [rectangular], Cfg(), new TiposElegidos(f17, f17, null, null));
                     foreach (Rebar b in Propias(doc, rectangular))
                         S.AppendLine($"    forma usada: {doc.GetElement(b.GetShapeId())?.Name}");
                 });
@@ -133,10 +133,34 @@ internal static class PruebaAutomatica
             {
                 string? g = new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<RebarHookType>().FirstOrDefault(h => h.Name == nombre)?.Id.ToString();
                 if (g is not null)
-                    Caso(doc, $"10 Gancho {nombre}", () => Generar(doc, vista, [rectangular], Cfg(t: t), new EleccionTipos(null, null, g, g), medirPatas: false));
+                    Caso(doc, $"10 Gancho {nombre}", () => Generar(doc, vista, [rectangular], Cfg(t: t), new TiposElegidos(null, null, g, g), medirPatas: false));
             }
             Caso(doc, "11 Recta sin gancho", () => Generar(doc, vista, [rectangular], Cfg(t: Terminacion.Recta), Auto, medirPatas: false));
+
+            // Plan de 2026-11-05, paso 8: forma L, ganchos distintos por parrilla y los dos largos de pata.
+            string? f17A = new FilteredElementCollector(doc).OfClass(typeof(RebarShape)).Cast<RebarShape>().FirstOrDefault(f => f.Name == "17A")?.Id.ToString();
+            if (f17A is not null)
+                Caso(doc, "16 Forma L (17A): una pata, al inicio", () =>
+                {
+                    Generar(doc, vista, [rectangular], Cfg(), new TiposElegidos(f17A, f17A, null, null));
+                    foreach (Rebar b in Propias(doc, rectangular))
+                        S.AppendLine($"    forma usada: {doc.GetElement(b.GetShapeId())?.Name}");
+                });
+            string? g135 = new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<RebarHookType>().FirstOrDefault(h => h.Name == "Estándar - 135°.")?.Id.ToString();
+            if (g135 is not null)
+                Caso(doc, "17 Ganchos distintos: abajo pata de 90°, arriba 135°", () =>
+                {
+                    var d = new ConfigDireccion(5, 150, Superior: new Extremos(Terminacion.Gancho135));
+                    Generar(doc, vista, [rectangular], new ConfigParrillas(d, d, Recubrimientos.Global(75)), new TiposElegidos(null, null, null, null, GanchoSuperiorX: g135, GanchoSuperiorY: g135));
+                });
+            Caso(doc, "18 Pata hasta el recubrimiento", () => Generar(doc, vista, [rectangular], Cfg(largo: LargoPata.Recubrimiento), Auto));
         }
+        Caso(doc, "19 Zapata de 0.80 m: pata según el cuadro, sin cortar", () =>
+        {
+            ZapataLeida? alta = CrearLosa(doc, [new(0, 0), new(1800, 0), new(1800, 1800), new(0, 1800)], altura: 800);
+            if (alta is not null)
+                Generar(doc, vista, [alta], Cfg(), Auto);
+        });
         foreach ((string nombre, Punto[] forma) in new[]
                  {
                      ("12 Losa en L", new Punto[] { new(0, 0), new(3000, 0), new(3000, 1000), new(1000, 1000), new(1000, 3000), new(0, 3000) }),
@@ -179,7 +203,7 @@ internal static class PruebaAutomatica
         S.AppendLine($"  {(ok ? "PASA " : "FALLA")} {que}{(string.IsNullOrEmpty(detalle) ? "" : $" [{detalle}]")}");
     }
 
-    private static void Generar(Document doc, View vista, List<ZapataLeida> zapatas, ConfigParrillas c, EleccionTipos e, bool medirPatas = true, bool chocarConMano = true)
+    private static void Generar(Document doc, View vista, List<ZapataLeida> zapatas, ConfigParrillas c, TiposElegidos e, bool medirPatas = true, bool chocarConMano = true)
     {
         ResumenGeneracion g = GeneradorZapatas.Generar(doc, zapatas, c, e, R, vista);
         Revisar("generó", g.Hecho, $"{g.Barras} barras en {g.Conjuntos} conjuntos");
@@ -188,13 +212,13 @@ internal static class PruebaAutomatica
         if (!g.Hecho)
             return;
         foreach (ZapataLeida z in zapatas)
-            Medir(doc, z, c, medirPatas);
+            Medir(doc, z, ProtocoloZapatas.ConTipos(c, e, TiposZapata.Catalogo(doc, R)), medirPatas);
     }
 
     /// <summary>Compara cada barra en Revit con el plan del motor, sus recubrimientos y los choques entre ellas.</summary>
     private static void Medir(Document doc, ZapataLeida z, ConfigParrillas c, bool medirPatas)
     {
-        ResultadoZapata plan = MotorParrillas.Calcular(z.Entrada, TiposZapata.ConDoblados(doc, c, R), R);
+        ResultadoZapata plan = MotorParrillas.Calcular(z.Entrada, c, R);
         var medidas = new List<(double D, List<(double X, double Y, double H)> Puntos)>();
         foreach (Rebar r in Propias(doc, z))
         {
@@ -249,16 +273,28 @@ internal static class PruebaAutomatica
 
         if (medirPatas)
         {
-            int alReves = 0;
-            foreach (ConjuntoBarras b in plan.Conjuntos.Where(b => b.Terminacion == Terminacion.Pata90))
+            // Cada punta con pata o gancho va hacia adentro (arriba en la inferior, abajo en la superior); la L lleva una
+            // sola pata, al inicio, y la pata mide lo que pide el motor (decisiones 29 y 37 del plan de 2026-11-05).
+            int mal = 0;
+            double peorPata = 0;
+            foreach (ConjuntoBarras b in plan.Conjuntos.Where(b => b.Terminacion != Terminacion.Recta))
                 foreach (double t in b.Posiciones)
                 {
                     var m = medidas.MinBy(x => DistanciaAlPlan(x.Puntos, b, t)).Puntos;
-                    bool bien = b.Parrilla == Parrilla.Inferior ? m[0].H > b.Z + 1 && m[^1].H > b.Z + 1 : m[0].H < b.Z - 1 && m[^1].H < b.Z - 1;
+                    double s = b.Parrilla == Parrilla.Inferior ? 1 : -1;
+                    var puntas = new[] { m[0], m[^1] }.Where(p => s * (p.H - b.Z) > 1).ToList();
+                    bool bien = puntas.Count == (b.Terminacion == Terminacion.Pata90 && b.Patas == Patas.Inicio ? 1 : 2);
+                    if (bien && b.Terminacion == Terminacion.Pata90)
+                    {
+                        foreach (var p in puntas)
+                            peorPata = Math.Max(peorPata, Math.Abs(Math.Abs(p.H - b.Z) - (b.Pata - b.Diametro / 2)));
+                        if (b.Patas == Patas.Inicio)
+                            bien = Math.Abs((b.Direccion == Direccion.X ? puntas[0].X : puntas[0].Y) - (b.Desde + b.Diametro / 2)) <= TolMm;
+                    }
                     if (!bien)
-                        alReves++;
+                        mal++;
                 }
-            Revisar($"{z.Id}: patas hacia adentro en cada parrilla", alReves == 0, $"{alReves} al revés");
+            Revisar($"{z.Id}: patas y ganchos hacia adentro, en su punta y con su largo", mal == 0 && peorPata <= TolMm, $"{mal} mal; la pata más lejos del plan, a {peorPata:0.#} mm");
         }
 
         // Choques: distancia entre ejes contra la suma de radios, para cada par de barras.
@@ -278,6 +314,10 @@ internal static class PruebaAutomatica
                     choques++;
             }
         Revisar($"{z.Id}: barras sin atravesarse", choques == 0, $"{choques} pares; holgura mínima {holgura:0.#} mm entre {peorPar}");
+        // Los choques que marca el tablero (TrazosZapata, decisión 31) contra los medidos aquí: deben aparecer en los mismos casos.
+        IReadOnlyList<ChoqueZapata> delTablero = TrazosZapata.Choques(plan.Conjuntos, TrazosZapata.Trazos(plan.Conjuntos, R, c.Doblados));
+        Revisar($"{z.Id}: el tablero marca choques cuando Revit los tiene", (choques == 0) == (delTablero.Count == 0),
+            $"tablero {delTablero.Count} lugares, peor {(delTablero.Count > 0 ? delTablero.Max(x => x.SeMeteMm) : 0):0.#} mm; Revit {choques} pares");
         foreach (string a in plan.Avisos)
             S.AppendLine($"    aviso del motor: {a}");
     }
@@ -355,7 +395,7 @@ internal static class PruebaAutomatica
     }
 
     /// <summary>Una losa de cimentación de prueba, para las formas que el modelo no trae. Se deshace con el caso.</summary>
-    private static ZapataLeida? CrearLosa(Document doc, Punto[] forma, bool columnas = false)
+    private static ZapataLeida? CrearLosa(Document doc, Punto[] forma, bool columnas = false, double altura = 500)
     {
         FloorType? base0 = new FilteredElementCollector(doc).OfClass(typeof(FloorType)).Cast<FloorType>().FirstOrDefault(t => t.IsFoundationSlab);
         Level? nivel = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().OrderBy(l => l.Elevation).FirstOrDefault();
@@ -375,10 +415,10 @@ internal static class PruebaAutomatica
         using (var t = new Transaction(doc, "Prueba: losa"))
         {
             t.Start();
-            // El tipo del modelo mide 150 mm: uno de prueba de 500, que se deshace con el caso.
+            // El tipo del modelo mide 150 mm: uno de prueba de la altura pedida (500 por defecto), que se deshace con el caso.
             var tipo = (FloorType)base0.Duplicate($"CQEING Prueba {Guid.NewGuid():N}");
             CompoundStructure capas = tipo.GetCompoundStructure();
-            capas.SetLayerWidth(capas.GetFirstCoreLayerIndex(), LectorZapatas.Pies(500));
+            capas.SetLayerWidth(capas.GetFirstCoreLayerIndex(), LectorZapatas.Pies(altura));
             tipo.SetCompoundStructure(capas);
             losa = Floor.Create(doc, new List<CurveLoop> { lazo }, tipo.Id, nivel.Id, true, null, 0);
             if (columnas)

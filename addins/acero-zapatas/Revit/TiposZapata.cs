@@ -34,19 +34,16 @@ internal static class TiposZapata
         return barras;
     }
 
-    /// <summary>La configuración con el doblado de los tipos de barra del proyecto: con el que Revit dobla (decisión 26).</summary>
-    public static ConfigParrillas ConDoblados(Document doc, ConfigParrillas c, Reglas reglas) =>
-        c with { Doblados = Barras(doc, reglas).ToDictionary(b => b.Key, b => LectorZapatas.Mm(b.Value.StandardHookBendDiameter)) };
-
     public static CatalogoZapatas Catalogo(Document doc, Reglas reglas)
     {
+        List<RebarHookType> tiposGancho = new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<RebarHookType>()
+            .Where(h => h.Style == RebarStyle.Standard).OrderBy(h => h.HookAngle).ThenBy(h => h.Name).ToList();
+        List<GanchoCatalogo> ganchos = tiposGancho
+            .Select(h => new GanchoCatalogo(h.Id.ToString(), h.Name, (int)Math.Round(h.HookAngle * 180 / Math.PI), h.StraightLineMultiplier)).ToList();
+
         List<BarraCatalogo> barras = Barras(doc, reglas).OrderBy(b => b.Key)
             .Select(b => new BarraCatalogo(b.Key, b.Value.Name, LectorZapatas.Mm(b.Value.BarNominalDiameter), LectorZapatas.Mm(b.Value.StandardHookBendDiameter),
-                reglas.PorDiametro[b.Key].Gancho90.B, reglas.PorDiametro[b.Key].Estribo135.B, reglas.PorDiametro[b.Key].Gancho180.B)).ToList();
-
-        List<GanchoCatalogo> ganchos = new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<RebarHookType>()
-            .Where(h => h.Style == RebarStyle.Standard).OrderBy(h => h.HookAngle).ThenBy(h => h.Name)
-            .Select(h => new GanchoCatalogo(h.Id.ToString(), h.Name, (int)Math.Round(h.HookAngle * 180 / Math.PI), h.StraightLineMultiplier)).ToList();
+                reglas.PorDiametro[b.Key].Gancho90.B, reglas.PorDiametro[b.Key].Estribo135.B, reglas.PorDiametro[b.Key].Gancho180.B, Colas(b.Value, tiposGancho))).ToList();
 
         var formas = new List<FormaCatalogo>();
         foreach (RebarShape f in new FilteredElementCollector(doc).OfClass(typeof(RebarShape)).Cast<RebarShape>().Where(f => f.RebarStyle == RebarStyle.Standard).OrderBy(f => f.Name))
@@ -60,14 +57,48 @@ internal static class TiposZapata
             {
                 continue;
             }
-            List<IReadOnlyList<double[]>> dibujo = Dibujo(curvas);
-            formas.Add(new FormaCatalogo(f.Id.ToString(), f.Name, dibujo, EsDeParrilla(curvas)));
+            if (Clase(curvas) is ClaseForma clase)
+                formas.Add(new FormaCatalogo(f.Id.ToString(), f.Name, Dibujo(curvas), clase));
         }
         return new CatalogoZapatas(barras, formas, ganchos);
     }
 
-    /// <summary>Recta o en U: hasta tres tramos rectos. El resto se muestra atenuado, bajo el filtro «Todas».</summary>
-    private static bool EsDeParrilla(IList<Curve> curvas) => curvas.Count is 1 or 3 && curvas.All(c => c is Line);
+    /// <summary>
+    /// La cola recta que deja Revit con cada gancho de 135° y 180° en esta barra: <c>GetHookTangentLength − D/2 − d</c>
+    /// (H13 del plan de 2026-11-05, medido en 12 casos). Un gancho sin largo para esta barra no va: la vista previa usa el
+    /// del cuadro.
+    /// </summary>
+    private static Dictionary<string, double> Colas(RebarBarType barra, IEnumerable<RebarHookType> ganchos)
+    {
+        double d = LectorZapatas.Mm(barra.BarNominalDiameter), doblado = LectorZapatas.Mm(barra.StandardHookBendDiameter);
+        var colas = new Dictionary<string, double>();
+        foreach (RebarHookType h in ganchos.Where(h => Math.Round(h.HookAngle * 180 / Math.PI) is 135 or 180))
+        {
+            double cola = LectorZapatas.Mm(barra.GetHookTangentLength(h.Id)) - doblado / 2 - d;
+            if (cola > 0)
+                colas[h.Id.ToString()] = Math.Round(cola, 2);
+        }
+        return colas;
+    }
+
+    /// <summary>
+    /// Recta, L o U, por la geometría de la forma (decisión 37 y H16): recta, 1 tramo; L, 2 tramos a 90°; U, 3 tramos a
+    /// 90° con las dos patas del mismo lado. Las demás, null: Revit no las acepta para una parrilla (H8) y no se muestran.
+    /// </summary>
+    private static ClaseForma? Clase(IList<Curve> curvas)
+    {
+        if (!curvas.All(c => c is Line))
+            return null;
+        List<XYZ> d = curvas.Cast<Line>().Select(l => l.Direction).ToList();
+        bool Escuadra(int i) => Math.Abs(d[i].DotProduct(d[i + 1])) < 1e-3;
+        return curvas.Count switch
+        {
+            1 => ClaseForma.Recta,
+            2 when Escuadra(0) => ClaseForma.L,
+            3 when Escuadra(0) && Escuadra(1) && d[0].DotProduct(d[2]) < -0.999 => ClaseForma.U,
+            _ => null,
+        };
+    }
 
     /// <summary>Las curvas en su plano, en mm: la forma puede venir en cualquier plano del espacio.</summary>
     private static List<IReadOnlyList<double[]>> Dibujo(IList<Curve> curvas)
