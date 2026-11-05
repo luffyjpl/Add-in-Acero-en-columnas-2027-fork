@@ -547,6 +547,8 @@ Con eso se agrega un Hallazgo al plan y se corrige siguiendo la regla del repo: 
       - Zapatas 77/77 y vigas 1085/1085.
       - `CQEING.Zapatas.csproj` y `CQEING.Vigas.csproj` compilan en Debug 2027 sin errores.
       - Desplegados los dos add-ins en Revit 2027 (Debug), con `Get-Process -Name Revit` vacío antes.
-      - Commit, push y PR: ver el PR a `acero-zapatas`. El merge espera el OK de Luciano.
+      - 4 commits en `zapatas/pruebas-revit` (de `597d383` a `688abbc`), con push a `origin`. Ya había un PR abierto
+        para esa rama, el #268 a `acero-zapatas` (utilidadcqeing-prog). Se le actualizaron el título y la descripción
+        en vez de abrir otro. El merge espera el OK de Luciano tras la revisión visual.
 - [ ] Probado en Revit a mano (guía A a M), incluidos Reglas y el apartado del tablero.
 - [ ] Preguntar a Juan qué quiso decir con «aquí debería ser por letras».
