@@ -7,4 +7,9 @@
     <RootNamespace>CQEING.Zapatas.Calculo</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Enlazada, no copiada: zapatas y vigas sacan los ganchos de la misma clase (#249). -->
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Modelo\Reglas.cs" Link="Modelo\Reglas.cs" />
+  </ItemGroup>
+
 </Project>
