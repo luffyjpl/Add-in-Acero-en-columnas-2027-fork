@@ -412,7 +412,10 @@ public static class AgrupadorPorticos
 
     private static bool Contiene(Soporte s, double t) => t >= s.Desde - ToleranciaContacto && t <= s.Hasta + ToleranciaContacto;
 
-    /// <summary>Parte la línea donde hay un hueco que ningún apoyo tapa: cada parte es un pórtico.</summary>
+    /// <summary>
+    /// Parte la línea donde hay un hueco que ningún apoyo tapa o donde una vigueta pasa a viga (o al revés): cada parte es
+    /// un pórtico. Juntas salían como uno solo, dibujado con el ancho de la vigueta (6-nov).
+    /// </summary>
     private static List<List<Tramo>> Cadenas(Linea linea, List<Soporte> soportes)
     {
         var cadenas = new List<List<Tramo>>();
@@ -420,7 +423,7 @@ public static class AgrupadorPorticos
         double fin = double.MinValue;
         foreach (Tramo t in linea.Tramos)
         {
-            bool sigue = actual is not null && (t.Desde - fin <= ToleranciaContacto
+            bool sigue = actual is not null && EsVigueta(actual[^1]) == EsVigueta(t) && (t.Desde - fin <= ToleranciaContacto
                 || soportes.Any(s => s.Desde <= fin + ToleranciaContacto && s.Hasta >= t.Desde - ToleranciaContacto));
             if (!sigue)
                 cadenas.Add(actual = []);
@@ -429,6 +432,8 @@ public static class AgrupadorPorticos
         }
         return cadenas;
     }
+
+    private static bool EsVigueta(Tramo t) => ReglaVigueta.Es(t.Viga.NombreTipo, t.Viga.Ancho);
 
     /// <summary>Ordena los apoyos a lo largo de la línea y junta los que se pisan (por ejemplo, columna y muro).</summary>
     private static List<Soporte> Unir(IEnumerable<Soporte> soportes)
