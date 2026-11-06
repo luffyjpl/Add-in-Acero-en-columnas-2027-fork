@@ -24,4 +24,7 @@ internal static class MarcaVigas
 
     /// <summary>Una barra sin marca, modelada a mano, no se da por bastón.</summary>
     public static bool EsBaston(Rebar barra) => Serie(barra) is "BS" or "BI";
+
+    /// <summary>La piel: el add-in de vigas la marca <c>P1</c>, <c>P2</c>… (#301).</summary>
+    public static bool EsPiel(Rebar barra) => Serie(barra) is "P";
 }
