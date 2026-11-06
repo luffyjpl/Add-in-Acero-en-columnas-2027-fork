@@ -429,6 +429,24 @@ public class AgrupadorPorticosTests
     }
 
     [Fact]
+    public void UnaViguetaYUnaVigaSeguidas_SonDosPorticos()
+    {
+        // 6-nov: la vigueta de 10 cm y la viga de 35 cm que se tocan en una misma línea salían como un solo pórtico,
+        // dibujado con el ancho de la vigueta. Las dos terminan en la columna del medio y en una de sus puntas.
+        var modelo = new ModeloLeido(Ejes,
+            [Viga("vigueta", 0, 3500, 3500, Piso2, ancho: 100, tipo: "VT_10X35"), Viga("viga", 3500, 7000, 3500, Piso2, ancho: 350)],
+            [
+                Columna("c1", 0, 0, 300, 0, 3500), Columna("c2", 3500, 0, 300, 0, 3500), Columna("c3", 7000, 0, 300, 0, 3500),
+                Columna("c4", 0, 0, 300, 3500, 7000), Columna("c5", 3500, 0, 300, 3500, 7000), Columna("c6", 7000, 0, 300, 3500, 7000),
+            ]);
+
+        ResultadoLectura r = AgrupadorPorticos.Agrupar(modelo);
+
+        Assert.Equal(2, r.Porticos.Count);
+        Assert.Equal([["vigueta"], ["viga"]], r.Porticos.Select(p => p.Vigas.ToArray()));
+    }
+
+    [Fact]
     public void UnaVigaSinApoyos_NoArmaPorticoYSeAvisa()
     {
         // Como la viga 809244 del modelo real: nada la cruza en planta y en alto a la vez.

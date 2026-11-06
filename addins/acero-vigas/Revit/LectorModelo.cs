@@ -11,7 +11,19 @@ namespace CQEING.Vigas.Revit;
 /// </summary>
 internal static class LectorModelo
 {
-    public static ModeloLeido Leer(Document doc) => new(Ejes(doc), Vigas(doc), Apoyos(doc), Niveles(doc));
+    public static ModeloLeido Leer(Document doc) => new(Ejes(doc), Vigas(doc), Apoyos(doc), Niveles(doc), Zapatas(doc));
+
+    private static List<ZapataLeida> Zapatas(Document doc)
+    {
+        var zapatas = new List<ZapataLeida>();
+        foreach (Element e in new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFoundation).WhereElementIsNotElementType())
+        {
+            List<XYZ> puntos = Puntos(e);
+            if (puntos.Count > 0)
+                zapatas.Add(new ZapataLeida(e.Id.ToString(), puntos.Select(Planta).Distinct().ToList(), Mm(puntos.Min(p => p.Z)), Mm(puntos.Max(p => p.Z))));
+        }
+        return zapatas;
+    }
 
     private static List<NivelLeido> Niveles(Document doc) =>
         new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().Select(l => new NivelLeido(l.Name, Mm(l.Elevation))).ToList();

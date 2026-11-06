@@ -199,9 +199,13 @@ public static class PlanificadorAcero
             if (re.EnSeccion.FirstOrDefault(s => s.Id == e.Id) is not { } caras)
                 continue;
             ConfigEstribos config = calculo.PorTramo?.GetValueOrDefault(e.Tramo) ?? general;
+            // Donde la viga está dentro de una zapata no van estribos (6-nov).
+            IReadOnlyList<double> posiciones = u.EnZapata is null
+                ? e.Posiciones
+                : e.Posiciones.Where(x => !u.EnZapata.Any(t => x >= t.Desde && x <= t.Hasta)).ToList();
             IReadOnlyList<Corrida> corridas = tramos.TryGetValue(e.Tramo, out Tramo? tramo)
-                ? CorridasEstribos.PorZonas(e.Posiciones, DistribuidorEstribos.Zonas(tramo, config, r.PorDiametro[config.Diametro].Diametro))
-                : CorridasEstribos.Partir(e.Posiciones);
+                ? CorridasEstribos.PorZonas(posiciones, DistribuidorEstribos.Zonas(tramo, config, r.PorDiametro[config.Diametro].Diametro))
+                : CorridasEstribos.Partir(posiciones);
             Rama? rama = e.Tipo == TipoEstribo.Abierto ? RamaDe(re.Seccion, caras.Izquierda, r) : null;
             // Carlos (21-oct, min 01:03:07): "son elementos sólidos que no se pueden traslapar". En el plano del cerrado, los
             // ganchos del adicional lo cruzan: el adicional n va pegado al lado, n diámetros de estribo más allá.

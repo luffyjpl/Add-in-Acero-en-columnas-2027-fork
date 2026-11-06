@@ -157,16 +157,31 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
                     terminados.ExceptWith(sistema);
                 return [new ATerminado(sistema.SelectMany(m => Buscar(m)!.Vigas).ToList(), terminado), Vista()];
             case Generar(IReadOnlyList<string> ids, var estadosPagina, bool forzar):
+                // Con varios elegidos (Ctrl), todos llevan el acero del abierto: el que se está armando, no el que cada uno
+                // tenía de antes (6-nov).
+                if (elegidos is not null && actual is not null && ids.Contains(actual))
+                    foreach (string otra in ids.Where(i => i != actual && Buscar(i) is not null))
+                        opciones[otra] = Opciones(actual);
                 AGenerar generar = AGenerar(ConSusSistemas(ids), EstadosDelSistema(ids, estadosPagina));
                 // Decisión 8 del plan de choques: avisa los choques de todos los que se generan, no solo del abierto. No
                 // bloquea: "Generar de todos modos" vuelve con forzar.
                 if (!forzar && ConChoques(generar) is { Count: > 0 } conChoques)
                     return [new AJs(ProtocoloTablero.Choques(conChoques))];
+                // Lo generado queda con la marca de terminado, sin que haya que ponerla a mano (6-nov); se quita con la
+                // palomita del pórtico, como siempre. Los saltados no se generaron: no se marcan.
+                List<Salida> salidas = [generar];
+                if (generar.Porticos.Count > 0)
+                {
+                    terminados.UnionWith(generar.Porticos.Select(p => p.Id));
+                    salidas.Add(new ATerminado(generar.Porticos.SelectMany(p => p.Vigas).ToList(), true));
+                    salidas.Add(Vista());
+                }
                 // Lo generado ya se ve de verdad: la vista previa encima estorbaría.
                 if (en3d is null)
-                    return [generar];
+                    return salidas;
                 en3d = null;
-                return [new APrevia3d(null, reglas.Reglas), generar];
+                salidas.Insert(0, new APrevia3d(null, reglas.Reglas));
+                return salidas;
             default:
                 return [];
         }
