@@ -80,6 +80,18 @@ public class CalculoPorticoTests
     }
 
     [Fact]
+    public void Calcular_PielEnCero_DiceCuantasCaben()
+    {
+        var o = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(0, 4) };
+
+        PorticoCalculado c = CalculoPortico.Calcular(ArmadorVistaTests.Portico1(), o, Reglas.Generales)!;
+
+        Assert.Empty(c.Piel!.Alturas);
+        Assert.True(c.Piel.CabenPorLado > 0);
+        Assert.Null(c.Vigas.Piel);
+    }
+
+    [Fact]
     public void Calcular_Vigueta_NoPonePielYAvisa()
     {
         var o = UnaBarra with { Piel = new GrupoBarras(2, 4) };

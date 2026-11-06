@@ -69,15 +69,15 @@ public static class CalculoPortico
     internal static EntradaVigas EntradaDe(PorticoLeido p, OpcionesTablero o, Reglas r) =>
         new(p.Portico, o.Tipo ?? p.Tipo, o.Superior, o.Inferior, r, o.Cara, Cambios: o.Cambios, Bastones: o.Bastones,
             EstriboEnVoladizo: r.PorDiametro.TryGetValue(o.Estribos.Diametro, out ReglaDiametro? estribo) ? (int)Math.Ceiling(estribo.Diametro) : 0,
-            Piel: UbicarPiel(p, o, r) is { CabenPorLado: > 0 } u ? new GrupoBarras(Math.Min(o.Piel!.Cantidad, u.CabenPorLado), o.Piel.Diametro) : null);
+            Piel: o.Piel is { Cantidad: > 0 } && UbicarPiel(p, o, r) is { CabenPorLado: > 0 } u ? new GrupoBarras(Math.Min(o.Piel!.Cantidad, u.CabenPorLado), o.Piel.Diametro) : null);
 
     /// <summary>
-    /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si no se pidió, es vigueta o su
-    /// diámetro no está en las reglas. Con 0 caben, la ubicación se devuelve igual para que la vista diga "caben 0".
+    /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si no hay piel en las opciones (con
+    /// cantidad 0 sí se calcula, para decir cuántas caben), es vigueta o su diámetro no está en las reglas. Con 0 caben, la ubicación se devuelve igual para que la vista diga "caben 0".
     /// </summary>
     internal static UbicacionPiel? UbicarPiel(PorticoLeido p, OpcionesTablero o, Reglas r)
     {
-        if (o.Piel is not { Cantidad: > 0 } piel || EsVigueta(p, o) || !r.PorDiametro.ContainsKey(piel.Diametro))
+        if (o.Piel is not { } piel || EsVigueta(p, o) || !r.PorDiametro.ContainsKey(piel.Diametro))
             return null;
         EntradaSeccion seccion = Seccion(p, o, r);
         return RepartidorPiel.Ubicar(seccion, RepartidorFilas.Repartir(seccion), piel, p.Tramos.Min(t => t.Alto));
