@@ -17,7 +17,7 @@ public static class AgrupadorBarras
     {
         var conjuntos = new List<ConjuntoBarras>();
         foreach (IGrouping<object, PiezaLongitudinal> iguales in piezas.GroupBy(p =>
-                     (object)(p.Pieza, p.Capa, p.Fila, p.Diametro, p.Desde, p.Hasta, p.GanchoInicio, p.GanchoFin)))
+                     (object)(p.Pieza, p.Capa, p.Fila, p.Diametro, p.Desde, p.Hasta, p.GanchoInicio, p.GanchoFin, p.GanchoArriba)))
         {
             var repartidos = new List<List<PiezaLongitudinal>>();
             foreach (PiezaLongitudinal p in iguales.OrderBy(p => p.XCorte))

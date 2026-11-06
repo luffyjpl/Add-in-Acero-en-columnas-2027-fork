@@ -10,7 +10,9 @@ namespace CQEING.Vigas.Calculo.Generacion;
 /// la viga: hacia abajo en la capa superior y hacia arriba en la inferior. <paramref name="Host"/> es el id de la viga.
 /// <paramref name="Largo"/> es el del tablero, con los ganchos, para compararlo con el de Revit (decisión 8).
 /// <paramref name="Fila"/> empieza en 1, junto a la cara, y cuenta las filas que tienen barras (si el usuario deja la 2
-/// vacía, su fila 3 es la 2); la que traslapa al lado va en la fila de la barra que acompaña.
+/// vacía, su fila 3 es la 2); la que traslapa al lado va en la fila de la barra que acompaña. En la piel (06-nov),
+/// <paramref name="Fila"/> es su altura de abajo hacia arriba. <paramref name="GanchoArriba"/> dice hacia dónde dobla el
+/// gancho de la piel (la de arriba, hacia arriba); null es como la capa: abajo en la superior, arriba en la inferior.
 /// </summary>
 public sealed record PiezaLongitudinal(
     string Pieza,
@@ -24,7 +26,8 @@ public sealed record PiezaLongitudinal(
     TipoGancho GanchoFin,
     string Host,
     int Largo,
-    int Fila = 1);
+    int Fila = 1,
+    bool? GanchoArriba = null);
 
 /// <summary>
 /// Las barras iguales de una fila, que se crean en Revit como un solo conjunto (Santiago, 24-oct: "3 #7" y no "1 #7"

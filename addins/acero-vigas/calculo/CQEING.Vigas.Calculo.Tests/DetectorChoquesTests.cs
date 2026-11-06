@@ -109,6 +109,25 @@ public class DetectorChoquesTests
     }
 
     [Fact]
+    public void PielConGancho90_ChocaConElGanchoDeArriba()
+    {
+        // Atención 3 (06-nov): el gancho de la piel de arriba sube por la esquina donde baja el de la barra superior. El
+        // 3D lo dibuja hacia donde dice GanchoArriba, así que el choque se ve igual que en Revit.
+        PorticoLeido p = PlanificadorAceroTests.Portico();
+        OpcionesTablero o = OpcionesTablero.PorDefecto with
+        {
+            Bastones = new ArmadoBastones(new GrupoBarras(0, 5), new GrupoBarras(0, 5)),
+            Piel = new GrupoBarras(2, 4),
+            Cambios = new CambiosManuales(Ganchos: new Dictionary<string, TipoGancho> { ["P.inicio"] = TipoGancho.De90 }),
+        };
+        PlanAcero plan = PlanificadorAcero.Planificar("P", p, o, Reglas.Generales)!;
+
+        IReadOnlyList<Choque> choques = DetectorChoques.Detectar(PreviaAcero.Trazos(plan, p.Ubicacion!, Reglas.Generales));
+
+        Assert.Contains(choques, c => c.A.Pieza == "P1" || c.B.Pieza == "P1");
+    }
+
+    [Fact]
     public void ElBastonDeArribaJuntoALaEsquinaChocaConLaColaDel135()
     {
         // Choque real (Juan, 22-oct): el segundo gancho del cerrado sale de la curva de la esquina (centro en 68.5, 431.5,

@@ -76,10 +76,28 @@ public static class PlanificadorAcero
         List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
         barras = anidadas.Take(barras.Count).ToList();
         bastones = anidadas.Skip(barras.Count).ToList();
+        barras.AddRange(PiezasDePiel(c, u));
 
         List<GrupoEstribos> estribos = Estribos(c, p.Portico, o.Estribos, r, u);
         List<int> diametros = barras.Concat(bastones).Select(x => x.Diametro).Concat(estribos.Select(e => e.Diametro)).Distinct().Order().ToList();
         return new PlanAcero(idPortico, barras, bastones, sinLugar, estribos, diametros, montados);
+    }
+
+    /// <summary>
+    /// Las piezas de la piel (06-nov): cada barra <c>P*</c> sale una vez por altura y por lado. No se anidan con los ganchos
+    /// de arriba y abajo: van a media altura, y la de la mitad de arriba dobla hacia arriba (<see cref="RepartidorPiel.GanchoArriba"/>).
+    /// </summary>
+    private static IEnumerable<PiezaLongitudinal> PiezasDePiel(PorticoCalculado c, UbicacionPortico u)
+    {
+        if (c.Vigas.Piel is not { } piel || c.Piel is not { } ubicacion)
+            return [];
+        return piel.Barras.OrderBy(b => b.Desde).SelectMany(b => ubicacion.Alturas.SelectMany(a =>
+        {
+            MedidaBarra m = b.Medida(a.Izquierda.Diametro);
+            bool arriba = RepartidorPiel.GanchoArriba(a.Altura, ubicacion.Alturas.Count);
+            return new[] { a.Izquierda, a.Derecha }.Select(s => new PiezaLongitudinal(b.Id, b.Capa, s.Diametro, s.X, s.Y,
+                m.Desde, m.Hasta, b.TipoInicio, b.TipoFin, Host(u, m.Desde, m.Hasta), m.Largo, a.Altura, arriba));
+        }));
     }
 
     /// <summary>

@@ -89,15 +89,17 @@ internal static class CreadorBarras
         // extremo, Revit invierte la barra y el gancho pedido al final queda en su inicio (medido el 05-nov).
         bool volteo = false;
         if (r.GetHookTypeId(0) != ElementId.InvalidElementId)
-            volteo |= Voltear(r, 0, curvas[0].GetEndPoint(0).Z, zBarra, p.Capa);
+            volteo |= Voltear(r, 0, curvas[0].GetEndPoint(0).Z, zBarra, p);
         if (r.GetHookTypeId(1) != ElementId.InvalidElementId)
-            volteo |= Voltear(r, 1, curvas[^1].GetEndPoint(1).Z, zBarra, p.Capa);
+            volteo |= Voltear(r, 1, curvas[^1].GetEndPoint(1).Z, zBarra, p);
         return volteo;
     }
 
-    private static bool Voltear(Rebar r, int extremo, double zPunta, double zBarra, Posicion capa)
+    private static bool Voltear(Rebar r, int extremo, double zPunta, double zBarra, PiezaLongitudinal p)
     {
-        bool haciaAdentro = capa == Posicion.Superior ? zPunta < zBarra : zPunta > zBarra;
+        // la piel dice su lado (06-nov); las demás, por su capa
+        bool arriba = p.GanchoArriba ?? p.Capa != Posicion.Superior;
+        bool haciaAdentro = arriba ? zPunta > zBarra : zPunta < zBarra;
         if (haciaAdentro)
             return false;
         // Se gira la punta media vuelta sobre el eje de la barra. SetTerminationOrientation no sirve: con la forma de Revit

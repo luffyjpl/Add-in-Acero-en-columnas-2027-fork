@@ -281,6 +281,67 @@ public class PlanificadorAceroTests
         Assert.All(plan.Barras, p => Assert.Equal(c.Vigas.Barras.Single(b => b.Id == p.Pieza) is var b ? (b.Desde, b.Largo) : default, (p.Desde, p.Largo)));
     }
 
+    private static OpcionesTablero ConPielOpciones(int cantidad = 2, TipoGancho? inicio = null) => OpcionesTablero.PorDefecto with
+    {
+        Piel = new GrupoBarras(cantidad, 4),
+        Cambios = inicio is { } g ? new CambiosManuales(Ganchos: new Dictionary<string, TipoGancho> { ["P.inicio"] = g }) : null,
+    };
+
+    /// <summary>La piel (06-nov): cada barra P sale una vez por altura y por lado, a la altura y x del corte.</summary>
+    [Fact]
+    public void ConPiel_DosPiezasPorAlturaYBarra()
+    {
+        PorticoCalculado c = Calcular(ConPielOpciones());
+
+        PlanAcero plan = Planificar(ConPielOpciones());
+
+        Assert.Equal(c.Vigas.Piel!.Barras.Count * 4, plan.Barras.Count(x => x.Capa == Posicion.Piel));
+        foreach (Barra b in c.Vigas.Piel.Barras)
+        {
+            List<PiezaLongitudinal> piezas = plan.Barras.Where(x => x.Pieza == b.Id).ToList();
+            Assert.All(piezas, x => Assert.Equal(Posicion.Piel, x.Capa));
+            foreach (PielEnSeccion a in c.Piel!.Alturas)
+            {
+                List<PiezaLongitudinal> fila = piezas.Where(x => x.Fila == a.Altura).ToList();
+                Assert.Equal([a.Izquierda.X, a.Derecha.X], fila.Select(x => x.XCorte).Order());
+                Assert.All(fila, x => Assert.Equal(a.Izquierda.Y, x.YCorte));
+            }
+        }
+    }
+
+    [Fact]
+    public void ConPiel_LlegaAlLimiteSinAnidar()
+    {
+        PorticoCalculado c = Calcular(ConPielOpciones(inicio: TipoGancho.De90));
+        Barra primera = c.Vigas.Piel!.Barras.OrderBy(b => b.Desde).First();
+
+        PlanAcero plan = Planificar(ConPielOpciones(inicio: TipoGancho.De90));
+
+        PiezaLongitudinal pieza = plan.Barras.First(x => x.Capa == Posicion.Piel);
+        Assert.Equal(TipoGancho.De90, pieza.GanchoInicio);
+        Assert.Equal(c.Vigas.Superior!.Barras.Min(b => b.Desde), pieza.Desde);
+        Assert.All(plan.Barras.Where(x => x.Pieza == primera.Id), x => Assert.Equal(primera.Desde, x.Desde));
+    }
+
+    [Fact]
+    public void ConPiel_GanchoArribaPorAltura()
+    {
+        PlanAcero plan = Planificar(ConPielOpciones());
+
+        List<PiezaLongitudinal> piel = plan.Barras.Where(x => x.Capa == Posicion.Piel).ToList();
+        Assert.All(piel.Where(x => x.Fila == 1), x => Assert.False(x.GanchoArriba));
+        Assert.All(piel.Where(x => x.Fila == 2), x => Assert.True(x.GanchoArriba));
+        Assert.All(plan.Barras.Where(x => x.Capa != Posicion.Piel), x => Assert.Null(x.GanchoArriba));
+    }
+
+    [Fact]
+    public void ConPielEnCero_NoHayPiezas()
+    {
+        PlanAcero plan = Planificar(ConPielOpciones(0));
+
+        Assert.DoesNotContain(plan.Barras, x => x.Capa == Posicion.Piel);
+    }
+
     /// <summary>
     /// Carlos (21-oct, min 01:03:07): "son elementos sólidos que no se pueden traslapar". Medido en Revit: con la fila 2
     /// debajo de las esquinas, las dos filas llegaban a la misma punta y el gancho de la fila 1 bajaba atravesando la barra

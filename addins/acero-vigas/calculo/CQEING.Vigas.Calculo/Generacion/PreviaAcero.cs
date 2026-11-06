@@ -88,7 +88,7 @@ public static class PreviaAcero
     private static Trazo Longitudinal(PiezaLongitudinal p, TipoTrazo tipo, UbicacionPortico u, Reglas r, DobladoBarra d)
     {
         // En el plano (x a lo largo, y del corte). s: hacia dónde dobla el gancho (abajo en la capa superior).
-        double s = p.Capa == Posicion.Superior ? -1 : 1;
+        double s = p.GanchoArriba ?? p.Capa != Posicion.Superior ? 1 : -1;
         var puntos = new List<(double X, double Y)>();
         puntos.AddRange(Gancho(p.GanchoInicio, p.Desde, -1).AsEnumerable().Reverse());
         puntos.Add((p.Desde, p.YCorte));
