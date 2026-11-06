@@ -46,6 +46,8 @@ public static class MotorVigas
 
         IReadOnlyList<Baston> bastones = CalculadorBastones.Calcular(entrada, g, avisos);
         SolucionCapa? piel = CalcularPiel(entrada, g, capaDeLaCara, usada, avisos);
+        if (piel is not null)
+            avisos.AddRange(Avisos.De(piel, otraCara: null, otra, varilla));
         return capaDeLaCara == Posicion.Inferior
             ? new ResultadoVigas(capaCentro, capaCara, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones, piel)
             : new ResultadoVigas(capaCara, capaCentro, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones, piel);
@@ -166,7 +168,7 @@ public static class MotorVigas
     /// </summary>
     public static GeometriaPortico GeometriaDe(EntradaVigas e, Posicion capa, GeometriaPortico comun)
     {
-        if (capa == Posicion.Superior)
+        if (capa != Posicion.Inferior)
             return comun;
         double Mayor(IReadOnlyList<GrupoBarras> grupos) => e.Reglas.PorDiametro[grupos.Max(gr => gr.Diametro)].Diametro;
         int anidado = (int)Math.Round((Mayor(e.Superior) + Mayor(e.Inferior)) / 2);

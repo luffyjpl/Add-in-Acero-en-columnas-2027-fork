@@ -20,7 +20,7 @@ public static class EditorArrastre
     public static IReadOnlyList<Salto> Saltos(EntradaVigas e, ResultadoVigas r, string elemento, PuntoArrastre punto)
     {
         var g = new GeometriaPortico(e.Portico, e.RecubrimientoPuntas, e.EstriboEnVoladizo);
-        SolucionCapa? capa = new[] { r.Superior, r.Inferior }.FirstOrDefault(c => c?.Barras.Any(b => b.Id == elemento) == true);
+        SolucionCapa? capa = new[] { r.Superior, r.Inferior, r.Piel }.FirstOrDefault(c => c?.Barras.Any(b => b.Id == elemento) == true);
         if (capa is not null)
             return DeBarra(e.Reglas, MotorVigas.GeometriaDe(e, capa.Capa, g), capa, elemento, punto);
         Baston? baston = r.Bastones.FirstOrDefault(b => b.Id == elemento);

@@ -23,14 +23,19 @@ public static class RepartidorPiel
         double yArriba = s.Superior.Filas.SelectMany(f => f).Min(b => b.Y) - (e.Alto - altoMinimo);
         double hueco = yArriba - yAbajo;
         double diametro = e.Reglas.PorDiametro[piel.Diametro].Diametro;
-        double paso = diametro + e.Reglas.DistanciaLibre;
+        // la separación se mide eje a eje: contra una fila más gruesa que la piel, la holgura real se come la diferencia de
+        // radios, así que el paso mínimo cuenta el radio de la fila que limita el hueco (revisión final, 06-nov)
+        double Mayor(IEnumerable<BarraEnSeccion> fila) => fila.Max(b => e.Reglas.PorDiametro[b.Diametro].Diametro);
+        double filaAbajo = Mayor(s.Inferior.Filas.OrderBy(f => f.Max(b => b.Y)).Last());
+        double filaArriba = Mayor(s.Superior.Filas.OrderBy(f => f.Min(b => b.Y)).First());
+        double paso = Math.Max(diametro, Math.Max(filaAbajo, filaArriba) / 2 + diametro / 2) + e.Reglas.DistanciaLibre;
 
         int caben = 0;
         while (hueco / (caben + 2) >= paso) caben++;
 
         double x = e.Recubrimiento.Lados + e.Reglas.PorDiametro[e.DiametroEstribo].Diametro + diametro / 2;
         int cuantas = Math.Min(piel.Cantidad, caben);
-        var alturas = new List<PielEnSeccion>(cuantas);
+        var alturas = new List<PielEnSeccion>(Math.Max(0, cuantas));
         for (int k = 1; k <= cuantas; k++)
         {
             double y = yAbajo + k * hueco / (cuantas + 1);

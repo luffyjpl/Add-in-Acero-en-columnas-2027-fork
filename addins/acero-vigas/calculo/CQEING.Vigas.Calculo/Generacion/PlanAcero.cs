@@ -6,8 +6,9 @@ namespace CQEING.Vigas.Calculo.Generacion;
 /// Una barra física recta (corrida o bastón) para crear en Revit (#85), en el marco del pórtico: <paramref name="Desde"/> y
 /// <paramref name="Hasta"/> son las puntas de su parte recta en mm desde el eje A; <paramref name="XCorte"/> e
 /// <paramref name="YCorte"/>, su centro en el corte (ver <see cref="MarcoPortico"/>). <paramref name="Pieza"/> es el id del
-/// tablero (<c>S1</c>, <c>BI2</c>) y se repite en todas sus barras físicas. Los ganchos doblan siempre hacia adentro de
-/// la viga: hacia abajo en la capa superior y hacia arriba en la inferior. <paramref name="Host"/> es el id de la viga.
+/// tablero (<c>S1</c>, <c>BI2</c>) y se repite en todas sus barras físicas. Los ganchos doblan hacia adentro de
+/// la viga: hacia abajo en la capa superior y hacia arriba en la inferior; los de la piel, según su altura
+/// (<paramref name="GanchoArriba"/>). <paramref name="Host"/> es el id de la viga.
 /// <paramref name="Largo"/> es el del tablero, con los ganchos, para compararlo con el de Revit (decisión 8).
 /// <paramref name="Fila"/> empieza en 1, junto a la cara, y cuenta las filas que tienen barras (si el usuario deja la 2
 /// vacía, su fila 3 es la 2); la que traslapa al lado va en la fila de la barra que acompaña. En la piel (06-nov),

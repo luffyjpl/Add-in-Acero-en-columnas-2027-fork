@@ -30,7 +30,7 @@ public sealed record DobladoBarra(double Diametro, double Gancho, double Estribo
 /// lo deja Revit, sin crear nada en el modelo. Las medidas salen de las pruebas en Revit del plan
 /// docs/planes/2026-10-19-generar-acero-vigas-85.md:
 /// <list type="bullet">
-/// <item>el gancho de una barra arranca en la punta de su parte recta y dobla hacia adentro de la viga, con el radio del
+/// <item>el gancho de una barra arranca en la punta de su parte recta y dobla hacia adentro de la viga (la piel, según su altura), con el radio del
 /// doblado del tipo más medio diámetro y la cola de <see cref="GanchoPropio.Extension"/>;</item>
 /// <item>el cerrado tiene los dos ganchos en la esquina de arriba a la izquierda, dando la vuelta a la barra de esquina, y
 /// las colas entran al núcleo (hallazgo E2);</item>
@@ -88,7 +88,8 @@ public static class PreviaAcero
     private static Trazo Longitudinal(PiezaLongitudinal p, TipoTrazo tipo, UbicacionPortico u, Reglas r, DobladoBarra d)
     {
         // En el plano (x a lo largo, y del corte). s: hacia dónde dobla el gancho (abajo en la capa superior).
-        double s = p.GanchoArriba ?? p.Capa != Posicion.Superior ? 1 : -1;
+        bool arriba = p.GanchoArriba ?? p.Capa != Posicion.Superior; // la piel dice su lado por altura
+        double s = arriba ? 1 : -1;
         var puntos = new List<(double X, double Y)>();
         puntos.AddRange(Gancho(p.GanchoInicio, p.Desde, -1).AsEnumerable().Reverse());
         puntos.Add((p.Desde, p.YCorte));

@@ -55,7 +55,9 @@ public class RepartidorPielTests
     public void CabenPorLado_ConLaDistanciaLibre()
     {
         (double abajo, double arriba) = Filas();
-        double paso = Reglas.PorDiametro[4].Diametro + Reglas.DistanciaLibre;
+        // corridas #5 y piel #4: el Ø de la piel manda (la holgura contra #5 es menor que contra sí misma)
+        double paso = Math.Max(Reglas.PorDiametro[4].Diametro,
+            (Reglas.PorDiametro[5].Diametro + Reglas.PorDiametro[4].Diametro) / 2) + Reglas.DistanciaLibre;
         int esperado = 0;
         while ((arriba - abajo) / (esperado + 2) >= paso) esperado++;
 
@@ -64,6 +66,29 @@ public class RepartidorPielTests
         Assert.Equal(esperado, u.CabenPorLado);
         Assert.True((arriba - abajo) / (u.CabenPorLado + 1) >= paso);
         Assert.True((arriba - abajo) / (u.CabenPorLado + 2) < paso);
+    }
+
+    [Fact]
+    public void CorridasMasGruesas_ElPasoCuentaSuRadio()
+    {
+        EntradaSeccion e = Viga() with { Superior = [new GrupoBarras(3, 8)], Inferior = [new GrupoBarras(3, 8)] };
+        ResultadoSeccion s = RepartidorFilas.Repartir(e);
+        double hueco = s.Superior.Filas.SelectMany(f => f).Min(b => b.Y) - s.Inferior.Filas.SelectMany(f => f).Max(b => b.Y);
+        double dp = Reglas.PorDiametro[4].Diametro, dc = Reglas.PorDiametro[8].Diametro;
+        double paso = Math.Max(dp, (dc + dp) / 2) + Reglas.DistanciaLibre;
+
+        UbicacionPiel u = RepartidorPiel.Ubicar(e, s, new GrupoBarras(2, 4), 500);
+
+        Assert.True(hueco / (u.CabenPorLado + 1) >= paso);
+        Assert.True(hueco / (u.CabenPorLado + 2) < paso);
+    }
+
+    [Fact]
+    public void CantidadNegativa_NoHayPielNiReviente()
+    {
+        UbicacionPiel u = Ubicar(new GrupoBarras(-1, 4));
+
+        Assert.Empty(u.Alturas);
     }
 
     [Fact]

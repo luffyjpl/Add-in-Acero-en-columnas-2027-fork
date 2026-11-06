@@ -67,7 +67,12 @@
 
   // Las opciones de la página con la forma de OpcionesTablero (tarea 2); null si algún campo no es número: así no se
   // manda y el último cálculo válido sigue en pantalla, como el num(x, d) de la maqueta.
-  function opcionesDe(s) {
+  // Cuántas de piel por lado caben según la última vista (C#: PielVista.cabenPorLado); undefined si aún no se conoce.
+  function topePiel(vista) {
+    const p = vista && vista.actual ? vista.actual.piel : null;
+    return p && Number.isFinite(p.cabenPorLado) ? p.cabenPorLado : undefined;
+  }
+  function opcionesDe(s, tope) {
     const n = (x) => { const v = num(x, NaN); if (!Number.isFinite(v)) throw new Error(x); return v; };
     const opcional = (x) => (String(x).trim() === '' ? null : n(x));
     // la fila a mano de cada tipo (#84): '' = Auto
@@ -90,7 +95,7 @@
         bastones: { superior: baston(s.bastSupN, s.bastSupD, s.sup), inferior: baston(s.bastInfN, s.bastInfD, s.inf),
           largo: mm(n(s.bastDef)), conGancho: s.bastHook, largos, puntas: s.bastPuntas, eliminados: (s.bastElim || []).slice() },
         // siempre se manda, también con 0: así C# dice cuántas caben con el diámetro elegido
-        piel: { cantidad: Math.max(0, Math.round(n(s.pielN))), diametro: diametro(s.pielD) },
+        piel: { cantidad: Math.max(0, Math.min(Math.round(n(s.pielN)), tope ?? Infinity)), diametro: diametro(s.pielD) },
         estribos: estribos(s.est),
         tramosMarcados: s.tramosSel.slice(),
         estribosMarcados: s.tramosSel.length && s.estMarc ? estribos(s.estMarc) : null,
@@ -280,7 +285,7 @@
     // Pide a C# la vista previa de lo elegido (#84): Subir / Bajar, o el largo escrito del traslapo o del bastón. La
     // respuesta llega a previa(); las que traen otro número son viejas y se descartan.
     pedirPrevia() {
-      const v = this.props.vista, opciones = opcionesDe(this.state);
+      const v = this.props.vista, opciones = opcionesDe(this.state, topePiel(this.props.vista));
       if (!v || !v.actual || !opciones) return;
       const sel = this.seleccion();
       if (sel === NADA) return;
@@ -294,7 +299,7 @@
     // Pide a C# los saltos de los 3 puntos de la barra o el bastón elegido (#84, tarea 7). Van con su propio número,
     // así no pisan la vista previa del panel.
     pedirSaltos() {
-      const v = this.props.vista, opciones = opcionesDe(this.state), sel = this.seleccion();
+      const v = this.props.vista, opciones = opcionesDe(this.state, topePiel(this.props.vista)), sel = this.seleccion();
       this.saltosPedidos = {};
       if (!v || !v.actual || !opciones || sel.k === 'lap' || sel === NADA) return;
       ['Izquierda', 'Centro', 'Derecha'].forEach((punto) => {
@@ -348,7 +353,7 @@
     // Los arreglos de un choque (plan docs/planes/2026-10-22-choques-entre-barras-vigas.md, decisión 7): C# los prueba
     // antes de ofrecerlos. Se piden al abrir el punto, con las opciones de ahora; los que traen otro número son viejos.
     abrirChoque(i) {
-      const v = this.props.vista, opciones = opcionesDe(this.state);
+      const v = this.props.vista, opciones = opcionesDe(this.state, topePiel(this.props.vista));
       if (!v || !v.actual || !opciones) return;
       this.nArreglos = this.siguiente();
       this.setState({ choqueAbierto: i, arreglos: null });
@@ -461,7 +466,7 @@
         clearTimeout(this._calc);
         const ir = () => {
           const v = this.props.vista;
-          const opciones = opcionesDe(this.state);
+          const opciones = opcionesDe(this.state, topePiel(this.props.vista));
           if (v && v.actual && opciones) this.props.enviar({ tipo: 'calcular', id: v.actual.id, opciones });
         };
         if (texto) this._calc = setTimeout(ir, 150); else ir();
@@ -563,7 +568,7 @@
       // piel (06-nov): cuántas caben por lado con el diámetro elegido y si el estribo la permite (C#: PielVista)
       const pielV = P ? P.piel : null;
       const pielCaben = pielV ? pielV.cabenPorLado : 0, pielPermitida = !pielV || pielV.permitida !== false;
-      const pielCant = Math.max(0, Math.round(num(s.pielN, 0)));
+      const pielCant = Math.max(0, Math.min(Math.round(num(s.pielN, 0)), pielV ? pielCaben : Infinity));
 
       // barras, traslapos y bastones del motor
       const bars = P ? P.barras : [];
@@ -819,7 +824,7 @@
         barSel: kind === 'bar' || kind === 'bast' ? selEl.id : '', lapSel: kind === 'lap' ? selEl.id : '', lapsManual: lapsAll.filter((l) => l.manual).map((l) => l.id).join(','),
         isSelBar: kind === 'bar' && !!SB, isSelLap: kind === 'lap' && !!SL, isSelBast: kind === 'bast' && !!SBa, sb, sl, st: stv, draft: s.draft, bastElim, restoreAllBast,
         bastDef: s.bastDef, bastSupN: s.bastSupN, bastInfN: s.bastInfN, bastSupD: bastD(s.bastSupD, s.sup), bastInfD: bastD(s.bastInfD, s.inf),
-        pielN: s.pielN, pielD: s.pielD, pielCaben, pielColor: colorDe(s.pielD), pielPermitida,
+        pielN: String(pielCant), pielD: s.pielD, pielCaben, pielColor: colorDe(s.pielD), pielPermitida,
         pielNota: pielPermitida ? 'Las mismas a los dos lados, repartidas a igual distancia entre arriba y abajo.' : 'No lleva piel con estribo abierto',
         pielMenosOff: pielCant <= 0, pielMasOff: !pielPermitida || pielCant >= pielCaben,
         pielMenos: () => this.cambiar({ pielN: String(Math.max(0, pielCant - 1)) }),

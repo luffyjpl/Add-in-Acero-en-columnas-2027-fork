@@ -76,7 +76,7 @@ internal static class CreadorBarras
     }
 
     /// <summary>
-    /// Deja cada gancho doblando hacia adentro de la viga (hacia abajo en la capa superior, hacia arriba en la inferior).
+    /// Deja cada gancho doblando hacia adentro de la viga (hacia abajo en la capa superior, hacia arriba en la inferior; en la piel, según su altura).
     /// Revit decide hacia qué lado es "derecha" según la normal y el sentido de la barra; en vez de suponerlo, se mira dónde
     /// quedó la punta del gancho y, si quedó afuera, se voltea. Llamar después de regenerar. Devuelve si volteó alguno.
     /// </summary>

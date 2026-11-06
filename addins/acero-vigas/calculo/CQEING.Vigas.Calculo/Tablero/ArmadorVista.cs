@@ -63,9 +63,14 @@ public static class ArmadorVista
         (ResultadoVigas rv, ResultadoEstribos re, EntradaSeccion seccion, var porTramo) = (c.Vigas, c.Estribos, c.Seccion, c.PorTramo);
         avisos.AddRange(c.Avisos);
 
+        // La punta está en el borde por posición, no por tener gancho: la piel arranca sin gancho y aun así sus botones
+        // (Sin · 90° · 135° · 180°) deben salir en la primera y en la última barra (revisión final, 06-nov).
+        Barra? primeraPiel = rv.Barras.Where(b => b.Capa == Posicion.Piel).MinBy(b => b.Desde);
+        Barra? ultimaPiel = rv.Barras.Where(b => b.Capa == Posicion.Piel).MaxBy(b => b.Hasta);
         var barras = rv.Barras.Select(b => new BarraVista(b.Id, Capa(b.Capa), M(b.Desde), M(b.Hasta), b.GanchoInicio > 0, b.GanchoFin > 0,
             M(b.Largo), Recta(b), b.Manual, b.LlegaAlVoladizo, Cantidad(b.Grupos), b.Kg,
-            Grados(b.TipoInicio), Grados(b.TipoFin), b.TipoInicio != TipoGancho.Sin, b.TipoFin != TipoGancho.Sin,
+            Grados(b.TipoInicio), Grados(b.TipoFin), b.Capa == Posicion.Piel ? b == primeraPiel : b.TipoInicio != TipoGancho.Sin,
+            b.Capa == Posicion.Piel ? b == ultimaPiel : b.TipoFin != TipoGancho.Sin,
             ColoresDiametro.De(b.Grupos.Max(g => g.Diametro)), Rotulo.De(b), Rotulo.EnPulgadas(b))).ToList();
         var traslapos = rv.Traslapos.Select(t => new TraslapoVista(t.Id, t.BarraIzquierda, t.BarraDerecha, Capa(t.Capa), M(t.Desde), M(t.Hasta),
             M(t.Minimo), $"#{t.Diametro}", t.Manual, F(M(t.Hasta - t.Desde), "0.00"))).ToList();

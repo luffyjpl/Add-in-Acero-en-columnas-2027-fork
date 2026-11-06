@@ -236,6 +236,19 @@ public class ArmadorVistaTests
     }
 
     [Fact]
+    public void Vista_ConPielSinGancho_LosBotonesDeGanchoSalenEnLasPuntasDelBorde()
+    {
+        BarraVista[] piel = Armar(ConPiel).Barras.Where(b => b.Capa == "piel").OrderBy(b => b.Desde).ToArray();
+
+        Assert.True(piel.Length >= 3);
+        Assert.True(piel[0].PuntaInicioEnBorde);
+        Assert.True(piel[^1].PuntaFinEnBorde);
+        Assert.Equal("", piel[0].GanchoInicioTipo);
+        Assert.All(piel.Skip(1), b => Assert.False(b.PuntaInicioEnBorde));
+        Assert.All(piel.SkipLast(1), b => Assert.False(b.PuntaFinEnBorde));
+    }
+
+    [Fact]
     public void Vista_ConPiel_CorteConPiel()
     {
         VistaPortico v = Armar(ConPiel);
