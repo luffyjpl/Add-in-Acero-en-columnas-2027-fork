@@ -240,6 +240,23 @@
       panel de al lado, a través de la viga, tiene un vacío que fija sus líneas, el de abajo las sigue (como en la
       captura 1). Lo que no vuelve a pasar es que la vigueta de borde del vacío cruce las vigas.
     `PlanificadorViguetas.PorRegion` (vecinas, `Seguir`).
+26. **Las viguetas nuevas siguen a las que ya están, y rellenan lo que falta** (usuario, 06-nov, capturas del N+8.41 P3
+    de PROYECTO THEVENIN 2: el voladizo de abajo, creado después, no quedaba en línea con las creadas arriba). Dos
+    causas: la opción «Dónde van las viguetas» se guardaba en el equipo y había quedado en «Fórmula del Excel» desde la
+    reunión del 05-nov; y siguiendo, si las que ya están cubrían solo parte del ancho, el resto quedaba sin viguetas.
+    Ahora:
+    - Al abrir la ventana o cambiar de piso, la opción vuelve a **«Seguir las que ya están»**; ya no se recuerda de una
+      vez a otra (se puede cambiar a «Fórmula del Excel» en el momento).
+    - Siguiendo, se usan las líneas de las que ya están (del modelo, o creadas fuera de lo elegido: decisión 21) y, entre
+      ellas y hasta los bordes, la fórmula centrada donde el libre pasa del máximo (como `Seguir`, decisión 25). Vale
+      para paneles y para zonas.
+27. **No hay lados en diagonal: la zona se cierra en cuadrado** (usuario, 06-nov: «que no deje hacer viguetas en
+    triángulo»). En una losa de viguetas, cada vigueta va paralela a las demás y apoyada en sus dos puntas sobre vigas
+    o viguetas de borde que la cruzan en escuadra; un paño en triángulo deja viguetas de largos distintos que terminan
+    en un borde inclinado, que no es un apoyo de verdad. Al marcar una zona o un vacío, un punto que no queda en línea
+    (en X o en Y, 5° de tolerancia, como la decisión 20) con el anterior **no se agrega**: el aviso pide marcar primero
+    la esquina. Tampoco se cierra si el último y el primero no quedan en línea. No se completa la esquina solo: con dos
+    puntos en diagonal hay dos esquinas posibles y el add-in no sabe cuál es la buena (el usuario lo aceptó así).
 
 ## Plan paso a paso
 
@@ -467,3 +484,19 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin crear-
 - [x] 05-nov: el usuario probó en Revit 2027 (PROY_JULIO_BETO, N+3.70) los arreglos de las decisiones 11 a 25 y
       dijo «ya todo bien». Se publica como `crear-viguetas-v1.2.0`. Sigue pendiente la lectura de suelos con un modelo
       que tenga suelo (criterio 1) y aclarar «delimitar el límite de la losa para que la vigueta pase por ahí».
+- [ ] 06-nov, capturas del usuario (N+8.41 P3 de PROYECTO THEVENIN 2): decisiones 26 y 27. Rama
+      `viguetas-seguir-sin-diagonales-954` desde `main` (`a2738bb`).
+      - [x] 26: `PlanificadorViguetas` usa `Seguir` también con las existentes (paneles y regiones): sus líneas y la
+            fórmula centrada donde no llegan. En la página, «Seguir las que ya están» ya no se guarda en el equipo y se
+            marca al abrir o cambiar de piso. Prueba `LasNuevasSiguenALasCreadasDeAlLadoYRellenanLoQueFalta`; se
+            ajustaron `ConViguetasExistentesEnLaColumnaLasNuevasLasSiguen` y
+            `EnElPerimetroLasNuevasSiguenLasDelModeloYSoloRellenanLosTramosQueFaltan` (antes dejaban huecos de 0,80 a
+            2,00 m sin viguetas).
+      - [x] 27: en `viguetas.js`, `enLineaRecta` (5°): `clicPunto` no agrega un punto en diagonal con el anterior y avisa;
+            `cerrarTrazo` no cierra si el último y el primero no quedan en línea; el botón «Cerrar contorno», la línea
+            punteada de cierre y el punto verde del primero solo aparecen cuando se puede cerrar en cuadrado.
+      - [x] En el navegador (demo): el punto en diagonal no se agrega (aviso), Enter no cierra sin la esquina, con la
+            esquina cierra; con «Fórmula» guardado de antes, al abrir queda marcado «Seguir las que ya están».
+      - [x] `dotnet test CQEING-Addins.sln`: 0 fallos (59 de viguetas). Compila para 2026 sin advertencias. Desplegado para
+            2027 (Revit cerrado, comprobado).
+      - [ ] Probar en Revit (el usuario pidió publicarlo el 06-nov: se publica como `crear-viguetas-v1.2.1`; la prueba en Revit queda a su cargo).

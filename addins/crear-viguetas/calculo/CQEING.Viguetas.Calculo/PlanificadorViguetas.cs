@@ -201,7 +201,8 @@ public static class PlanificadorViguetas
                 if (existentes.Count > 0 || alineadas.Count > 0)
                 {
                     bool siguen = existentes.Count > 0;
-                    cotas = siguen ? existentes : alineadas;
+                    // Decisión 26: siguiendo las que ya están, lo que ellas no cubren se rellena con la fórmula.
+                    cotas = siguen ? Seguir(existentes, desde, hasta, ejeAEje, ancho) : alineadas;
                     reparto = Resumir(panel.Id, desde, hasta, cotas, ejeAEje, ancho,
                         siguen ? OrigenReparto.Existentes : OrigenReparto.Alineado, siguen ? null : primero.Id);
                 }
@@ -284,7 +285,7 @@ public static class PlanificadorViguetas
             List<double> existentes = guias?.Where(Entra).OrderBy(c => c).ToList() ?? [];
             existe[i] = existentes.Count > 0;
             (propias[i], bool conPunta) = existe[i]
-                ? (existentes, false)
+                ? (Seguir(existentes, r.Desde, r.Hasta, ejeAEje, ancho), false)
                 : RepartirConPunta(r.Desde, r.Hasta, puntas.Where(x => x.W >= r.WDesde - 1 && x.W <= r.WHasta + 1).Select(x => x.U).ToList(), ejeAEje, ancho);
             manda[i] = existe[i] || conPunta;
         }
