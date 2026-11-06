@@ -37,8 +37,12 @@ public enum TipoApoyo
 /// </summary>
 public sealed record ApoyoLeido(string Id, TipoApoyo Tipo, IReadOnlyList<Punto> Huella, double ZAbajo, double ZArriba, Punto? Direccion = null);
 
-/// <summary>Lo que el adaptador de Revit le pasa al agrupador (#81). Todo en mm.</summary>
-public sealed record ModeloLeido(IReadOnlyList<EjeLeido> Ejes, IReadOnlyList<VigaLeida> Vigas, IReadOnlyList<ApoyoLeido> Apoyos);
+/// <summary>
+/// Lo que el adaptador de Revit le pasa al agrupador (#81). Todo en mm. <paramref name="Niveles"/> son todos los niveles
+/// del proyecto: la planta los ofrece todos, aunque no tengan vigas (6-nov).
+/// </summary>
+public sealed record ModeloLeido(IReadOnlyList<EjeLeido> Ejes, IReadOnlyList<VigaLeida> Vigas, IReadOnlyList<ApoyoLeido> Apoyos,
+    IReadOnlyList<NivelLeido>? Niveles = null);
 
 /// <summary>Un tramo del pórtico (una luz entre apoyos o un voladizo), en mm desde el eje A, con su sección.</summary>
 public sealed record TramoLeido(string Nombre, int Desde, int Hasta, bool EsVoladizo, double Ancho, double Alto);

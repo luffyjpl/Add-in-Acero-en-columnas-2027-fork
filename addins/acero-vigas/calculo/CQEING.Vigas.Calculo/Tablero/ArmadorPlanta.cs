@@ -44,6 +44,13 @@ public static class ArmadorPlanta
             .ThenBy(n => n.Cota)
             .Select(n => new NivelPlanta(n.Nombre, M(n.Cota), ejes, Columnas(modelo, n.Cota), Elementos(n.Elementos)))
             .ToList();
+
+        // Los demás niveles del proyecto, sin pórticos (N+0.00, N+0.71 y la cimentación no aparecían, 6-nov): van vacíos,
+        // entre los demás por cota y antes del "Sin nivel".
+        foreach (NivelLeido n in modelo?.Niveles ?? [])
+            if (niveles.All(x => x.Nombre != n.Nombre))
+                niveles.Add(new NivelPlanta(n.Nombre, M(n.Elevacion), ejes, Columnas(modelo, n.Elevacion), []));
+        niveles = niveles.OrderBy(n => n.Nombre == SinNivel).ThenBy(n => n.Elevacion).ToList();
         return new PlantaVista(niveles);
     }
 

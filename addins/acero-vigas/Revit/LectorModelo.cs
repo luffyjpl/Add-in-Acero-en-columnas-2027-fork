@@ -11,7 +11,10 @@ namespace CQEING.Vigas.Revit;
 /// </summary>
 internal static class LectorModelo
 {
-    public static ModeloLeido Leer(Document doc) => new(Ejes(doc), Vigas(doc), Apoyos(doc));
+    public static ModeloLeido Leer(Document doc) => new(Ejes(doc), Vigas(doc), Apoyos(doc), Niveles(doc));
+
+    private static List<NivelLeido> Niveles(Document doc) =>
+        new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().Select(l => new NivelLeido(l.Name, Mm(l.Elevation))).ToList();
 
     private static List<EjeLeido> Ejes(Document doc) =>
         new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>()
