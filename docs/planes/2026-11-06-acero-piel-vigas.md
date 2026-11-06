@@ -357,5 +357,13 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin acero-
 
 - [x] Diseño revisado con el usuario (2026-11-06).
 - [x] Plan paso a paso escrito (2026-11-06).
-- [ ] Pasos implementados.
-- [ ] Probado en Revit.
+- [x] Pasos implementados (2026-11-06): tareas 1–6 con revisión por tarea y revisión final de la rama.
+  Commits 10adcb6 (motor), 218ebbb (corte), f316eaa + 2d6313a (opciones y vigueta), 0aee641 (Revit), 7a1232b (vista),
+  1ed4f46 + b29de42 (página), 83a2f27 (arreglos de la revisión final: botones de gancho de la piel, arrastre de la piel
+  y sus traslapos, avisos de la piel, holgura contra corridas más gruesas, recorte del contador). Suite: 1133 en verde.
+- [ ] Probado en Revit. Instalado en local para Revit 2026 con 83a2f27; falta la prueba de Juan ("Cómo probarlo").
+  Mirar en especial: el gancho de la piel en Revit (`CreadorBarras.Voltear`, sube o baja por altura) y que el gancho de
+  abajo de la piel no cruce el de la capa inferior en la esquina.
+- Pendientes menores (no bloquean): pruebas más finas de la vista y del choque; el contador de piel puede recortarse
+  con el tope anterior al bajar el diámetro hasta el siguiente cálculo; la etiqueta de la piel queda cerca del bastón
+  de arriba en el alzado.
