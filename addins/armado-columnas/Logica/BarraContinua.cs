@@ -572,18 +572,19 @@ public static class BarraContinua
     /// pasar del dado de 40x40 a la columna de 30x30).
     /// </summary>
     /// <summary>
-    /// Left/Right de Revit son relativos al sentido de la barra (ver
-    /// GeneradorLongitudinal.OrientacionesHaciaAdentro): dibujada al revés, para
-    /// que el gancho mire al mismo lado hay que pedir el opuesto.
+    /// La orientación del gancho no depende del sentido en que se dibujó la
+    /// barra (#279, medido el 05-nov en Prueba 08072026: las piezas dibujadas
+    /// de arriba hacia abajo, a las que antes se les invertía Left/Right,
+    /// quedaban con el gancho de la zapata hacia AFUERA y las demás hacia
+    /// adentro; docs/planes/2026-11-05-reunion-despiece-287.md, hallazgo 14).
+    /// Se deja la firma para que los llamados digan qué pieza es.
     /// </summary>
     private static RebarTerminationOrientation Orientacion(Pedido p, RebarTerminationOrientation haciaArriba) =>
         Orientacion(p.DeArribaAAbajo, haciaArriba);
 
-    /// <summary><paramref name="haciaArriba"/> es la de una barra dibujada de abajo hacia arriba; dada vuelta, se invierte.</summary>
+    /// <summary><paramref name="haciaArriba"/> vale igual para una barra dada vuelta (#279).</summary>
     private static RebarTerminationOrientation Orientacion(bool deArribaAAbajo, RebarTerminationOrientation haciaArriba) =>
-        !deArribaAAbajo ? haciaArriba
-        : haciaArriba == RebarTerminationOrientation.Left ? RebarTerminationOrientation.Right
-        : RebarTerminationOrientation.Left;
+        haciaArriba;
 
     private static FamilyInstance HostInicial(Pedido p) =>
         p.Pila
