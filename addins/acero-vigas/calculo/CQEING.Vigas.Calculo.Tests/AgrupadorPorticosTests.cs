@@ -253,6 +253,28 @@ public class AgrupadorPorticosTests
         Assert.Contains(r.Avisos, a => a.Tipo == TipoAvisoLectura.SinApoyos && a.Elemento.Contains("secundaria"));
     }
 
+    [Fact]
+    public void UnaRiostraEntreDosViguetasSostenidas_EsVigueta()
+    {
+        // Como la 910864 (06-nov): dos viguetas sin columnas (x 1000 y 2500) cruzan la principal del eje 1, que sí las
+        // tiene, y entre ellas va una riostra corta en y 1000 que termina en las dos. Antes quedaba sin apoyos.
+        var modelo = new ModeloLeido(Ejes,
+            [
+                Viga("principal", 0, 3500, 3500, Piso2),
+                new VigaLeida("vigueta1", new(1000, -2000), new(1000, 2000), 3150, 3500, 100, Piso2),
+                new VigaLeida("vigueta2", new(2500, -2000), new(2500, 2000), 3150, 3500, 100, Piso2),
+                Viga("riostra", 1000, 2500, 3500, Piso2, y: 1000, ancho: 100),
+            ],
+            [Columna("c1", 0, 0, 300, 0, 3500), Columna("c2", 3500, 0, 300, 0, 3500)]);
+
+        ResultadoLectura r = AgrupadorPorticos.Agrupar(modelo);
+
+        PorticoLeido p = r.Porticos.Single(x => x.Vigas.Contains("riostra"));
+        Assert.Equal(Elemento.Vigueta, p.Elemento);
+        Assert.Equal([TipoApoyo.Viga, TipoApoyo.Viga], p.TiposDeApoyo);
+        Assert.DoesNotContain(r.Avisos, a => a.Tipo == TipoAvisoLectura.SinApoyos);
+    }
+
     /// <summary>
     /// Viguetas (#938/#939). Carlos (24-oct, min 08:11): se arman igual que las vigas, pero se apoyan en vigas que
     /// llegan a columnas. El add-in las reconoce solo por el tipo (VT/VB, como en PROY_JULIO_BETO) o porque miden menos

@@ -24,23 +24,28 @@ public static class AgrupadorPorticos
 
     public static ResultadoLectura Agrupar(ModeloLeido modelo)
     {
+        List<(Linea Linea, List<Soporte> Soportes, List<List<Tramo>> Cadenas)> lineas = Lineas(modelo.Vigas)
+            .Select(l =>
+            {
+                List<Soporte> soportes = Soportes(l, modelo);
+                return (l, soportes, Cadenas(l, soportes));
+            })
+            .ToList();
+        HashSet<string> sostenidas = Sostenidas(lineas, modelo);
+
         var porticos = new List<PorticoLeido>();
         var avisos = new List<AvisoLectura>();
         int sinEje = 0, viguetas = 0;
 
-        foreach (Linea linea in Lineas(modelo.Vigas))
+        foreach ((Linea linea, List<Soporte> soportes, List<List<Tramo>> cadenas) in lineas)
         {
-            List<Soporte> soportes = Soportes(linea, modelo);
-            List<List<Tramo>> cadenas = Cadenas(linea, soportes);
             EjeLeido? ejePropio = modelo.Ejes.FirstOrDefault(e => linea.EsColineal(e.Desde, e.Hasta));
 
             for (int i = 0; i < cadenas.Count; i++)
             {
                 List<Tramo> cadena = cadenas[i];
                 double desde = cadena.Min(t => t.Desde), hasta = cadena.Max(t => t.Hasta);
-                List<Soporte> enLaCadena = soportes.Where(s => s.Hasta >= desde - ToleranciaContacto && s.Desde <= hasta + ToleranciaContacto).ToList();
-                List<Soporte> propios = SinArmazonDeVoladizos(Unir(enLaCadena
-                    .Where(s => s.Tipo != TipoApoyo.Viga || TerminaSobre(cadena, s, soportes) || PrincipalQueLaCarga(s, enLaCadena, modelo))), modelo);
+                List<Soporte> propios = Propios(cadena, soportes, modelo, sostenidas);
                 if (propios.Count == 0)
                 {
                     avisos.Add(new AvisoLectura(TipoAvisoLectura.SinApoyos, string.Join(", ", cadena.Select(t => t.Viga.Id))));
@@ -57,6 +62,37 @@ public static class AgrupadorPorticos
             }
         }
         return new ResultadoLectura(porticos, avisos, modelo);
+    }
+
+    /// <summary>Los apoyos que la cadena usa: columnas y muros, y las vigas en que termina o que la cargan.</summary>
+    private static List<Soporte> Propios(List<Tramo> cadena, List<Soporte> soportes, ModeloLeido modelo, IReadOnlySet<string> sostenidas)
+    {
+        double desde = cadena.Min(t => t.Desde), hasta = cadena.Max(t => t.Hasta);
+        List<Soporte> enLaCadena = soportes.Where(s => s.Hasta >= desde - ToleranciaContacto && s.Desde <= hasta + ToleranciaContacto).ToList();
+        return SinArmazonDeVoladizos(Unir(enLaCadena
+            .Where(s => s.Tipo != TipoApoyo.Viga || TerminaSobre(cadena, s, soportes) || PrincipalQueLaCarga(s, enLaCadena, modelo))), modelo, sostenidas);
+    }
+
+    /// <summary>
+    /// Vigas que llegan a columnas o muros, directo o a través de otras vigas: las de las cadenas con apoyos, repitiendo
+    /// hasta que no cambie. Parte de vacío, así que dos vigas sueltas no se sostienen la una a la otra (Carlos, min 15:03:
+    /// la que no se conecta a columnas no es apoyo). Como la riostra 910864 (06-nov): va entre dos viguetas que se apoyan
+    /// en las principales; antes las dos se descartaban y la riostra quedaba sin apoyos.
+    /// </summary>
+    private static HashSet<string> Sostenidas(List<(Linea Linea, List<Soporte> Soportes, List<List<Tramo>> Cadenas)> lineas, ModeloLeido modelo)
+    {
+        var sostenidas = new HashSet<string>();
+        bool cambio = true;
+        while (cambio)
+        {
+            cambio = false;
+            foreach ((_, List<Soporte> soportes, List<List<Tramo>> cadenas) in lineas)
+                foreach (List<Tramo> cadena in cadenas)
+                    if (!cadena.All(t => sostenidas.Contains(t.Viga.Id)) && Propios(cadena, soportes, modelo, sostenidas).Count > 0)
+                        foreach (Tramo t in cadena)
+                            cambio |= sostenidas.Add(t.Viga.Id);
+        }
+        return sostenidas;
     }
 
     /// <summary>
@@ -327,12 +363,14 @@ public static class AgrupadorPorticos
     /// <summary>
     /// Lo que pasa de la primera / última columna o muro es voladizo: una viga que cruza ahí es armazón, no apoyo,
     /// salvo que ella misma descanse en una columna o muro (cargadora). Decisión 3 del plan
-    /// docs/planes/2026-10-19-ajustes-tablero-vigas-100.md.
+    /// docs/planes/2026-10-19-ajustes-tablero-vigas-100.md. Sin columnas ni muros en la cadena (una vigueta entre
+    /// viguetas), también es apoyo la viga que a su vez está sostenida (<see cref="Sostenidas"/>).
     /// </summary>
-    private static List<Soporte> SinArmazonDeVoladizos(List<Soporte> soportes, ModeloLeido modelo)
+    private static List<Soporte> SinArmazonDeVoladizos(List<Soporte> soportes, ModeloLeido modelo, IReadOnlySet<string> sostenidas)
     {
         int primero = soportes.FindIndex(s => s.Tipo != TipoApoyo.Viga), ultimo = soportes.FindLastIndex(s => s.Tipo != TipoApoyo.Viga);
         return soportes.Where((s, i) => s.Tipo != TipoApoyo.Viga || (primero >= 0 && i > primero && i < ultimo)
+            || (primero < 0 && sostenidas.Contains(s.Id))
             || modelo.Vigas.FirstOrDefault(v => v.Id == s.Id) is VigaLeida v && modelo.Apoyos.Any(a => Descansa(v, a))).ToList();
     }
 
