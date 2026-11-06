@@ -61,4 +61,26 @@ public class ZonasEstribosTests
 
         Assert.Equal(5, z.Cantidad);
     }
+
+    [Fact]
+    public void ElEstriboSueltoAntesDeUnaZonaNoSeLlevaSuPrimero()
+    {
+        // Columna confinada con los dos últimos espacios de la central igualados (decisión 10 del plan
+        // 2026-11-05-largos-y-estribos-columnas-245-256): central @0.14, suelto a 0.10 y confinado @0.06.
+        List<double> central = Seguidos(0.80, 13, 0.14);
+        double suelto = Math.Round(central[^1] + 0.10, 4);
+        List<double> alturas = [.. central, suelto, .. Seguidos(suelto + 0.10, 9, 0.06)];
+
+        IReadOnlyList<ZonaEstribos> zonas = ZonasEstribos.Agrupar(alturas);
+
+        Assert.Equal([(13, 0.14), (1, 0.0), (9, 0.06)], zonas.Select(z => (z.Cantidad, Math.Round(z.Separacion, 2))));
+    }
+
+    [Fact]
+    public void DosEstribosAlFinalSiguenJuntos()
+    {
+        IReadOnlyList<ZonaEstribos> zonas = ZonasEstribos.Agrupar([.. Seguidos(0.05, 12, 0.20), 2.37, 2.49]);
+
+        Assert.Equal([(12, 0.20), (2, 0.12)], zonas.Select(z => (z.Cantidad, Math.Round(z.Separacion, 2))));
+    }
 }

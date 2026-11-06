@@ -254,17 +254,9 @@ public static class ArmadorVistaColumnas
                 zonas.Add(new ZonaVista(tramo.Indice, M(tramo.ZInferior), M(tramo.ZSuperior), Zona(tramo, "uniforme"), cadaPorDefecto, 0,
                     reparto.Alturas.Select(M).ToList()));
 
-            // Cada estribo en la primera zona que lo contiene (dos zonas vecinas comparten el borde).
-            var usadas = new HashSet<int>();
             foreach (RepartoEstribos.Zona z in reparto.Zonas)
-            {
-                List<double> enZona = reparto.Alturas
-                    .Select((a, i) => (a, i))
-                    .Where(x => !usadas.Contains(x.i) && x.a >= z.ZDesde - 1e-6 && x.a <= z.ZHasta + 1e-6)
-                    .Select(x => { usadas.Add(x.i); return M(x.a); })
-                    .ToList();
-                zonas.Add(new ZonaVista(tramo.Indice, M(z.ZDesde), M(z.ZHasta), Zona(tramo, z.Nombre), z.Espaciado, z.Cantidad, enZona));
-            }
+                zonas.Add(new ZonaVista(tramo.Indice, M(z.ZDesde), M(z.ZHasta), Zona(tramo, z.Nombre), z.Espaciado, z.Cantidad,
+                    z.Alturas.Select(M).ToList()));
         }
         return zonas;
     }

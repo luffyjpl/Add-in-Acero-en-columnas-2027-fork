@@ -20,9 +20,6 @@ internal static class ClasificadorPrevia3D
     /// <summary>1 mm, en metros: holgura para comparar bordes.</summary>
     private const double Holgura = 0.001;
 
-    /// <summary>Holgura para ubicar un estribo menor en la zona de su principal, en metros.</summary>
-    private const double HolguraZona = 0.03;
-
     /// <summary>Una barra leída, en metros, antes de clasificarla.</summary>
     private sealed class Pieza
     {
@@ -231,8 +228,14 @@ internal static class ClasificadorPrevia3D
                 ? p
                 : PaqueteEstribos.Calcular(Array.Empty<EstriboMenor>(), diametroMm, _ => diametroMm);
 
+        // La zona del estribo del reparto más cercano: con el sobrante de
+        // #256 las zonas ya no cortan justo en L1, así que no alcanza el rango.
         RepartoEstribos.Zona? zona = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete).Zonas
-            .FirstOrDefault(zn => z >= zn.ZDesde - HolguraZona && z <= zn.ZHasta + HolguraZona);
+            .Where(zn => zn.Alturas.Count > 0)
+            .Select(zn => (Zona: zn, Distancia: zn.Alturas.Min(a => Math.Abs(a - z))))
+            .OrderBy(x => x.Distancia)
+            .Select(x => x.Zona)
+            .FirstOrDefault();
         return zona is not null && zona.Nombre.StartsWith("confinado", StringComparison.Ordinal)
             ? ZonaEstribo.Confinada
             : ZonaEstribo.NoConfinada;
