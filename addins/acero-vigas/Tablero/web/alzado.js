@@ -186,7 +186,15 @@
       const yPiel = (i) => (nPiel < 2 ? (yPielArriba + yPielAbajo) / 2 : yPielArriba + (yPielAbajo - yPielArriba) * i / (nPiel - 1));
       const lineasPiel = (bar) => {
         const ti = bar.ganchoInicio ? bar.ganchoInicioTipo || '90°' : '', tf = bar.ganchoFin ? bar.ganchoFinTipo || '90°' : '';
-        return Array.from({ length: nPiel }, (_, i) => conGanchos(X(bar.desde), X(bar.hasta), yPiel(i), 1, ti, tf, 8));
+        // gancho por altura (decisión 9; RepartidorPiel.GanchoArriba): con la altura h contada desde abajo desde 1, sube si
+        // 2h > n + 1 (la del medio, con n impar, baja). La línea i se dibuja de arriba abajo; con inv el dibujo va volteado.
+        // El gancho no pasa de la mitad de la separación entre líneas (mínimo 4) para no cruzar a la vecina.
+        const alto = nPiel < 2 ? 8 : Math.max(4, Math.min(8, (yPielAbajo - yPielArriba) / (nPiel - 1) / 2));
+        return Array.from({ length: nPiel }, (_, i) => {
+          const h = inv ? i + 1 : nPiel - i;
+          const sube = 2 * h > nPiel + 1;
+          return conGanchos(X(bar.desde), X(bar.hasta), yPiel(i), (sube ? -1 : 1) * (inv ? -1 : 1), ti, tf, alto);
+        });
       };
       const pl = p.barras.filter((bar) => bar.capa === 'piel').map((bar, n) => {
         const lineas = lineasPiel(bar);
@@ -510,8 +518,8 @@
         ${v.pl.map(zona)}
         ${v.l.filter((x) => x.isC).map(lap)}
         ${v.l.filter((x) => !x.isC).map(lap)}
-        ${v.haloHover ? v.haloHover.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-opacity="0.12" stroke-width="9" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`) : null}
-        ${v.halo ? v.halo.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-opacity="0.22" stroke-width="10" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`) : null}
+        ${v.haloHover ? html`<g opacity="0.12">${v.haloHover.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-width="9" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`)}</g>` : null}
+        ${v.halo ? html`<g opacity="0.22">${v.halo.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-width="10" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`)}</g>` : null}
         ${v.b.filter((x) => x.isC).map(barra)}
         ${v.b.filter((x) => !x.isC).map(barra)}
         ${v.t.filter((x) => x.top).map(barra)}
