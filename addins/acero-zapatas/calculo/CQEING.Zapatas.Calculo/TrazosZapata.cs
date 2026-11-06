@@ -20,13 +20,15 @@ public static class TrazosZapata
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     /// <param name="doblados">Diámetro de doblado por número de barra, del tipo de barra del proyecto; sin él, el del cuadro.</param>
-    public static IReadOnlyList<Trazo> Trazos(IReadOnlyList<ConjuntoBarras> conjuntos, Reglas reglas, IReadOnlyDictionary<int, double>? doblados)
+    /// <param name="dobladosEstribo">Lo mismo para los dobleces de estribo de la barra cerrada (decisión 43).</param>
+    public static IReadOnlyList<Trazo> Trazos(IReadOnlyList<ConjuntoBarras> conjuntos, Reglas reglas, IReadOnlyDictionary<int, double>? doblados,
+        IReadOnlyDictionary<int, double>? dobladosEstribo = null)
     {
         var trazos = new List<Trazo>();
         for (int k = 0; k < conjuntos.Count; k++)
         {
             ConjuntoBarras c = conjuntos[k];
-            List<(double A, double Z)> perfil = Perfil(c, reglas, doblados);
+            List<(double A, double Z)> perfil = Perfil(c, reglas, doblados, dobladosEstribo);
             for (int i = 0; i < c.Posiciones.Count; i++)
             {
                 double t = c.Posiciones[i];
@@ -63,9 +65,11 @@ public static class TrazosZapata
     /// del doblez, así que el tramo recto empieza <c>D/2 + d</c> hacia adentro, y el doblez es un arco de radio
     /// <c>D/2 + d/2</c> (H13). La pata de 90° llega a su punta; la L la lleva solo al inicio (decisión 37).
     /// </summary>
-    private static List<(double A, double Z)> Perfil(ConjuntoBarras c, Reglas reglas, IReadOnlyDictionary<int, double>? doblados)
+    private static List<(double A, double Z)> Perfil(ConjuntoBarras c, Reglas reglas, IReadOnlyDictionary<int, double>? doblados, IReadOnlyDictionary<int, double>? dobladosEstribo)
     {
         ReglaDiametro regla = reglas.PorDiametro[c.Numero];
+        if (c.Terminacion == Terminacion.Cerrada)
+            return PerfilCerrada(c, regla, dobladosEstribo?.GetValueOrDefault(c.Numero) is > 0 and double deEstribo ? deEstribo : regla.Estribo135.D ?? 4 * regla.Diametro);
         double d = c.Diametro;
         double doblado = doblados?.GetValueOrDefault(c.Numero) is > 0 and double delTipo ? delTipo : Reglas.DobladoGancho(regla, TipoGancho.De90);
         double radio = doblado / 2 + d / 2;
@@ -103,6 +107,44 @@ public static class TrazosZapata
             (double A, double Z) ultimo = gancho[^1];
             gancho.Add((ultimo.A + afuera * Math.Cos(fin) * cola, ultimo.Z + s * Math.Sin(fin) * cola));
             return gancho;
+        }
+    }
+
+    /// <summary>
+    /// La barra cerrada en su plano (decisión 43), como la deja Revit con la forma de estribo y los dos ganchos de 135°
+    /// adentro (H21): el eje es un rectángulo de esquinas redondeadas con radio <c>D/2 + d/2</c>. Empieza con el gancho del
+    /// tramo de arriba, en la esquina de arriba del inicio, da la vuelta (arriba, el costado del final, abajo y el del
+    /// inicio) y cierra con el gancho del costado. Revit corre los dos ganchos d/2 hacia adentro para que no se monten.
+    /// </summary>
+    private static List<(double A, double Z)> PerfilCerrada(ConjuntoBarras c, ReglaDiametro regla, double doblado)
+    {
+        double d = c.Diametro, r = doblado / 2 + d / 2, e = d / 2;
+        double a0 = c.Desde + d / 2, a1 = c.Hasta - d / 2, z0 = c.Z, z1 = c.ZArriba ?? c.Z;
+        double cola = c.Cola ?? regla.Estribo135.E ?? 6 * d;
+        var perfil = new List<(double A, double Z)>();
+        // Gancho del inicio: alrededor de (a0 + r + e, z1 − r), de 225° a 90°, con la cola antes.
+        List<(double A, double Z)> inicio = Arco(a0 + r + e, z1 - r, 90, 225);
+        (double A, double Z) puntaInicio = inicio[^1];
+        perfil.Add((puntaInicio.A + Math.Cos(Math.PI / 4) * cola, puntaInicio.Z - Math.Sin(Math.PI / 4) * cola));
+        perfil.AddRange(inicio.AsEnumerable().Reverse());
+        perfil.AddRange(Arco(a1 - r, z1 - r, 90, 0));
+        perfil.AddRange(Arco(a1 - r, z0 + r, 0, -90));
+        perfil.AddRange(Arco(a0 + r, z0 + r, -90, -180));
+        // Gancho del final: sube por el costado del inicio y da 135° alrededor de (a0 + r, z1 − r − e).
+        List<(double A, double Z)> fin = Arco(a0 + r, z1 - r - e, 180, 45);
+        perfil.AddRange(fin);
+        (double A, double Z) puntaFin = fin[^1];
+        perfil.Add((puntaFin.A + Math.Cos(Math.PI / 4) * cola, puntaFin.Z - Math.Sin(Math.PI / 4) * cola));
+        return perfil;
+
+        // Un arco de «desde» a «hasta» grados, partido en tramos de PasoArco.
+        List<(double A, double Z)> Arco(double ca, double cz, double desde, double hasta)
+        {
+            int n = Math.Max(1, (int)Math.Ceiling(Math.Abs(hasta - desde) / PasoArco));
+            return Enumerable.Range(0, n + 1)
+                .Select(i => (desde + (hasta - desde) * i / n) * Math.PI / 180)
+                .Select(f => (ca + r * Math.Cos(f), cz + r * Math.Sin(f)))
+                .ToList();
         }
     }
 }

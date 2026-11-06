@@ -8,7 +8,7 @@ const m = (mm, dec = 2) => (mm / 1000).toFixed(dec);
 
 const estado = {
   modelo: '', zapatas: [], grupos: [], catalogo: { barras: [], formas: [], ganchos: [] }, porDefecto: 75,
-  elegidas: [], activa: null, res: null, modo: 'transparente', cam: { yaw: -0.75, pitch: 0.62, zoom: 1 },
+  elegidas: [], activa: null, res: null, ver2d: false, modo: 'transparente', cam: { yaw: -0.75, pitch: 0.62, zoom: 1 },
   cfg: null, verChoques: true,
 };
 
@@ -201,6 +201,7 @@ function nombreForma(d) {
 
 function nombreGancho(d) {
   if (d.terminacion === 'Recta') return 'Sin gancho';
+  if (d.terminacion === 'Cerrada') return '135° · cerrada';
   if (d.terminacion === 'Pata90') return '90° · pata';
   return `${d.terminacion === 'Gancho135' ? '135°' : '180°'} · ${estado.catalogo.ganchos.find(g => g.id === d.gancho)?.nombre ?? ''}`;
 }
@@ -221,16 +222,22 @@ function dibujarRefuerzo() {
   $('forY').textContent = nombreForma(c.y);
   $('ganX').textContent = nombreGancho(c.x);
   $('ganY').textContent = nombreGancho(c.y);
-  $('forSX').textContent = nombreForma(c.x.sup);
-  $('forSY').textContent = nombreForma(c.y.sup);
-  $('ganSX').textContent = nombreGancho(c.x.sup);
-  $('ganSY').textContent = nombreGancho(c.y.sup);
+  // Con la barra cerrada, arriba la cierra la misma barra: no hay superior aparte en esa dirección (decisión 43).
+  for (const [eje, d] of [['X', c.x], ['Y', c.y]]) {
+    const cerrada = d.terminacion === 'Cerrada';
+    $(`forS${eje}`).textContent = cerrada ? 'La cierra la inferior' : nombreForma(d.sup);
+    $(`ganS${eje}`).textContent = cerrada ? 'La cierra la inferior' : nombreGancho(d.sup);
+    $(`forS${eje}`).disabled = cerrada;
+    $(`ganS${eje}`).disabled = cerrada;
+  }
   $('tablaSup').hidden = !c.incluirSuperior;
   $('largoPata').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.largo === c.largoPata));
   for (const eje of ['X', 'Y']) {
     const inferiores = (r?.conjuntos ?? []).filter(b => b.parrilla === 'Inferior' && b.direccion === eje);
     $(`can${eje}`).textContent = inferiores.length ? inferiores.reduce((s, b) => s + b.posiciones.length, 0) : '–';
-    $(`pat${eje}`).textContent = inferiores.length && inferiores[0].pata ? m(inferiores[0].pata) : '–';
+    // En la cerrada no hay pata: se muestra su alto exterior.
+    $(`pat${eje}`).textContent = !inferiores.length || !inferiores[0].pata ? '–'
+      : inferiores[0].terminacion === 'Cerrada' ? `alto ${m(inferiores[0].pata)}` : m(inferiores[0].pata);
   }
   const hay = r && !r.errores.length;
   const largos = hay ? [...new Set(r.conjuntos.map(b => b.longitudCorte))].sort((a, b) => a - b) : [];
@@ -302,8 +309,13 @@ function dibujoGancho(grados) {
 
 // Las formas que se ofrecen (decisión 37 del plan de 2026-11-05): con la pata de 90°, recta, L o U, y la forma decide las
 // patas; con 135°, 180° o sin gancho, solo las rectas, porque el gancho va en las dos puntas.
-const CLASES = { Recta: 'recta, sin patas', L: 'L, pata al inicio', U: 'U, dos patas' };
-const formasPara = d => estado.catalogo.formas.filter(f => d.terminacion === 'Pata90' || f.clase === 'Recta');
+// La cerrada (decisión 43) da la vuelta en el corte y cierra arriba con 135°: solo en la parrilla inferior, con cualquier gancho
+// elegido antes, porque al elegirla la barra pasa a ser cerrada.
+const CLASES = { Recta: 'recta, sin patas', L: 'L, pata al inicio', U: 'U, dos patas', Cerrada: 'cerrada, 135° arriba' };
+const formasPara = (d, parrilla) => estado.catalogo.formas.filter(f => f.clase === 'Cerrada'
+  ? parrilla !== 'sup'
+  : d.terminacion === 'Pata90' || d.terminacion === 'Cerrada' || f.clase === 'Recta');
+const esCerrada = id => estado.catalogo.formas.find(f => f.id === id)?.clase === 'Cerrada';
 
 function abrirCatalogo(tipo, eje, parrilla) {
   catalogoAbierto = { tipo, eje, parrilla };
@@ -320,11 +332,12 @@ function dibujarCatalogo() {
   let fichas;
   if (tipo === 'forma') {
     $('tCat').textContent = `Forma de barra · ${donde}`;
-    $('notaCat').textContent = d.terminacion === 'Pata90'
+    $('notaCat').textContent = (d.terminacion === 'Pata90' || d.terminacion === 'Cerrada'
       ? 'Con la pata de 90°, la forma decide dónde va la pata: recta sin patas, L con una pata al inicio o U con dos.'
-      : 'Con ganchos de 135° o 180°, o sin gancho, la barra es recta: solo se muestran las formas rectas.';
+      : 'Con ganchos de 135° o 180°, o sin gancho, la barra es recta: solo se muestran las formas rectas.')
+      + (parrilla !== 'sup' ? ' La cerrada da la vuelta completa (abajo, costados y arriba), cierra arriba con 135° y reemplaza a la parrilla superior de esta dirección.' : '');
     fichas = [`<button class="ficha" data-valor="" aria-pressed="${!d.forma}">${dibujoGancho(90)}<span>Automática</span><small>la que Revit reconozca</small></button>`,
-      ...formasPara(d).map(f => `<button class="ficha" data-valor="${esc(f.id)}" aria-pressed="${d.forma === f.id}">${dibujoForma(f)}<span>${esc(f.nombre)}</span><small>${CLASES[f.clase]}</small></button>`)];
+      ...formasPara(d, parrilla).map(f => `<button class="ficha" data-valor="${esc(f.id)}" aria-pressed="${d.forma === f.id}">${dibujoForma(f)}<span>${esc(f.nombre)}</span><small>${CLASES[f.clase]}</small></button>`)];
   } else {
     $('tCat').textContent = `Gancho · ${donde} · barra #${numero}`;
     $('notaCat').textContent = '';
@@ -338,6 +351,9 @@ function dibujarCatalogo() {
     const v = b.dataset.valor;
     if (tipo === 'forma') {
       d.forma = v || null;
+      // Elegir la cerrada cambia la terminación; elegir otra forma la vuelve a la pata de 90°.
+      if (esCerrada(d.forma)) Object.assign(d, { terminacion: 'Cerrada', gancho: null });
+      else if (d.terminacion === 'Cerrada') d.terminacion = 'Pata90';
     } else if (v === 'pata') {
       Object.assign(d, { terminacion: 'Pata90', gancho: null });
     } else if (v === 'recta') {
@@ -347,7 +363,7 @@ function dibujarCatalogo() {
       Object.assign(d, { terminacion: g.grados === 135 ? 'Gancho135' : 'Gancho180', gancho: v });
     }
     // Una L o una U no sirve sin la pata de 90°: vuelve a la automática.
-    if (d.forma && !formasPara(d).some(f => f.id === d.forma)) d.forma = null;
+    if (d.forma && (!formasPara(d, parrilla).some(f => f.id === d.forma) || esCerrada(d.forma) !== (d.terminacion === 'Cerrada'))) d.forma = null;
     $('mCatalogo').hidden = true;
     cambio();
   }));
@@ -431,6 +447,9 @@ function dibujar3d() {
   dibujarLeyenda();
 }
 
+$('svg3d').addEventListener('pointerout', e => {
+  if (e.target.dataset?.choque !== undefined) $('textoChoque').hidden = true;
+});
 $('svg3d').addEventListener('pointerover', e => {
   const i = e.target.dataset?.choque;
   const c = i === undefined ? null : resultadoBueno()?.choques?.[+i];
@@ -479,6 +498,9 @@ $('bIso').addEventListener('click', () => { Object.assign(estado.cam, { yaw: -0.
 
 function dibujar2d() {
   const z = activa(), r = estado.res;
+  // Solo con una zapata elegida y el botón «Vista 2D» pulsado: al abrir ya hay una elegida, así que arranca cerrada (H18, H20).
+  $('emergente').hidden = !(z && estado.ver2d);
+  $('b2d').setAttribute('aria-pressed', estado.ver2d);
   if (!z) {
     $('sec2d').innerHTML = '';
     return;
@@ -525,11 +547,10 @@ function dibujar2d() {
   $('gan2d').textContent = pata ? `Gancho 90° · pata ${m(pata.pata)} m` : '';
 }
 
-$('c2d').addEventListener('click', () => { $('emergente').hidden = true; $('b2d').setAttribute('aria-pressed', false); });
+$('c2d').addEventListener('click', () => { estado.ver2d = false; dibujar2d(); });
 $('b2d').addEventListener('click', () => {
-  const ver = $('emergente').hidden;
-  $('emergente').hidden = !ver;
-  $('b2d').setAttribute('aria-pressed', ver);
+  estado.ver2d = !estado.ver2d;
+  dibujar2d();
 });
 
 // ---- Acciones

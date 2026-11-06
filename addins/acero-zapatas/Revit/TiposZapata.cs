@@ -41,9 +41,11 @@ internal static class TiposZapata
         List<GanchoCatalogo> ganchos = tiposGancho
             .Select(h => new GanchoCatalogo(h.Id.ToString(), h.Name, (int)Math.Round(h.HookAngle * 180 / Math.PI), h.StraightLineMultiplier)).ToList();
 
+        RebarHookType? estribo = GanchoEstribo(doc);
         List<BarraCatalogo> barras = Barras(doc, reglas).OrderBy(b => b.Key)
             .Select(b => new BarraCatalogo(b.Key, b.Value.Name, LectorZapatas.Mm(b.Value.BarNominalDiameter), LectorZapatas.Mm(b.Value.StandardHookBendDiameter),
-                reglas.PorDiametro[b.Key].Gancho90.B, reglas.PorDiametro[b.Key].Estribo135.B, reglas.PorDiametro[b.Key].Gancho180.B, Colas(b.Value, tiposGancho))).ToList();
+                reglas.PorDiametro[b.Key].Gancho90.B, reglas.PorDiametro[b.Key].Estribo135.B, reglas.PorDiametro[b.Key].Gancho180.B, Colas(b.Value, tiposGancho),
+                LectorZapatas.Mm(b.Value.StirrupTieBendDiameter), ColaEstribo(b.Value, estribo))).ToList();
 
         var formas = new List<FormaCatalogo>();
         foreach (RebarShape f in new FilteredElementCollector(doc).OfClass(typeof(RebarShape)).Cast<RebarShape>().Where(f => f.RebarStyle == RebarStyle.Standard).OrderBy(f => f.Name))
@@ -60,7 +62,62 @@ internal static class TiposZapata
             if (Clase(curvas) is ClaseForma clase)
                 formas.Add(new FormaCatalogo(f.Id.ToString(), f.Name, Dibujo(curvas), clase));
         }
+        if (Cerrada(doc) is { } cerrada)
+            formas.Add(cerrada);
         return new CatalogoZapatas(barras, formas, ganchos);
+    }
+
+    /// <summary>
+    /// La forma de la barra cerrada (decisión 43 del plan de 2026-11-05): de estilo estribo, un rectángulo de 4 tramos con
+    /// 135° en las dos puntas, como la T1 (H21). El add-in de columnas deja muchas iguales («Forma de armadura N»); con una
+    /// alcanza, porque Revit da la misma barra con cualquiera. Se prefiere la de nombre más corto (T1).
+    /// </summary>
+    private static FormaCatalogo? Cerrada(Document doc)
+    {
+        foreach (RebarShape f in new FilteredElementCollector(doc).OfClass(typeof(RebarShape)).Cast<RebarShape>()
+            .Where(f => f.RebarStyle == RebarStyle.StirrupTie).OrderBy(f => f.Name.Length).ThenBy(f => f.Name, StringComparer.Ordinal))
+        {
+            // GetDefaultHookAngle está obsoleto desde 2026 y no existe en 2027; Revit indica usar GetTerminationsData.
+            var extremos = f.GetTerminationsData();
+            if (Math.Abs(extremos.HookAngleAtStart - 135) > 0.5 || Math.Abs(extremos.HookAngleAtEnd - 135) > 0.5)
+                continue;
+            IList<Curve> curvas;
+            try
+            {
+                curvas = f.GetCurvesForBrowser();
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException)
+            {
+                continue;
+            }
+            if (curvas.Count != 4 || !curvas.All(c => c is Line))
+                continue;
+            List<XYZ> d = curvas.Cast<Line>().Select(l => l.Direction).ToList();
+            bool rectangulo = Enumerable.Range(0, 3).All(i => Math.Abs(d[i].DotProduct(d[i + 1])) < 1e-3)
+                && d[0].DotProduct(d[2]) < -0.999 && d[1].DotProduct(d[3]) < -0.999;
+            if (rectangulo)
+                return new FormaCatalogo(f.Id.ToString(), f.Name, Dibujo(curvas), ClaseForma.Cerrada);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// El gancho de 135° de estribo para la barra cerrada (H21): de estilo estribo, 135°, el de cola más corta (el normal
+    /// antes que el sísmico). Null si el proyecto no tiene ninguno.
+    /// </summary>
+    public static RebarHookType? GanchoEstribo(Document doc) =>
+        new FilteredElementCollector(doc).OfClass(typeof(RebarHookType)).Cast<RebarHookType>()
+            .Where(h => h.Style == RebarStyle.StirrupTie && Math.Abs(h.HookAngle * 180 / Math.PI - 135) < 0.5)
+            .OrderBy(h => h.StraightLineMultiplier).ThenBy(h => h.Name, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+    /// <summary>La cola recta del gancho de estribo en esta barra, como <see cref="Colas"/> pero con el doblez de estribo.</summary>
+    private static double? ColaEstribo(RebarBarType barra, RebarHookType? gancho)
+    {
+        if (gancho is null)
+            return null;
+        double cola = LectorZapatas.Mm(barra.GetHookTangentLength(gancho.Id)) - LectorZapatas.Mm(barra.StirrupTieBendDiameter) / 2 - LectorZapatas.Mm(barra.BarNominalDiameter);
+        return cola > 0 ? Math.Round(cola, 2) : null;
     }
 
     /// <summary>

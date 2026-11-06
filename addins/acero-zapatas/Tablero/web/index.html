@@ -38,7 +38,7 @@ dd{text-align:right;font-weight:500}
 #svg3d{width:100%;height:100%;display:block}
 .grupo{display:flex;border:1px solid var(--campo);border-radius:6px;overflow:hidden}
 .grupo button{height:30px;padding:0 10px;border:0;background:#fff;font-size:12px;font-weight:600}
-.grupo button[aria-pressed=true]{background:var(--azul);color:#fff}
+.grupo button[aria-pressed=true],.btn[aria-pressed=true]{background:var(--azul);color:#fff}
 #emergente{position:absolute;top:12px;right:12px;width:340px;max-width:calc(100% - 24px);background:#fff;border:1px solid var(--campo);border-radius:8px;box-shadow:0 8px 24px rgba(31,41,51,.18);cursor:default}
 #emergente header{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 4px 12px;background:#EEF0F3;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;border-radius:8px 8px 0 0}
 #emergente svg{width:100%;display:block}
@@ -48,7 +48,8 @@ dd{text-align:right;font-weight:500}
 .leyenda i{display:inline-block;width:18px;height:3px;margin-right:6px;vertical-align:middle}
 .leyenda .punto{display:inline-block;width:9px;height:9px;border-radius:50%;background:#E53935;border:1px solid #7A0E0E}
 #diametros{display:flex;flex-wrap:wrap;gap:12px}
-#textoChoque{color:var(--mal);border-top:0;padding-top:0}
+/* Encima de la vista, sin cambiar su tamaño: si ocupara una línea, el punto se correría y parpadearía (H17). */
+#textoChoque{position:absolute;left:12px;bottom:12px;max-width:calc(100% - 24px);padding:6px 10px;background:#fff;border:1px solid var(--campo);border-radius:6px;box-shadow:0 4px 12px rgba(31,41,51,.15);font-size:12px;color:var(--mal);pointer-events:none}
 .aviso-reglas{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid #E8C88F;border-radius:6px;background:#FDF6EA;font-size:12px}
 .candado{padding:6px 10px;border-radius:6px;background:#EEF0F3}
 .candado.abierto{background:#FDF6EA}
@@ -59,13 +60,13 @@ dd{text-align:right;font-weight:500}
 .reglas-campos .grupo button{white-space:nowrap}
 .reglas-tabla{display:grid;grid-template-columns:40px repeat(5,minmax(0,1fr));gap:5px;align-items:center;font-size:12px;max-width:640px}
 .reglas-tabla .cab{font-size:11px;color:var(--ink3)}
-.reglas-img{width:100%;max-width:820px;border-radius:6px;border:1px solid var(--line)}
 #refuerzo{padding:12px;display:flex;flex-direction:column;gap:14px;overflow:auto;flex:1}
 .seccion{display:flex;flex-direction:column;gap:8px}
 .tabla{display:grid;grid-template-columns:82px minmax(0,1fr) minmax(0,1fr);gap:6px;align-items:center;font-size:12px}
 .tabla .cab{font-size:11px;font-weight:700;text-align:center}
 .tabla .val{text-align:center;font-family:Consolas,monospace}
 .elige{height:32px;width:100%;padding:0 4px;border:1px solid var(--campo);border-radius:6px;background:#fff;font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.elige:disabled{background:#F3F4F6;color:var(--ink3)}
 .fila{display:flex;align-items:center;gap:8px}
 .fila label{flex:1;font-size:12px}
 .fila input[type=number]{width:96px;flex:none}
@@ -139,23 +140,23 @@ dd{text-align:right;font-weight:500}
         </div>
         <button class="btn" style="height:30px;font-size:12px" id="bArriba">Vista superior</button>
         <button class="btn" style="height:30px;font-size:12px" id="bIso">Vista 3D</button>
-        <button class="btn" style="height:30px;font-size:12px" id="b2d" aria-pressed="true">Vista 2D</button>
+        <button class="btn" style="height:30px;font-size:12px" id="b2d" aria-pressed="false">Vista 2D</button>
       </div>
     </div>
     <div id="vista">
       <svg id="svg3d" role="img" aria-label="Vista 3D de la zapata y su acero"></svg>
-      <div id="emergente">
+      <div id="emergente" hidden>
         <header><span id="titulo2d">Sección A-A</span><button class="x" id="c2d" aria-label="Cerrar vista 2D">×</button></header>
         <div id="sec2d"></div>
         <footer><span id="esc2d"></span><span id="gan2d"></span></footer>
       </div>
+      <div id="textoChoque" hidden></div>
     </div>
     <div class="leyenda">
       <span id="diametros"></span>
       <span><i style="background:var(--ink2)"></i>Columna</span>
       <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="capaChoques" checked style="margin:0"><b class="punto"></b>Choques</label>
     </div>
-    <div id="textoChoque" class="leyenda" hidden></div>
   </section>
 
   <section class="panel">
@@ -270,9 +271,6 @@ dd{text-align:right;font-weight:500}
       </div>
       <div class="reglas-tabla" id="rTabla"></div>
       <p class="nota" style="padding:0;background:none">Gancho y estribo: largo total del gancho (curva + tramo recto), en m. En zapatas, el gancho de 90° es el largo de la pata «según el cuadro». Estas reglas valen para vigas y zapatas en este PC.</p>
-      <h3>Cuadros de referencia</h3>
-      <img src="img/ganchos-estandar.jpeg" alt="Dimensiones mínimas para ganchos estándar: ganchos de 90° y 180° y estribos de 135°, con E, D, B y A por barra" class="reglas-img">
-      <img src="img/cuadro-ganchos-traslapos.jpeg" alt="Cuadro de ganchos y traslapos de varillas por barra" class="reglas-img">
     </div>
     <footer><button class="btn" id="rCerrar">Cerrar</button><button class="btn azul" id="rGuardar">Guardar y bloquear</button></footer>
   </div>

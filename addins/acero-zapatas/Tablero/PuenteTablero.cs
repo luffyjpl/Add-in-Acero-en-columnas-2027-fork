@@ -153,7 +153,7 @@ internal sealed class PuenteTablero
     {
         ConfigParrillas conTipos = ProtocoloZapatas.ConTipos(config, tipos, catalogo);
         ResultadoZapata r = MotorParrillas.Calcular(z.Entrada, conTipos, reglas);
-        IReadOnlyList<Trazo> trazos = TrazosZapata.Trazos(r.Conjuntos, reglas, conTipos.Doblados);
+        IReadOnlyList<Trazo> trazos = TrazosZapata.Trazos(r.Conjuntos, reglas, conTipos.Doblados, conTipos.DobladosEstribo);
         return (r, trazos, TrazosZapata.Choques(r.Conjuntos, trazos));
     }
 

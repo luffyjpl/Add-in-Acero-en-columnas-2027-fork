@@ -1,6 +1,7 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using CQEING.Vigas.Calculo.Modelo;
+using CQEING.Vigas.Revit;
 using CQEING.Zapatas.Calculo;
 
 namespace CQEING.Zapatas.Revit;
@@ -57,7 +58,9 @@ internal static class GeneradorZapatas
                 {
                     RebarShape? forma = doc.GetElement(Id(tipos.Forma(c.Parrilla, c.Direccion))) as RebarShape;
                     RebarHookType? gancho = doc.GetElement(Id(tipos.Gancho(c.Parrilla, c.Direccion))) as RebarHookType;
-                    Rebar barra = Crear(doc, host, z, c, config.Recubrimientos, barras[c.Numero], forma, gancho, fallas)
+                    Rebar barra = (c.Terminacion == Terminacion.Cerrada
+                            ? CrearCerrada(doc, host, z, c, barras[c.Numero], forma, fallas)
+                            : Crear(doc, host, z, c, config.Recubrimientos, barras[c.Numero], forma, gancho, fallas))
                         ?? throw new InvalidOperationException($"{z.Nombre}: Revit no pudo crear la parrilla {c.Parrilla} en {c.Direccion}.");
                     MarcaZapata.Marcar(barra, $"{c.Parrilla} {c.Direccion} {c.Capa}");
                     doc.Regenerate();
@@ -68,6 +71,10 @@ internal static class GeneradorZapatas
                     total += c.Cantidad;
                 }
             }
+
+            // Los mismos filtros de color por diámetro que vigas («CQEING Acero #n»), en la vista activa (decisión 44).
+            fallas.AddRange(FiltrosColorDiametro.Aplicar(doc, [vista],
+                new[] { config.X.Numero, config.Y.Numero }.Distinct().Select(n => (n, barras[n].BarNominalDiameter))));
         }
         catch (Exception e) when (e is InvalidOperationException or Autodesk.Revit.Exceptions.ApplicationException or Autodesk.Revit.Exceptions.ArgumentException)
         {
@@ -156,6 +163,79 @@ internal static class GeneradorZapatas
             OrientarGanchos(r, c);
         }
         return r;
+    }
+
+    /// <summary>
+    /// La barra cerrada (decisión 43 del plan de 2026-11-05): un rectángulo por el eje de la barra, de recubrimiento a
+    /// recubrimiento, que empieza en la esquina de arriba del inicio, con la forma de estribo elegida (o la que Revit
+    /// reconozca) y el gancho de 135° de estribo en las dos puntas. Como se midió en H21, el lado de los ganchos depende de
+    /// la normal: se mide dónde quedó cada cola y se da vuelta la que quedó afuera.
+    /// </summary>
+    private static Rebar? CrearCerrada(Document doc, Element host, ZapataLeida z, ConjuntoBarras c, RebarBarType barra, RebarShape? forma, List<string> fallas)
+    {
+        RebarHookType gancho = TiposZapata.GanchoEstribo(doc)
+            ?? throw new InvalidOperationException("El proyecto no tiene un gancho de estribo de 135° para la barra cerrada.");
+        double y = c.Posiciones[0], d = c.Diametro;
+        double a0 = c.Desde + d / 2, a1 = c.Hasta - d / 2, z0 = c.Z, z1 = c.ZArriba ?? c.Z;
+        XYZ arribaInicio = Punto(z, c, a0, y, z1), arribaFin = Punto(z, c, a1, y, z1), abajoFin = Punto(z, c, a1, y, z0), abajoInicio = Punto(z, c, a0, y, z0);
+        var curvas = new List<Curve>
+        {
+            Line.CreateBound(arribaInicio, arribaFin),
+            Line.CreateBound(arribaFin, abajoFin),
+            Line.CreateBound(abajoFin, abajoInicio),
+            Line.CreateBound(abajoInicio, arribaInicio),
+        };
+        XYZ normal = Normal(z, c);
+        using var terminaciones = new BarTerminationsData(doc)
+        {
+            HookTypeIdAtStart = gancho.Id,
+            HookTypeIdAtEnd = gancho.Id,
+            TerminationOrientationAtStart = RebarTerminationOrientation.Left,
+            TerminationOrientationAtEnd = RebarTerminationOrientation.Left,
+        };
+        Rebar? r = null;
+        if (forma is not null)
+        {
+            try
+            {
+                r = Rebar.CreateFromCurvesAndShape(doc, forma, barra, host, normal, curvas, terminaciones);
+            }
+            catch (Exception e) when (e is Autodesk.Revit.Exceptions.ApplicationException or Autodesk.Revit.Exceptions.ArgumentException)
+            {
+                // Se usa la que Revit reconozca y se avisa abajo.
+            }
+            string aviso = $"La forma «{forma.Name}» no admite la barra cerrada: se usó la que Revit reconoce.";
+            if (r is null && !fallas.Contains(aviso))
+                fallas.Add(aviso);
+        }
+        r ??= Rebar.CreateFromCurves(doc, RebarStyle.StirrupTie, barra, host, normal, curvas, terminaciones, useExistingShapeIfPossible: true, createNewShape: true);
+        if (r is null)
+            return null;
+        doc.Regenerate();
+        // Cada cola tiene que quedar adentro del rectángulo de la barra; si no, se da vuelta ese gancho (H21).
+        XYZ u = (arribaFin - arribaInicio).Normalize();
+        bool Adentro(XYZ p)
+        {
+            double a = LectorZapatas.Mm((p - arribaInicio).DotProduct(u)) + a0;
+            double h = LectorZapatas.Mm(p.Z) - z.ZBase;
+            return a > a0 - ToleranciaMm && a < a1 + ToleranciaMm && h > z0 - ToleranciaMm && h < z1 + ToleranciaMm;
+        }
+        for (int intento = 0; intento < 2; intento++)
+        {
+            IList<Curve> eje = r.GetCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
+            bool inicioBien = Adentro(eje[0].GetEndPoint(0)), finBien = Adentro(eje[^1].GetEndPoint(1));
+            if (inicioBien && finBien)
+                break;
+            if (!inicioBien)
+                Voltear(0);
+            if (!finBien)
+                Voltear(1);
+            doc.Regenerate();
+        }
+        return r;
+
+        void Voltear(int extremo) => r.SetTerminationOrientation(extremo,
+            r.GetTerminationOrientation(extremo) == RebarTerminationOrientation.Right ? RebarTerminationOrientation.Left : RebarTerminationOrientation.Right);
     }
 
     /// <summary>

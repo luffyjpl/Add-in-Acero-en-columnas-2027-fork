@@ -154,6 +154,24 @@ internal static class PruebaAutomatica
                     Generar(doc, vista, [rectangular], new ConfigParrillas(d, d, Recubrimientos.Global(75)), new TiposElegidos(null, null, null, null, GanchoSuperiorX: g135, GanchoSuperiorY: g135));
                 });
             Caso(doc, "18 Pata hasta el recubrimiento", () => Generar(doc, vista, [rectangular], Cfg(largo: LargoPata.Recubrimiento), Auto));
+            // Decisión 43: la barra cerrada en el corte, con la forma de estribo del catálogo (T1 en el modelo de prueba).
+            string? cerrada = TiposZapata.Catalogo(doc, R).Formas.FirstOrDefault(f => f.Clase == ClaseForma.Cerrada)?.Id;
+            if (cerrada is not null)
+            {
+                Caso(doc, "20 Barra cerrada en X, Y con patas y parrilla superior", () =>
+                {
+                    ConfigParrillas c = Cfg();
+                    Generar(doc, vista, [rectangular], c with { X = c.X with { Terminacion = Terminacion.Cerrada } }, new TiposElegidos(cerrada, null, null, null));
+                    foreach (Rebar b in Propias(doc, rectangular))
+                        S.AppendLine($"    forma usada: {doc.GetElement(b.GetShapeId())?.Name}");
+                });
+                Caso(doc, "21 Barra cerrada en las dos direcciones", () =>
+                {
+                    ConfigParrillas c = Cfg();
+                    c = c with { X = c.X with { Terminacion = Terminacion.Cerrada }, Y = c.Y with { Terminacion = Terminacion.Cerrada } };
+                    Generar(doc, vista, [rectangular], c, new TiposElegidos(cerrada, cerrada, null, null));
+                });
+            }
         }
         Caso(doc, "19 Zapata de 0.80 m: pata según el cuadro, sin cortar", () =>
         {
@@ -281,6 +299,18 @@ internal static class PruebaAutomatica
                 foreach (double t in b.Posiciones)
                 {
                     var m = medidas.MinBy(x => DistanciaAlPlan(x.Puntos, b, t)).Puntos;
+                    if (b.Terminacion == Terminacion.Cerrada)
+                    {
+                        // La cerrada (decisión 43): llega arriba a su altura y las dos colas quedan adentro, del lado del
+                        // inicio, arriba de la mitad de su alto menos un poco (H21: 143 y 191 mm en una de 0.35 m).
+                        double A((double X, double Y, double H) p) => b.Direccion == Direccion.X ? p.X : p.Y;
+                        bool llegaArriba = Math.Abs(m.Max(p => p.H) - b.ZArriba!.Value) <= TolMm;
+                        bool colas = new[] { m[0], m[^1] }.All(p => A(p) > b.Desde && A(p) < b.Desde + (b.Hasta - b.Desde) / 2
+                            && p.H > b.Z + b.Diametro && p.H < b.ZArriba.Value);
+                        if (!llegaArriba || !colas)
+                            mal++;
+                        continue;
+                    }
                     double s = b.Parrilla == Parrilla.Inferior ? 1 : -1;
                     var puntas = new[] { m[0], m[^1] }.Where(p => s * (p.H - b.Z) > 1).ToList();
                     bool bien = puntas.Count == (b.Terminacion == Terminacion.Pata90 && b.Patas == Patas.Inicio ? 1 : 2);
@@ -315,7 +345,7 @@ internal static class PruebaAutomatica
             }
         Revisar($"{z.Id}: barras sin atravesarse", choques == 0, $"{choques} pares; holgura mínima {holgura:0.#} mm entre {peorPar}");
         // Los choques que marca el tablero (TrazosZapata, decisión 31) contra los medidos aquí: deben aparecer en los mismos casos.
-        IReadOnlyList<ChoqueZapata> delTablero = TrazosZapata.Choques(plan.Conjuntos, TrazosZapata.Trazos(plan.Conjuntos, R, c.Doblados));
+        IReadOnlyList<ChoqueZapata> delTablero = TrazosZapata.Choques(plan.Conjuntos, TrazosZapata.Trazos(plan.Conjuntos, R, c.Doblados, c.DobladosEstribo));
         Revisar($"{z.Id}: el tablero marca choques cuando Revit los tiene", (choques == 0) == (delTablero.Count == 0),
             $"tablero {delTablero.Count} lugares, peor {(delTablero.Count > 0 ? delTablero.Max(x => x.SeMeteMm) : 0):0.#} mm; Revit {choques} pares");
         foreach (string a in plan.Avisos)

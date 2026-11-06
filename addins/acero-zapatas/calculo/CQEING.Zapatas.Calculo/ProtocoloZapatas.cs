@@ -52,8 +52,11 @@ public sealed record GuardarReglasZapatas(VistaReglas Reglas) : MensajeZapatas;
 
 public sealed record DesconocidoZapatas : MensajeZapatas;
 
-/// <summary>La forma de una barra de parrilla, por su geometría (H16 del plan de 2026-11-05).</summary>
-public enum ClaseForma { Recta, L, U }
+/// <summary>
+/// La forma de una barra de parrilla, por su geometría (H16 del plan de 2026-11-05). <see cref="Cerrada"/>: rectángulo
+/// cerrado de estribo con 135° en las dos puntas (decisión 43, H21).
+/// </summary>
+public enum ClaseForma { Recta, L, U, Cerrada }
 
 /// <summary>
 /// Una forma del proyecto para el catálogo, con sus curvas como polilíneas [x, y] en mm. Solo van las que tienen
@@ -67,9 +70,11 @@ public sealed record GanchoCatalogo(string Id, string Nombre, int Grados, double
 /// <summary>
 /// Un número de barra disponible en el proyecto, con los largos B del cuadro de ganchos en mm. <paramref name="Colas"/>:
 /// por id de tipo de gancho, el largo de la cola recta que deja Revit en esta barra (H13), para la vista previa.
+/// <paramref name="DobladoEstribo"/> y <paramref name="ColaEstribo"/>: el doblez de estribo del tipo de barra y la cola del
+/// gancho de 135° de estribo que usa la barra cerrada (decisión 43, H21), en mm.
 /// </summary>
 public sealed record BarraCatalogo(int Numero, string Nombre, double Diametro, double Doblado, double Gancho90, double Gancho135, double Gancho180,
-    IReadOnlyDictionary<string, double>? Colas = null);
+    IReadOnlyDictionary<string, double>? Colas = null, double? DobladoEstribo = null, double? ColaEstribo = null);
 
 public sealed record CatalogoZapatas(IReadOnlyList<BarraCatalogo> Barras, IReadOnlyList<FormaCatalogo> Formas, IReadOnlyList<GanchoCatalogo> Ganchos);
 
@@ -135,6 +140,7 @@ public static class ProtocoloZapatas
             X = Elegir(c.X, Direccion.X),
             Y = Elegir(c.Y, Direccion.Y),
             Doblados = catalogo.Barras.ToDictionary(b => b.Numero, b => b.Doblado),
+            DobladosEstribo = catalogo.Barras.Where(b => b.DobladoEstribo is > 0).ToDictionary(b => b.Numero, b => b.DobladoEstribo!.Value),
         };
 
         ConfigDireccion Elegir(ConfigDireccion d, Direccion eje)
@@ -153,6 +159,8 @@ public static class ProtocoloZapatas
                 {
                     Patas = f.Clase switch { ClaseForma.Recta => Patas.Ninguna, ClaseForma.L => Patas.Inicio, _ => Patas.Ambas },
                 },
+                // La cerrada usa siempre el gancho de 135° de estribo (decisión 43).
+                Terminacion.Cerrada when catalogo.Barras.FirstOrDefault(b => b.Numero == numero)?.ColaEstribo is double cola and > 0 => e with { Cola = cola },
                 Terminacion.Gancho135 or Terminacion.Gancho180 when gancho is not null
                     && catalogo.Barras.FirstOrDefault(b => b.Numero == numero)?.Colas?.GetValueOrDefault(gancho) is double cola and > 0 => e with { Cola = cola },
                 _ => e,
