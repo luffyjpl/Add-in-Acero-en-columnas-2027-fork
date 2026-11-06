@@ -90,7 +90,8 @@ internal static class LectorColumnas
             (double abajo, double arriba) = Alturas(b);
             return new BarraLeida(doc.GetElement(b.GetTypeId())?.Name ?? "", doc.GetElement(b.GetShapeId())?.Name ?? "", b.Quantity,
                 (int)Math.Round(LectorDespiece.Mm(LectorDespiece.LargoBarra(b))), (int)Math.Round(LectorDespiece.Mm((abajo + arriba) / 2 - zInf)),
-                (int)Math.Round(LectorDespiece.Mm(b.GetCenterlineCurves(false, true, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0).Sum(c => c.Length))));
+                (int)Math.Round(LectorDespiece.Mm(b.GetCenterlineCurves(false, true, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0).Sum(c => c.Length))),
+                EsVertical(b) ? LadoGanchos(b, centro) : "");
         }).ToList();
 
         List<(VarillaLeida Medida, List<PiezaVarilla> Piezas)> varillas = Varillas(propias.Where(EsVertical));
@@ -203,6 +204,30 @@ internal static class LectorColumnas
 
     internal static bool EsVertical(Rebar b) => b.GetCenterlineCurves(false, true, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0)
         .OrderByDescending(c => c.Length).First() is Line l && Math.Abs(l.Direction.Z) > 0.99;
+
+    /// <summary>
+    /// Hacia dónde van sus ganchos en la sección: <c>A</c> si la punta se acerca al centro de la columna, <c>F</c> si se
+    /// aleja; uno por gancho. Dos columnas iguales en todo menos en esto (una de esquina, junto al lindero, con los ganchos
+    /// girados) no son iguales (decisión 19 del plan de #287).
+    /// </summary>
+    private static string LadoGanchos(Rebar b, XYZ centro)
+    {
+        IList<Curve> curvas = b.GetCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
+        if (curvas.Count < 3)
+            return "";
+        string Lado(XYZ dobles, XYZ punta)
+        {
+            XYZ pata = new XYZ(punta.X - dobles.X, punta.Y - dobles.Y, 0);
+            XYZ alCentro = new XYZ(centro.X - dobles.X, centro.Y - dobles.Y, 0);
+            return pata.DotProduct(alCentro) > 0 ? "A" : "F";
+        }
+        string lado = "";
+        if (b.GetHookTypeId(0) != ElementId.InvalidElementId)
+            lado += Lado(curvas[0].GetEndPoint(1), curvas[0].GetEndPoint(0));
+        if (b.GetHookTypeId(1) != ElementId.InvalidElementId)
+            lado += Lado(curvas[^1].GetEndPoint(0), curvas[^1].GetEndPoint(1));
+        return lado;
+    }
 
     private static XYZ CentroPlanta(FamilyInstance c)
     {

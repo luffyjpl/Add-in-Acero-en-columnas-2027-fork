@@ -16,9 +16,6 @@ internal static class ExportadorImagen
     /// <summary>La vista larga se acerca para leer sus etiquetas (Juan, 30-oct): una viga larga queda muy angosta a 1800 px.</summary>
     public const int AnchoLarga = 3000;
 
-    /// <summary>Las plantas se acercan con la rueda (#221). A 2000 px exportan en la mitad de tiempo que a 3000 (Juan, 30-oct).</summary>
-    public const int AnchoPlanta = 2000;
-
     /// <summary>Devuelve la ruta del PNG, en <paramref name="carpeta"/>, con nombre único para que la página no muestre uno viejo.</summary>
     public static string Exportar(Document doc, View vista, string carpeta, int anchoPixeles = AnchoNormal)
     {

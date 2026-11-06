@@ -120,4 +120,16 @@ public class AgrupadorIgualesTests
 
         Assert.Equal(["V N+3.70 A - (0.50x0.90)", "V N+3.70 A - (0.50x0.90) (2)"], grupos.Select(g => g.Nombre));
     }
+
+    [Fact]
+    public void ColumnasConLosGanchosDeOtroLadoNoSonIguales()
+    {
+        // La 1-6, de esquina junto al lindero, tiene ganchos hacia afuera; la 5-7 y la 5-8, todos hacia adentro (decisión 19 del plan de #287).
+        static ElementoLeido Columna(string id, string ejes, string gancho) =>
+            new(id, ejes, 300, 300, 7000, [new BarraLeida("#6", "CQ Recta 0-90", 1, 3500, 1000, 3210, gancho)], EsColumna: true);
+
+        IReadOnlyList<GrupoIguales> grupos = AgrupadorIguales.Agrupar([Columna("1", "1-6", "F"), Columna("2", "5-7", "A"), Columna("3", "5-8", "A")]);
+
+        Assert.Equal(["Col 1-6 - (0.30x0.30)", "Col 5-7, 5-8 - (0.30x0.30)"], grupos.Select(g => g.Nombre).Order());
+    }
 }

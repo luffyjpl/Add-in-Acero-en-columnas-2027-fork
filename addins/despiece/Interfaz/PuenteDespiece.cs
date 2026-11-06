@@ -95,9 +95,13 @@ internal sealed class PuenteDespiece
         }
     }
 
-    /// <summary>El tamaño de letra elegido en la página (#261); un mensaje sin él usa el de por defecto.</summary>
-    private static void UsarLetra(JsonElement raiz) =>
-        Letra.Usar(raiz.TryGetProperty("letra", out JsonElement letra) && letra.ValueKind == JsonValueKind.Number ? letra.GetDouble() : TamanoLetra.PorDefecto);
+    /// <summary>El tamaño de letra (#261) y la escala (#272) elegidos en la página; un mensaje sin ellos usa los de por defecto.</summary>
+    private static void UsarLetra(JsonElement raiz)
+    {
+        double Numero(string nombre, double porDefecto) =>
+            raiz.TryGetProperty(nombre, out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : porDefecto;
+        Letra.Usar(Numero("letra", TamanoLetra.PorDefecto), Numero("escala", EscalaVista.PorDefecto), Numero("escalaSeccion", EscalaVista.PorDefectoSeccion));
+    }
 
     /// <summary>Lo que la página dice que se movió: <c>{ "397193": { dz, tx, tz, dx } }</c>, en metros (<c>dx</c> solo en columnas).</summary>
     private static Dictionary<string, Movimiento> Movimientos(JsonElement raiz)
@@ -278,8 +282,17 @@ internal sealed class PuenteDespiece
     {
         if (doc!.GetElement(new ElementId(long.Parse(id))) is not Level nivel)
             return null;
-        PlantaGenerada p = GeneradorPlanta.Generar(doc, nivel, ventana.CarpetaPrevia);
-        object listo = new { tipo = "planta", id, url = Url(p.Ruta), ancho = p.Ancho, alto = p.Alto, cajas = p.Cajas.Select(c => new { viga = c.Key, x = c.Value.X, y = c.Value.Y, w = c.Value.Ancho, h = c.Value.Alto }) };
+        PlantaDibujada p = LectorPlanta.Leer(doc, nivel);
+        static double[][] Puntos(IEnumerable<PuntoModelo> puntos) => puntos.Select(q => new[] { Math.Round(q.X, 1), Math.Round(q.Y, 1) }).ToArray();
+        object listo = new
+        {
+            tipo = "planta",
+            id,
+            ancho = Math.Round(p.Ancho, 1),
+            alto = Math.Round(p.Alto, 1),
+            ejes = p.Ejes.Select(e => new { nombre = e.Nombre, x1 = Math.Round(e.X1, 1), y1 = Math.Round(e.Y1, 1), x2 = Math.Round(e.X2, 1), y2 = Math.Round(e.Y2, 1) }),
+            elementos = p.Elementos.Select(e => new { viga = e.Id, columna = e.EsColumna, puntos = Puntos(e.Contorno) }),
+        };
         plantas[id] = listo;
         return listo;
     }

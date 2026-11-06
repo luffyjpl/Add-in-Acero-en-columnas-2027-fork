@@ -45,15 +45,16 @@ internal static class GeneradorPrevia
 {
     private const double M = 1 / 0.3048;
 
-    /// <summary>La vista larga y la sección a 1:15 (Juan, 30-oct).</summary>
-    private const int EscalaLongitudinal = 15;
-    private const int EscalaSeccion = 15;
+    /// <summary>La escala la elige el tablero (#272); antes era 1:15 fija (Juan, 30-oct).</summary>
+    private static int EscalaLongitudinal => Letra.EscalaAlzado;
+    private static int EscalaSeccion => Letra.EscalaSeccion;
 
-    // Las separaciones que dependen del texto se midieron con letra de 2.5 mm y crecen con la elegida en el tablero
-    // (Letra.Factor, #261 decisión 5); las demás son del modelo y no cambian.
+    // Las separaciones que dependen del texto se midieron con letra de 2.5 mm a 1:15 y crecen con la letra y la escala
+    // elegidas en el tablero (Letra.Factor, #261 y #272); el aire entre dibujos crece solo con la escala (Letra.Papel);
+    // las demás son del modelo y no cambian.
     // Las separaciones de la vista larga se midieron a 1:50, en pies del modelo; el texto ocupa lo que dice la escala,
     // así que se reducen en proporción para que la vista no quede llena de aire.
-    private const double Proporcion = EscalaLongitudinal / 50.0;
+    private const double Proporcion = EscalaVista.Base / 50.0;
     private static double SeparacionViga => 0.14 * M * Letra.Factor;
     // A 1:15 la caja de la nota baja 0.09 m desde su punto (medido en V 3, 30-oct); el resto es aire sobre la barra.
     private static double AltoTexto => 0.11 * M * Letra.Factor;
@@ -63,13 +64,13 @@ internal static class GeneradorPrevia
     private static double MedioAnchoEtiqueta => 0.65 * M * Proporcion * Letra.Factor;
     private static double HuecoFilas => 0.15 * M * Proporcion * Letra.Factor;
     private static double HuecoEnFila => 0.20 * M * Proporcion * Letra.Factor;
-    private const double DesfaseTraslapo = 0.08 * M;
+    private static double DesfaseTraslapo => 0.08 * M * Letra.Papel;
     private const double MismaZona = 0.10 * M;
     // La caja de la nota mide 0.12 m de alto a 1:15 (medido en V 3, 30-oct).
     private static double FilaEstribos => 0.13 * M * Letra.Factor;
     private static double BajaNota => 0.09 * M * Letra.Factor;
     private static double SubeNota => 0.03 * M * Letra.Factor;
-    private const double AireNota = 0.01 * M;
+    private static double AireNota => 0.01 * M * Letra.Papel;
     private static double AnchoNotaGirada => 0.10 * M * Letra.Factor;
 
     // Bajo la sección, de arriba abajo: las etiquetas (hasta 0.29 m), la cota del ancho y el recubrimiento. Así las flechas
@@ -85,8 +86,8 @@ internal static class GeneradorPrevia
     // Lo que se ve de las columnas arriba y abajo de la viga (#262, decisión 9 del plan de #266): un poco, como las vigas en
     // la vista de columna. Las etiquetas de estribos y las barras sacadas empiezan después.
     private const double Asomo = 0.20 * M;
-    private const double ColaEje = 0.3 * M * Proporcion;
-    private const double CabezaEje = 0.8 * M * Proporcion;
+    private static double ColaEje => 0.3 * M * Proporcion * Letra.Papel;
+    private static double CabezaEje => 0.8 * M * Proporcion * Letra.Papel;
     // Las cotas (#264, opción A de la maqueta): abajo una sola línea, con las caras de columnas y luces libres escritas
     // arriba de ella y los ejes debajo; arriba de todo, el largo completo de la viga.
     // De lo más bajo del dibujo a la línea (sus números van arriba, como antes la fila de luces).
@@ -101,7 +102,7 @@ internal static class GeneradorPrevia
     private const double ToleranciaBaston = 0.005 * M;
 
     /// <summary>Aire entre un estribo con su texto y el siguiente que se apila debajo.</summary>
-    private const double HuecoEstribos = 0.08 * M;
+    private static double HuecoEstribos => 0.08 * M * Letra.Papel;
 
     /// <summary>
     /// Textos en negro en vez del color de su diámetro (Juan, 31-oct). Es un dato de esta pasada, no del modelo: lo lee
@@ -124,7 +125,8 @@ internal static class GeneradorPrevia
         {
             textosNegros = false;
             Registro.Paso("previa: deshaciendo");
-            t.RollBack();
+            // La vista previa no deja nada en el modelo: los errores de Revit se descartan sin mostrarlos (decisión 33 de #287).
+            t.RollBack(t.GetFailureHandlingOptions().SetClearAfterRollback(true));
             Registro.Paso("previa: deshecho");
         }
     }
@@ -181,6 +183,7 @@ internal static class GeneradorPrevia
             escala = Math.Abs(c.EscalaX) / 0.3048,
             horizontal,
             // Revit mide la altura de la mayúscula; en la página se pide el tamaño de la fuente, y en Arial la mayúscula es el 72 %.
+            // Lo movible es siempre de la vista larga o del alzado: con su escala, aunque después se haya armado la sección.
             altoLetra = Math.Abs(c.EscalaX) / 0.3048 * Letra.Mm / 1000 * EscalaLongitudinal / 0.72,
             piezas = movible.Piezas.Select(p => new
             {
@@ -284,6 +287,7 @@ internal static class GeneradorPrevia
 
     private static View Longitudinal(Document doc, ViewFamilyType tipo, VigaContinua viga, List<Rebar> barras, TiposPropios tipos, DespieceMovible movible)
     {
+        Letra.EnAlzado();
         (XYZ min, XYZ max) = Caja(doc, viga);
         XYZ derecha = SentidoDeLectura(doc, viga);
         // Al crear la sección, la derecha de la vista sale contraria al BasisX pedido (medido el 30-oct: con +X salió C-B-A).
@@ -471,7 +475,7 @@ internal static class GeneradorPrevia
         movible.Marcas = (marcaA, marcaB);
     }
 
-    /// <summary>Una cruz de calibración, como las de <see cref="GeneradorPlanta"/>.</summary>
+    /// <summary>Una cruz de calibración en magenta, que <see cref="ExportadorImagen.Calibrar"/> encuentra en la imagen.</summary>
     internal static void Marcar(Document doc, View vista, XYZ enPlano, XYZ derecha, PuntoModelo p)
     {
         const double Largo = 0.015 * M;
@@ -811,6 +815,7 @@ internal static class GeneradorPrevia
 
     private static View Seccion(Document doc, ViewFamilyType tipo, VigaContinua viga, List<Rebar> barras, TiposPropios tipos)
     {
+        Letra.EnSeccion();
         (XYZ min, XYZ max) = Caja(doc, viga);
         XYZ dir = viga.Direccion;
         XYZ base_ = dir.CrossProduct(XYZ.BasisZ).Negate();
@@ -830,7 +835,7 @@ internal static class GeneradorPrevia
         // Revit puede voltear la vista: lo que manda es su derecha real.
         XYZ derecha = vista.RightDirection;
         // Justa: la sección a la izquierda y el estribo a su lado (captura de Santiago).
-        Recortar(vista, corte, ancho / 2 + 0.55 * M, ancho / 2 + 1.05 * M, alto / 2 + 0.7 * M, alto / 2 + 0.7 * M);
+        Recortar(vista, corte, ancho / 2 + 0.55 * M * Letra.Factor, ancho / 2 + 1.05 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor);
         Limpiar(doc, vista, viga, barras);
         Colorear(doc, vista, barras);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Levels), true);
@@ -874,15 +879,15 @@ internal static class GeneradorPrevia
             List<(Rebar Barra, XYZ Punto)> orden = grupo.OrderBy(c => c.Punto.DotProduct(derecha)).ToList();
             for (int i = 0; i < orden.Count; i++)
             {
-                XYZ p = corte + XYZ.BasisZ * dz + derecha * ((i - (orden.Count - 1) / 2.0) * 0.28 * M - 0.08 * M);
+                XYZ p = corte + XYZ.BasisZ * dz + derecha * ((i - (orden.Count - 1) / 2.0) * 0.28 * M * Letra.Factor - 0.08 * M * Letra.Factor);
                 (Rebar barra, XYZ punto) = orden[i];
                 TextNote nota = TextNote.Create(doc, vista.Id, p, "1 " + NombreBarra(doc, barra), tipos.Nota(HorizontalTextAlignment.Left));
                 nota.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_L).End = punto;
                 Pintar(vista, nota.Id, barra, null);
             }
         }
-        Etiquetar(cortadas.Where(c => c.Punto.Z > medio.Z).ToList(), alto / 2 + 0.38 * M);
-        Etiquetar(cortadas.Where(c => c.Punto.Z <= medio.Z).ToList(), -alto / 2 - 0.2 * M);
+        Etiquetar(cortadas.Where(c => c.Punto.Z > medio.Z).ToList(), alto / 2 + 0.38 * M * Letra.Factor);
+        Etiquetar(cortadas.Where(c => c.Punto.Z <= medio.Z).ToList(), -alto / 2 - 0.2 * M * Letra.Factor);
 
         // El estribo aparte, solo con sus medidas. Con este tipo de detalle sale parado, como en la sección. El cerrado es
         // el de más curvas: la grapa de la misma zona también cruza el corte.
@@ -891,12 +896,12 @@ internal static class GeneradorPrevia
             .OrderByDescending(b => Curvas(b, false).Count).FirstOrDefault();
         if (estribo is not null)
         {
-            XYZ centroDetalle = corte + derecha * 0.7 * M;
+            XYZ centroDetalle = corte + derecha * 0.7 * M * Letra.Factor;
             Element d = RebarBendingDetail.Create(doc, vista.Id, estribo.Id, 0, tipos.Barra, centroDetalle, 0);
             Pintar(vista, d.Id, estribo, 3);
             EtiquetarGancho(doc, vista, estribo, centroDetalle, medio.Z, tipos);
             double abajo = ResumirEstribos(doc, vista, barras.Where(b => !EsLongitudinal(b, dir)).ToList(), estribo, d, centroDetalle, tipos);
-            Recortar(vista, corte, ancho / 2 + 0.55 * M, ancho / 2 + 1.05 * M, Math.Max(alto / 2 + 0.7 * M, medio.Z - abajo + 0.1 * M), alto / 2 + 0.7 * M);
+            Recortar(vista, corte, ancho / 2 + 0.55 * M * Letra.Factor, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
         }
         Acotar(doc, vista, viga, estribo, corte, derecha, medio.Z, tipos);
         return vista;

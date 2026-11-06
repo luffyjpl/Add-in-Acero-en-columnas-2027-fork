@@ -11,7 +11,8 @@ public static class TamanoLetra
     /// <summary>Con el que se midieron todas las separaciones del despiece.</summary>
     public const double Base = 2.5;
 
-    public const double PorDefecto = 3.5;
+    /// <summary>La altura de texto de norma (Carlos, reunión del 05-nov; #272).</summary>
+    public const double PorDefecto = 2.5;
     public const double Minimo = 2.0;
     public const double Maximo = 5.0;
     public const double Paso = 0.5;
