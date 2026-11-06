@@ -33,11 +33,12 @@
   try {
     // El modo no se recuerda de la versión anterior (2): ahora el que viene marcado es Puntos.
     const m = JSON.parse(localStorage.getItem(CLAVE) || localStorage.getItem('cqeing-viguetas-2') || 'null');
-    if (m) Object.assign(S, { sep: m.sep || S.sep, anc: m.anc || S.anc, tipo: m.tipo || '', dir: m.dir || S.dir, seguir: m.seguir !== false });
+    // Decisión 26: «Seguir las que ya están» no se recuerda; siempre arranca marcado.
+    if (m) Object.assign(S, { sep: m.sep || S.sep, anc: m.anc || S.anc, tipo: m.tipo || '', dir: m.dir || S.dir });
     if (m && MODOS.some(([v]) => v === m.modo) && localStorage.getItem(CLAVE)) S.modo = m.modo;
   } catch (e) { /* sin almacenamiento se usan los valores por defecto */ }
   const guardar = () => {
-    try { localStorage.setItem(CLAVE, JSON.stringify({ sep: S.sep, anc: S.anc, tipo: S.tipo, dir: S.dir, modo: S.modo, seguir: S.seguir })); } catch (e) { /* nada */ }
+    try { localStorage.setItem(CLAVE, JSON.stringify({ sep: S.sep, anc: S.anc, tipo: S.tipo, dir: S.dir, modo: S.modo })); } catch (e) { /* nada */ }
   };
 
   const fmt = (mm) => (mm / 1000).toFixed(2).replace('.', ',');
@@ -66,6 +67,11 @@
     if (V.ok) enviar({ tipo: 'zonas', ancho: V.b, zonas: S.zonas });
   }
   const mismoPunto = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1;
+  /** Decisión 27: dos puntos van en línea si el lado es casi horizontal o casi vertical (5°, como la decisión 20). */
+  const enLineaRecta = (a, b) => {
+    const dx = Math.abs(b[0] - a[0]), dy = Math.abs(b[1] - a[1]);
+    return dy <= 0.0875 * dx || dx <= 0.0875 * dy;
+  };
   /** Si <q> cae dentro del polígono (regla par-impar). */
   function dentroDe(p, q) {
     let d = false;
@@ -78,6 +84,10 @@
   function cerrarTrazo() {
     const t = S.trazo;
     if (t.length < 3) return;
+    if (!enLineaRecta(t[t.length - 1], t[0])) {
+      aviso('El último punto no queda en línea con el primero: para cerrar en cuadrado, marca la esquina que falta.');
+      return;
+    }
     S.trazo = [];
     if (S.conVacio) {
       const centro = [t.reduce((s, p) => s + p[0], 0) / t.length, t.reduce((s, p) => s + p[1], 0) / t.length];
@@ -137,7 +147,7 @@
     } else if (m.tipo === 'piso') {
       const mismo = S.piso && S.piso.id === m.id;
       S.piso = m; S.comoBorde = m.viguetasComoBorde;
-      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; }
+      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.seguir = true; }
       // Al crear o quitar, C# vuelve a leer el piso y olvida las zonas: se mandan de nuevo, como el perímetro.
       if (porPuntos()) {
         $('modal').hidden = true;
@@ -431,7 +441,7 @@
     const t = S.trazo, px = S.vista.w / (pv.clientWidth || 1), r = RADIO_PUNTO * px;
     let h = '';
     if (t.length > 1) h += `<polyline class="trazo ${S.conVacio ? 'vac' : ''}" points="${t.map(pt).join(' ')}" ${ns}/>`;
-    if (t.length > 2) h += `<line class="trazo cierre ${S.conVacio ? 'vac' : ''}" x1="${t[t.length - 1][0]}" y1="${-t[t.length - 1][1]}" x2="${t[0][0]}" y2="${-t[0][1]}" ${ns}/>`;
+    if (t.length > 2 && enLineaRecta(t[t.length - 1], t[0])) h += `<line class="trazo cierre ${S.conVacio ? 'vac' : ''}" x1="${t[t.length - 1][0]}" y1="${-t[t.length - 1][1]}" x2="${t[0][0]}" y2="${-t[0][1]}" ${ns}/>`;
     // Decisión 9: sin acercar no se enciman; a menos de SEPARACION_PUNTOS px se dibuja el de más prioridad (los del trazo
     // siempre). Al acercar aparecen los demás.
     const lejos = SEPARACION_PUNTOS * px, dibujados = [];
@@ -440,7 +450,7 @@
     orden.forEach(({ q, i, k }) => {
       if (k < 0 && dibujados.some((d) => Math.hypot(d[0] - q.xy[0], d[1] - q.xy[1]) < lejos)) return;
       dibujados.push(q.xy);
-      const primero = k === 0 && t.length > 2, nombre = (TIPOS_PUNTO.find(([v]) => v === q.tipo) || [])[2] || 'Punto';
+      const primero = k === 0 && t.length > 2 && enLineaRecta(t[t.length - 1], t[0]), nombre = (TIPOS_PUNTO.find(([v]) => v === q.tipo) || [])[2] || 'Punto';
       const titulo = primero ? 'Clic para cerrar el contorno' : k >= 0 ? `Punto ${k + 1} del trazo` : nombre;
       h += `<circle class="pto t-${q.tipo} ${k >= 0 ? 'tr' : ''} ${primero ? 'primero' : ''}" data-pt="${i}" cx="${q.xy[0]}" cy="${-q.xy[1]}" r="${primero ? r * 1.6 : r}" ${ns}><title>${titulo}</title></circle>`;
     });
@@ -454,6 +464,11 @@
     const k = S.trazo.findIndex((x) => mismoPunto(x, q.xy));
     if (k === 0 && S.trazo.length >= 3) return cerrarTrazo();
     if (k >= 0) return;
+    // Decisión 27: sin lados en diagonal. Un punto que no queda en línea con el anterior no se agrega.
+    if (S.trazo.length && !enLineaRecta(S.trazo[S.trazo.length - 1], q.xy)) {
+      aviso('Ese punto no queda en línea con el anterior: las viguetas no van en triángulo. Marca primero la esquina.');
+      return;
+    }
     S.trazo = [...S.trazo, q.xy];
     pintar();
   }
@@ -571,12 +586,14 @@
     const partidas = p && p.viguetas.some((g) => /[a-z]$/.test(g.id));
     const vecinos = sel.length === 1 && S.modo === 'uno' && S.sinAviso !== sel[0].id ? enLinea(sel[0].id) : [];
     const n = S.trazo.length, que = S.conVacio ? 'del vacío' : 'del contorno';
+    // Decisión 27: se cierra solo en cuadrado (el último en línea con el primero).
+    const cierra = n >= 3 && enLineaRecta(S.trazo[n - 1], S.trazo[0]);
     const avisoPuntos = porPuntos() && !S.editar && S.piso
       ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${n
-        ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${n >= 3 ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : 'Sigue marcando puntos.'}`
+        ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${cierra ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : n >= 3 ? 'Para cerrar en cuadrado, marca un punto en línea con el primero.' : 'Sigue marcando puntos en línea (sin diagonales).'}`
         : S.conVacio ? 'Marca los puntos del <b>vacío</b>, dentro de una zona: las viguetas paran en él.'
           : S.zonas.length ? `<b>${esc(lista(S.zonas.map((z) => z.id)))}</b> armada${S.zonas.length > 1 ? 's' : ''}. Marca otra zona, separada o no, o un <b>＋ Vacío</b>.`
-            : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${n >= 3 ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
+            : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${cierra ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
       : '';
     const avisoPerimetro = perimetral() && !S.editar && S.piso
       ? `<div class="banner hint"><span>${sel.length ? `<b>${esc(lista(S.paneles))}</b>: perímetro cerrado con ${S.bordes.length} elementos. Clic en otro elemento para cambiarlo.` : `Haz clic en las <b>vigas, viguetas de borde o voladizos</b> que forman el perímetro${S.bordes.length ? ` · llevas ${S.bordes.length}, todavía no cierran` : ''}.`}</span>${S.bordes.length ? '<button class="bb" data-act="limpiar">Empezar de nuevo</button>' : ''}</div>`

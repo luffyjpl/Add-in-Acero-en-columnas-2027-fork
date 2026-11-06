@@ -327,8 +327,9 @@ public class ViguetasTests
         Assert.Equal([1000.0, 2200.0], guias);
         RepartoPanel r = Assert.Single(p.Paneles);
         Assert.Equal(OrigenReparto.Existentes, r.Origen);
-        Assert.Equal([1000.0, 2200.0], p.Viguetas.Select(v => v.Cota));
-        Assert.Equal(1200, r.Reparto.EjeAEje);
+        // Las dos de arriba, y donde no llegan, la fórmula (#954, decisión 26): a la izquierda 0,80 libres → una en 0,55;
+        // entre ellas 1,10 → una en 1,60; a la derecha 1,00 → una en 2,75. Antes quedaban esos huecos sin viguetas.
+        Assert.Equal([550.0, 1000.0, 1600.0, 2200.0, 2750.0], p.Viguetas.Select(v => v.Cota));
         // Una vigueta horizontal no es guía de viguetas en ↕ Y.
         Assert.Empty(piso.Guias(Direccion.X));
     }
@@ -460,11 +461,13 @@ public class ViguetasTests
             conModelo.Guias(Direccion.Y), ocupadas)!;
 
         Assert.Equal(OrigenReparto.Existentes, Assert.Single(p.Paneles).Origen);
-        Assert.Equal([1000.0, 1800.0], p.Viguetas.Select(v => Math.Round(v.Cota)).Distinct());
-        // Arriba ya están: solo se crean de 0 a 6,00 m, en las dos líneas.
+        // En esas dos líneas y, donde no llegan, la fórmula (#954, decisión 26): 0,55 a la izquierda; 2,45 y 3,25 a la derecha.
+        Assert.Equal([550.0, 1000.0, 1800.0, 2450.0, 3250.0], p.Viguetas.Select(v => Math.Round(v.Cota)).Distinct().Order());
+        // En las dos líneas del modelo, arriba ya están: solo se crean de 0 a 6,00 m. Las otras, de punta a punta.
         List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
-        Assert.Equal(2, lineas.Count);
-        Assert.All(lineas, l => Assert.Equal((0.0, 6000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+        Assert.All(lineas.Where(l => Math.Round(l.Desde.X) is 1000 or 1800), l => Assert.Equal((0.0, 6000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+        Assert.All(lineas.Where(l => Math.Round(l.Desde.X) is not (1000 or 1800)), l => Assert.Equal((0.0, 9000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+        Assert.Equal(5, lineas.Count);
     }
 
     /// <summary>Un piso con vigas de 30 cm (V30X40) por sus ejes, columnas y suelos opcionales (#954).</summary>
@@ -986,6 +989,28 @@ public class ViguetasTests
         Assert.Equal(desde.Y, hasta.Y, 3);
         Assert.Equal(3030 - 50, desde.Y, 3);
         Assert.All(z.Eje.Zip(z.Eje.Skip(1).Append(z.Eje[0])), l => Assert.True(Math.Abs(l.First.X - l.Second.X) < 1e-6 || Math.Abs(l.First.Y - l.Second.Y) < 1e-6));
+    }
+
+    [Fact]
+    public void LasNuevasSiguenALasCreadasDeAlLadoYRellenanLoQueFalta()
+    {
+        // Captura del 06-nov (voladizo creado después): arriba ya hay dos viguetas creadas por el add-in (x = 1,00 y
+        // 1,80 m); se pide solo el panel de abajo. Las nuevas siguen esas líneas y, donde no llegan, la fórmula
+        // (decisión 26): antes quedaban solo las dos y 2,00 m sin viguetas a la derecha.
+        PisoViguetas piso = ColumnaDeTres();
+        var conCreadas = new PisoViguetas(piso.Piso with
+        {
+            Armazon = [.. piso.Piso.Armazon, .. new[] { 1000, 1800 }.Select(x => new ArmazonPiso($"c{x}", new(x, 6000), new(x, 9000), 100, "VT_10X35", true))],
+        }, false);
+        Panel abajo = conCreadas.Paneles.Single(p => Geometria.Centro(p.Libre).Y < 3000);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([abajo], Direccion.Y, 800, 100, new HashSet<string>(), conCreadas.Cruces,
+            conCreadas.Guias(Direccion.Y, [abajo]))!;
+
+        // Libre de 0,15 a 3,85 m: 1,00 y 1,80 como arriba; a la izquierda quedan 0,80 (más que el máximo de 0,70): una al
+        // centro, 0,55; a la derecha, 2,00: dos con la fórmula, 2,45 y 3,25.
+        Assert.Equal([550.0, 1000.0, 1800.0, 2450.0, 3250.0], p.Viguetas.Select(v => Math.Round(v.Cota)).Distinct().Order());
+        Assert.Equal(OrigenReparto.Existentes, Assert.Single(p.Paneles).Origen);
     }
 
     [Fact]
