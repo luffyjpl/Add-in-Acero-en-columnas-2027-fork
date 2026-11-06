@@ -172,6 +172,30 @@ public class BastonesTests
         Assert.Equal((2000, false), (De(r, "BS3").Largo, De(r, "BS3").Manual));
     }
 
+    /// <summary>
+    /// Juan (06-nov): el largo escrito en el bastón del borde se perdía al cortarlo en la punta de la viga. Es el total,
+    /// gancho incluido: la punta del borde queda en el límite y la otra sale del largo, sin redondear.
+    /// </summary>
+    [Theory]
+    [InlineData(false, 1500)]
+    [InlineData(true, 1222)]
+    public void UnLargoEscritoEnElBorde_EsElTotalConGancho(bool conGancho, int hasta)
+    {
+        var largos = new Dictionary<string, int> { ["BS1"] = 1650 };
+        Baston bs1 = De(MotorVigas.Calcular(Entrada(new ArmadoBastones(ConGancho: conGancho, Largos: largos))), "BS1");
+
+        Assert.Equal((-150, hasta, 1650, true), (bs1.Desde, bs1.Hasta, bs1.Largo, bs1.Manual));
+    }
+
+    [Fact]
+    public void PrevisualizarBaston_ElDelBordeConElLargoGeneral_SiCambia()
+    {
+        Previsualizacion p = MotorVigas.PrevisualizarBaston(Entrada(), "BS1", 2000);
+
+        Assert.True(p.SePuede);
+        Assert.Equal((-150, 1850, 2000), (De(p.Resultado!, "BS1").Desde, De(p.Resultado!, "BS1").Hasta, De(p.Resultado!, "BS1").Largo));
+    }
+
     [Fact]
     public void UnLargoImparQuedaCompleto()
     {

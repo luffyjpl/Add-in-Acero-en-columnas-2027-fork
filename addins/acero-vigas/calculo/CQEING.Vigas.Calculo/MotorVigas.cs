@@ -98,12 +98,13 @@ public static class MotorVigas
     /// </summary>
     public static Previsualizacion PrevisualizarBaston(EntradaVigas entrada, string id, int largo)
     {
-        if (Calcular(entrada).Bastones.All(b => b.Id != id))
+        if (Calcular(entrada).Bastones.FirstOrDefault(b => b.Id == id) is not { } actual)
             return new Previsualizacion(false, MotivoBloqueo.NoExiste, null);
         if (largo <= 0)
             return new Previsualizacion(false, MotivoBloqueo.LargoNoValido, null);
         ArmadoBastones armado = entrada.Bastones ?? new ArmadoBastones();
-        if (CalculadorBastones.LargoDe(armado, id) == largo)
+        // se compara con el largo que tiene (en el borde, cortado y con gancho), no con el general
+        if (actual.Largo == largo)
             return new Previsualizacion(false, MotivoBloqueo.SinCambio, null);
         ResultadoVigas r = Calcular(entrada with { Bastones = armado with { Largos = Con(armado.Largos, id, largo) } });
         return new Previsualizacion(true, MotivoBloqueo.Ninguno, r);

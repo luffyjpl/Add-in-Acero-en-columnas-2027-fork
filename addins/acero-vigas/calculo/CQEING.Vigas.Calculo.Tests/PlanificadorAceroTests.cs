@@ -73,18 +73,24 @@ public class PlanificadorAceroTests
         });
     }
 
-    [Fact]
-    public void UnBastonRectoEnElBorde_TerminaAntesDelGanchoDeLaCorrida()
+    private static PorticoLeido ViguetaAngosta() => Portico() with
     {
-        // Vigueta 1 (VB #388864, 26-oct): el bastón de arriba llegaba hasta la cara de afuera de la pata del gancho de 90°
-        // de la corrida y se metía 1.3 cm en ella. Termina donde acaba el doblez: 76/2 + 12.7 = 50.7 más adentro.
-        PorticoLeido vigueta = Portico() with
-        {
-            Elemento = Elemento.Vigueta,
-            Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
-            Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
-        };
-        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4)) };
+        Elemento = Elemento.Vigueta,
+        Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
+        Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
+    };
+
+    /// <summary>
+    /// Juan (06-nov): el bastón del borde quedaba metido por dentro del gancho de la corrida. Llega al límite, por la
+    /// línea del gancho de las barras, con o sin gancho, y conserva su largo.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnBastonEnElBorde_LlegaAlLimiteComoLaCorrida(bool conGancho)
+    {
+        PorticoLeido vigueta = ViguetaAngosta();
+        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4), ConGancho: conGancho) };
         Baston enElCalculo = CalculoPortico.Calcular(vigueta, o, Reglas.Generales)!.Vigas.Bastones.First(b => b.Id == "BS1");
 
         PlanAcero plan = PlanificadorAcero.Planificar("Vigueta 1", vigueta, o, Reglas.Generales)!;
@@ -92,33 +98,8 @@ public class PlanificadorAceroTests
         PiezaLongitudinal corrida = plan.Barras.Where(b => b.Capa == Posicion.Superior).MinBy(b => b.Desde)!;
         PiezaLongitudinal baston = plan.Bastones.Single(b => b.Pieza == "BS1");
         Assert.Equal(TipoGancho.De90, corrida.GanchoInicio);
-        Assert.Equal(enElCalculo.Desde, corrida.Desde);
-        // sale por la punta de adentro lo mismo y conserva su largo (Juan, 29-oct)
-        Assert.Equal((corrida.Desde + 51, enElCalculo.Hasta + 51, enElCalculo.Largo), (baston.Desde, baston.Hasta, baston.Largo));
-    }
-
-    /// <summary>
-    /// Juan (29-oct, VIG_25X35 #392698): el bastón con gancho en el borde, anidado dentro del gancho de la corrida, quedaba
-    /// de 1.246. Su gancho sigue por dentro, pero sale por la punta de adentro y su largo queda en múltiplo del módulo.
-    /// </summary>
-    [Fact]
-    public void UnBastonConGanchoAnidado_ConservaSuLargoEnMultiploDelModulo()
-    {
-        PorticoLeido vigueta = Portico() with
-        {
-            Elemento = Elemento.Vigueta,
-            Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
-            Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
-        };
-        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4), ConGancho: true) };
-        Baston enElCalculo = CalculoPortico.Calcular(vigueta, o, Reglas.Generales)!.Vigas.Bastones.First(b => b.Id == "BS1");
-
-        PiezaLongitudinal baston = PlanificadorAcero.Planificar("Vigueta 1", vigueta, o, Reglas.Generales)!.Bastones.Single(b => b.Pieza == "BS1");
-
-        Assert.Equal(TipoGancho.De90, baston.GanchoInicio);
-        Assert.True(baston.Desde > enElCalculo.Desde, "el gancho va por dentro del de la corrida");
-        Assert.Equal((baston.Desde - enElCalculo.Desde, enElCalculo.Largo), (baston.Hasta - enElCalculo.Hasta, baston.Largo));
-        Assert.Equal(0, baston.Largo % Reglas.Generales.Modulo);
+        Assert.Equal(conGancho ? TipoGancho.De90 : TipoGancho.Sin, baston.GanchoInicio);
+        Assert.Equal((corrida.Desde, enElCalculo.Hasta, enElCalculo.Largo), (baston.Desde, baston.Hasta, baston.Largo));
     }
 
     [Fact]

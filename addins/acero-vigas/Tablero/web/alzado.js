@@ -171,13 +171,11 @@
       });
 
       // bastones: los de arriba en y = 70 y los de abajo en y = 100, con el gancho hacia adentro de la viga. Una punta
-      // con gancho se dibuja 6 unidades más adentro: si no, su gancho cae en la misma vertical que el de la corrida y se
-      // ven como una sola raya (Juan, 16-oct). Solo es el dibujo; el largo no cambia.
-      const ADENTRO = 6;
+      // en el borde llega al límite y su gancho baja por la línea del de la corrida, como se genera (Juan, 06-nov).
       const t = p.bastones.map((bs) => {
         const top = (bs.id.indexOf('BS') === 0) !== inv;
         const y = Y(top ? 70 : 100), dir = top ? 1 : -1;
-        const xa = X(bs.desde) + (bs.ganchoInicio ? ADENTRO : 0), xz = X(bs.hasta) - (bs.ganchoFin ? ADENTRO : 0);
+        const xa = X(bs.desde), xz = X(bs.hasta);
         const ti = bs.ganchoInicio ? bs.ganchoInicioTipo || '90°' : '', tf = bs.ganchoFin ? bs.ganchoFinTipo || '90°' : '';
         const pts = conGanchos(xa, xz, y, dir, ti, tf, 16);
         const isSel = bs.id === sel && !selLap;

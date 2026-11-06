@@ -70,7 +70,10 @@ public static class PlanificadorAcero
         bool PuedeCrecer(int i, bool alInicio) => i < corridas
             ? (alInicio ? barras[i].GanchoInicio : barras[i].GanchoFin) == TipoGancho.Sin
             : !(alInicio ? bordes[i - corridas].Inicio : bordes[i - corridas].Fin);
-        List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer);
+        // un bastón que llega al borde va hasta el límite, por la línea del gancho de las barras, y su gancho baja con el
+        // de ellas (Juan, 06-nov: quedaba metido por dentro del gancho)
+        bool AlLimite(int i, bool alInicio) => i >= corridas && !PuedeCrecer(i, alInicio);
+        List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
         barras = anidadas.Take(barras.Count).ToList();
         bastones = anidadas.Skip(barras.Count).ToList();
 
@@ -107,7 +110,9 @@ public static class PlanificadorAcero
     /// ahí lo que se corrió y conserva su largo, en múltiplo del módulo (Juan, 29-oct: la #5 de la fila 2 quedaba de 3.436
     /// en vez de 3.50, y un bastón con gancho de 1.246).
     /// </summary>
-    private static List<PiezaLongitudinal> AnidarGanchos(List<PiezaLongitudinal> piezas, Reglas r, Func<int, bool, bool> puedeCrecer)
+    /// <param name="alLimite">Índice de la pieza y si es la punta del inicio: un bastón en el borde no se corre, queda en el límite.</param>
+    private static List<PiezaLongitudinal> AnidarGanchos(List<PiezaLongitudinal> piezas, Reglas r, Func<int, bool, bool> puedeCrecer,
+        Func<int, bool, bool> alLimite)
     {
         const double tolerancia = 1e-6;
         PiezaLongitudinal[] p = piezas.ToArray();
@@ -125,6 +130,8 @@ public static class PlanificadorAcero
             {
                 for (int k = 0; k < capa.Length; k++)
                 {
+                    if (alLimite(capa[k], inicio))
+                        continue;
                     PiezaLongitudinal adentro = p[capa[k]];
                     int punta = Punta(adentro);
                     foreach (PiezaLongitudinal afuera in capa.Take(k).Select(i => p[i]))
