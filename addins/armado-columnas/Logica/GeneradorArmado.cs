@@ -248,8 +248,9 @@ public static class GeneradorArmado
         // que contesta el #55). La parte de "uniforme" la garantiza la ventana,
         // que deshabilita el modo confinado con un nudo activo.
         //
-        // Las grapas y cajas (estribos menores, J4) siguen yendo solo en los
-        // tramos libres: eso no cambia acá.
+        // Las grapas y cajas (estribos menores, J4) van también en los nudos,
+        // con las mismas reglas que en los tramos libres (Luciano, 06-nov;
+        // plan docs/planes/2026-11-06-observaciones-sheet-columnas.md).
 
         // tramo.Indice ya es el mismo número 0-indexado que muestra la
         // ventana ("Tramo 0", "Tramo 1"...); sumarle 1 acá desalineaba el
@@ -350,10 +351,11 @@ public static class GeneradorArmado
         // 20-oct). Los 5 cm de los extremos van al BORDE del paquete, y el
         // reparto es del punto medio de un paquete al del siguiente; el eje
         // del principal queda corrido DesplazamientoPrincipal de ese punto.
-        // Sin menores (o en un nudo, donde no van) el paquete es solo el
-        // principal y esto da lo de siempre: 5 cm más medio diámetro.
+        // Sin menores el paquete es solo el principal y esto da lo de
+        // siempre: 5 cm más medio diámetro. Los nudos llevan menores como los
+        // tramos libres desde el 06-nov; contra la zapata, no.
         var claveTramo = (tramo.IdElementoHost!, tramo.Indice);
-        bool conMenores = tramo.Tipo != TipoTramo.DentroDeViga && piezas.Count > 0;
+        bool conMenores = tramo.Tipo != TipoTramo.ContraZapata && piezas.Count > 0;
         PaqueteEstribos.Paquete paquete = PaqueteEstribos.Calcular(
             conMenores ? piezas : Array.Empty<EstriboMenor>(),
             EstandarCQ.DiametroMm(barra),
@@ -495,7 +497,12 @@ public static class GeneradorArmado
 
         RebarShapeDrivenAccessor acceso = estribo.GetShapeDrivenAccessor();
         int posiciones = estribo.NumberOfBarPositions;
-        double reparto = acceso.ArrayLength;
+        // Con un estribo suelto (SetLayoutAsSingle, el del espacio que sobra)
+        // Revit tira excepción al leer ArrayLength: «This rebar element
+        // represents a single bar». Probado en Revit el 06-nov: cortaba el tramo
+        // y el suelto quedaba sin estribos menores (plan
+        // docs/planes/2026-11-06-observaciones-sheet-columnas.md).
+        double reparto = posiciones > 1 ? acceso.ArrayLength : 0;
         double separacionReal = posiciones > 1 ? reparto / (posiciones - 1) : 0;
 
         // La vista previa del panel cuenta los estribos sin Revit
@@ -537,7 +544,7 @@ public static class GeneradorArmado
 
                 _traza.AppendLine(
                     $"    {etiquetaGrupo}: posiciones {estribo.NumberOfBarPositions}, cantidad {estribo.Quantity}, " +
-                    $"largo del reparto {GeometriaSeccion.Metros(acceso.ArrayLength):0.####} m, incluye primero: {estribo.IncludeFirstBar}, " +
+                    $"largo del reparto {GeometriaSeccion.Metros(reparto):0.####} m, incluye primero: {estribo.IncludeFirstBar}, " +
                     $"último: {estribo.IncludeLastBar}; pedido: arranque Z {GeometriaSeccion.Metros(zInicio):0.####}, " +
                     $"cantidad {corrida.Cantidad}, separación {corrida.Separacion * 100:0.##} cm");
 

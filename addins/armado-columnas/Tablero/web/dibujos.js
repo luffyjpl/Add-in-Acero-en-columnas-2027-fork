@@ -368,11 +368,14 @@
       }
     }
 
+    // max: el zoom máximo de este dibujo; la planta de columnas llega a 8× (plan 2026-11-06-observaciones-sheet-columnas.md).
+    maximo() { return this.props.max || ZOOM_MAX; }
+
     // El zoom vigente, aunque React todavía no lo haya dibujado (varios pasos de rueda seguidos).
     actual() { return zoomPorDibujo[this.props.clave] || this.state.z; }
 
     poner(z, foco) {
-      const nuevo = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)), viejo = this.actual();
+      const nuevo = Math.min(this.maximo(), Math.max(ZOOM_MIN, z)), viejo = this.actual();
       if (Math.abs(nuevo - viejo) < 1e-4) return;
       const a = this.area;
       // Lo que está bajo el mouse (o en el centro) queda en el mismo lugar después del zoom.
@@ -441,21 +444,23 @@
     }
 
     // abajo: la barra va abajo a la derecha, para dibujos que usan la franja de arriba (Traslapos: los títulos).
-    render({ children, abajo }, { z, arrastrando }) {
+    // marco: la barra va AFUERA, encima del dibujo, y el dibujo dentro de un div con esa clase (la planta del panel
+    // izquierdo, que es chica y la barra le tapaba columnas; plan 2026-11-06-observaciones-sheet-columnas.md).
+    render({ children, abajo, marco }, { z, arrastrando }) {
       const contenido = typeof children === 'function' ? children(z) : children;
       const clase = 'zoom-area' + (z > ZOOM_MIN + 1e-4 ? ' movible' : '') + (arrastrando ? ' arrastrando' : '');
-      return html`<div class="ampliable">
-        <div class=${clase} ref=${(el) => { this.area = el; }} onWheel=${(e) => this.rueda(e)}
+      const area = html`<div class=${clase} ref=${(el) => { this.area = el; }} onWheel=${(e) => this.rueda(e)}
             onPointerDown=${(e) => this.bajar(e)} onPointerMove=${(e) => this.mover(e)}
             onPointerUp=${(e) => this.soltar(e)} onPointerCancel=${(e) => this.soltar(e)}
-            onClickCapture=${(e) => this.clicCaptura(e)}>${contenido}</div>
-        <div class=${abajo ? 'zoom-barra abajo' : 'zoom-barra'} role="group" aria-label="Zoom del dibujo">
+            onClickCapture=${(e) => this.clicCaptura(e)}>${contenido}</div>`;
+      const barra = html`<div class=${marco ? 'zoom-barra afuera' : abajo ? 'zoom-barra abajo' : 'zoom-barra'} role="group" aria-label="Zoom del dibujo">
           <button type="button" aria-label="Alejar" title="Alejar (rueda del mouse)" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.paso(-1)}>−</button>
           <span class="zoom-valor" aria-live="polite">${Math.round(z * 100)} %</span>
-          <button type="button" aria-label="Acercar" title="Acercar (rueda del mouse)" disabled=${z >= ZOOM_MAX - 1e-4} onClick=${() => this.paso(1)}>+</button>
+          <button type="button" aria-label="Acercar" title="Acercar (rueda del mouse)" disabled=${z >= this.maximo() - 1e-4} onClick=${() => this.paso(1)}>+</button>
           <button type="button" class="zoom-ajustar" title="Volver al tamaño de la ventana" disabled=${z <= ZOOM_MIN + 1e-4} onClick=${() => this.poner(1)}>Ajustar</button>
-        </div>
-      </div>`;
+        </div>`;
+      if (marco) return html`<div class="ampliable-afuera">${barra}<div class=${marco}><div class="ampliable">${area}</div></div></div>`;
+      return html`<div class="ampliable">${area}${barra}</div>`;
     }
   }
 

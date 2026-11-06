@@ -28,7 +28,7 @@
       <i style=${`background: ${actual ? actual.color : '#C9CFD6'}`}></i>
       <select id=${id} value=${valor || ''} onChange=${(e) => onCambiar(e.target.value || null)}>
         ${conIgual ? html`<option value="">Igual al estribo</option>` : null}
-        ${opciones.map((o) => html`<option value=${o.nombre}>${o.nombre} · ${o.diametroMm} mm</option>`)}
+        ${opciones.map((o) => html`<option value=${o.nombre}>${o.nombre} · ${o.diametroMm.toFixed(2)} mm</option>`)}
       </select>
     </span>`;
   }
@@ -314,9 +314,7 @@
           ${coincide.length ? coincide.map((c) => html`<button type="button" onClick=${() => { this.elegir(c.id, false); this.setState({ busqueda: '' }); }}>
             <b>${c.marca}</b><span style="color: #5E6670">${c.ubicacion !== c.marca ? c.ubicacion : ''}</span></button>`) : html`<span class="vacio">Ninguna columna se llama así. Prueba con la marca (C-12) o con el cruce de ejes (A-1).</span>`}
         </div>` : null}
-        <div class="planta">
-          <${Planta} planta=${v.planta} elegidas=${v.elegidas} compatibles=${v.compatibles} coincide=${coincide.map((c) => c.id)} w=${270} h=${230} onElegir=${(id, sumar) => this.elegir(id, sumar)} />
-        </div>
+        <${Ampliable} clave="planta" max=${8} marco="planta"><${Planta} planta=${v.planta} elegidas=${v.elegidas} compatibles=${v.compatibles} coincide=${coincide.map((c) => c.id)} w=${270} h=${230} onElegir=${(id, sumar) => this.elegir(id, sumar)} /></${Ampliable}>
         <div class="leyenda">
           ${Object.keys(ESTADO).map((k) => html`<span><i style=${`background: ${ESTADO[k].relleno}; border-color: ${ESTADO[k].borde}`}></i>${ESTADO[k].texto}</span>`)}
         </div>
@@ -444,11 +442,11 @@
           </div>
           ${(() => {
             // La sección del tramo elegido (plan 2026-11-03-vista-previa-estribos-legible.md, decisión 8): la suya si
-            // tiene otra medida (un dado), y en un nudo sin grapas ni cerrados, como GeneradorArmado.
+            // tiene otra medida (un dado). Los nudos llevan grapas y cerrados como los tramos libres (plan
+            // 2026-11-06-observaciones-sheet-columnas.md, decisión 2).
             const t = s.tramo != null ? col.tramos[s.tramo] : null;
             const propia = t && (col.seccionesTramo || []).find((x) => x.indice === t.indice);
-            let sec = propia ? propia.seccion : col.seccion;
-            if (t && t.tipo === 'DentroDeViga') sec = { ...sec, menores: [] };
+            const sec = propia ? propia.seccion : col.seccion;
             return html`<h3 style="align-self: flex-start">${t ? `Sección del tramo ${t.indice + 1}` : 'Sección de la columna'}</h3>
               <${Seccion} sec=${sec} w=${158} h=${158} chica=${true} />
               ${propia ? html`<p class="ayuda" style="margin: 0; align-self: stretch">${`Este tramo mide ${Math.round(sec.ancho * 10) / 10} × ${Math.round(sec.alto * 10) / 10} cm. El estribo es el mismo de toda la columna, alrededor de las barras.`}</p>` : null}`;
@@ -794,6 +792,7 @@
             </tr>`)}</tbody>
           </table></div>
           <p class="nota" style="margin: 0">Valores en metros. B = pata del gancho de 90° de las longitudinales, medida por fuera del doblez (lo que se acota en el plano); E = largo recto del gancho; D = diámetro de doblado. «—»: el cuadro no lo da (la #2 no tiene traslapo en columnas; de la #6 a la #8 no hay estribo de 135°).</p>
+          <p class="nota" style="margin: 0">En el detalle de plegado de Revit, la cota del gancho es el largo del gancho entero (curva + tramo recto), por eso sale mayor que la E: la E es solo el tramo recto. Medido en Revit con la #3: estribo de 135°, E = 0,057 y en el dibujo 0.08; grapa de 180°, E = 0,065 y en el dibujo 0.11.</p>
           <div class="pie"><button type="button" class="boton" onClick=${() => this.setState({ cuadro: false })}>Cerrar</button></div>
         </div>
       </div>`;

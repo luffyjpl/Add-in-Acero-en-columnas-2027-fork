@@ -71,7 +71,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .resultados button { display: flex; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--borde); border-radius: 5px; background: var(--panel); text-align: left; }
 .resultados button:hover { border-color: var(--azul); }
 .resultados .vacio { padding: 6px 2px; color: var(--suave); }
-.planta { border: 1px solid var(--borde); border-radius: 6px; background: var(--hundido); }
+.planta { position: relative; height: 230px; overflow: hidden; border: 1px solid var(--borde); border-radius: 6px; background: var(--hundido); }
 .planta-col { cursor: pointer; }
 .planta-col:focus-visible { outline: none; }
 .planta-col:focus-visible rect:last-of-type { stroke-width: 3; }
@@ -110,6 +110,9 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .capa-zoom > svg { display: block; }
 .zoom-barra { position: absolute; right: 12px; top: 10px; z-index: 4; display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--panel); border: 1px solid var(--borde); border-radius: 6px; box-shadow: 0 1px 3px rgba(22,25,29,.12); }
 .zoom-barra.abajo { top: auto; bottom: 18px; }
+/* Barra afuera, encima del dibujo (la planta del panel izquierdo; plan 2026-11-06-observaciones-sheet-columnas.md). */
+.ampliable-afuera { display: flex; flex-direction: column; gap: 4px; }
+.zoom-barra.afuera { position: static; align-self: flex-end; box-shadow: none; }
 .zoom-barra button { min-width: 28px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--tinta); font-size: 16px; line-height: 1; }
 .zoom-barra button:hover:not(:disabled) { background: var(--fondo); border-color: var(--borde); }
 .zoom-barra button:focus-visible { outline: 2px solid var(--azul); outline-offset: 1px; }
