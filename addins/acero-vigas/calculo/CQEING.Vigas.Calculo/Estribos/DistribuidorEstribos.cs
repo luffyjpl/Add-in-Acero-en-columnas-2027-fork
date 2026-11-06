@@ -26,16 +26,25 @@ internal static class DistribuidorEstribos
     internal static IReadOnlyList<Tramo> Tramos(Portico p)
     {
         Apoyo primero = p.Apoyos[0], ultimo = p.Apoyos[^1];
+        bool unSoloApoyo = p.Apoyos.Count == 1;
         var tramos = new List<Tramo>();
         if (p.VoladizoInicio > 0)
-            tramos.Add(new Tramo($"Voladizo {primero.Eje}", primero.CaraIzquierda - p.VoladizoInicio, primero.CaraIzquierda,
-                TipoTramo.VoladizoInicial));
+            tramos.Add(new Tramo(NombreVoladizo(primero.Eje, inicial: true, unSoloApoyo), primero.CaraIzquierda - p.VoladizoInicio,
+                primero.CaraIzquierda, TipoTramo.VoladizoInicial));
         tramos.AddRange(new GeometriaPortico(p, 0).Luces.Select(l => new Tramo(l.Nombre, l.CaraIzquierda, l.CaraDerecha, TipoTramo.Luz)));
         if (p.VoladizoFinal > 0)
-            tramos.Add(new Tramo($"Voladizo {ultimo.Eje}", ultimo.CaraDerecha, ultimo.CaraDerecha + p.VoladizoFinal,
-                TipoTramo.VoladizoFinal));
+            tramos.Add(new Tramo(NombreVoladizo(ultimo.Eje, inicial: false, unSoloApoyo), ultimo.CaraDerecha,
+                ultimo.CaraDerecha + p.VoladizoFinal, TipoTramo.VoladizoFinal));
         return tramos;
     }
+
+    /// <summary>
+    /// <c>"Voladizo C"</c>. Con un solo apoyo y voladizo a los dos lados, los dos serían <c>"Voladizo C"</c> y el nombre es
+    /// la clave del tramo (estribos por tramo, lista de tramos): se distinguen en <c>"Voladizo C izquierdo"</c> y
+    /// <c>"Voladizo C derecho"</c> (Juan, 06-nov: una vigueta sobre una sola viga no se generaba, "Key: Voladizo C").
+    /// </summary>
+    internal static string NombreVoladizo(string eje, bool inicial, bool unSoloApoyo) =>
+        unSoloApoyo ? $"Voladizo {eje} {(inicial ? "izquierdo" : "derecho")}" : $"Voladizo {eje}";
 
     /// <summary>El centro de cada estribo de <paramref name="t"/>, en mm desde el eje A y de izquierda a derecha.</summary>
     /// <param name="diametroEstribo">Diámetro real del estribo, en mm.</param>

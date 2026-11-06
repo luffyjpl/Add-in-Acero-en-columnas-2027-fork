@@ -44,6 +44,18 @@ public class DistribuidorEstribosTests
         Assert.Equal(new Tramo("Voladizo A", -1200, -200, TipoTramo.VoladizoInicial), DistribuidorEstribos.Tramos(p)[0]);
     }
 
+    /// <summary>Juan (06-nov): una vigueta sobre una sola viga, con voladizo a los dos lados, no se generaba ("Key: Voladizo C").</summary>
+    [Fact]
+    public void UnSoloApoyoConVoladizoALosDosLados_LosVoladizosTienenNombresDistintos()
+    {
+        Portico maqueta = Datos.PorticoMaqueta();
+        Portico p = maqueta with { Apoyos = [maqueta.Apoyos[2]], VoladizoInicio = 1500, VoladizoFinal = 1500 };
+
+        IReadOnlyList<Tramo> tramos = DistribuidorEstribos.Tramos(p);
+
+        Assert.Equal(["Voladizo C izquierdo", "Voladizo C derecho"], tramos.Select(t => t.Nombre));
+    }
+
     [Fact]
     public void EnLaLuzAB_OchoPorZonaYDoceEnElCentro()
     {

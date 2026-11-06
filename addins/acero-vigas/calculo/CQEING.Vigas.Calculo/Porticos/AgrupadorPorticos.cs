@@ -1,3 +1,4 @@
+using CQEING.Vigas.Calculo.Estribos;
 using CQEING.Vigas.Calculo.Modelo;
 
 namespace CQEING.Vigas.Calculo.Porticos;
@@ -99,12 +100,13 @@ public static class AgrupadorPorticos
         int voladizoFinal = hasta - soportes[^1].Hasta > ToleranciaContacto ? Mm(hasta) - Mm(soportes[^1].Hasta) : 0;
 
         var tramos = new List<TramoLeido>();
+        bool unSoloApoyo = soportes.Count == 1;
         if (voladizoInicio > 0)
-            tramos.Add(Tramo($"Voladizo {nombres[0]}", desde, soportes[0].Desde, true));
+            tramos.Add(Tramo(DistribuidorEstribos.NombreVoladizo(nombres[0], inicial: true, unSoloApoyo), desde, soportes[0].Desde, true));
         for (int i = 0; i + 1 < soportes.Count; i++)
             tramos.Add(Tramo($"Viga {nombres[i]}-{nombres[i + 1]}", soportes[i].Hasta, soportes[i + 1].Desde, false));
         if (voladizoFinal > 0)
-            tramos.Add(Tramo($"Voladizo {nombres[^1]}", soportes[^1].Hasta, hasta, true));
+            tramos.Add(Tramo(DistribuidorEstribos.NombreVoladizo(nombres[^1], inicial: false, unSoloApoyo), soportes[^1].Hasta, hasta, true));
 
         // El mismo eje se repite en cada nivel ("Pórtico A" de Piso 1, Piso 2 y Cubierta): los avisos dicen el nivel.
         NivelLeido? nivel = cadena[0].Viga.Nivel;
