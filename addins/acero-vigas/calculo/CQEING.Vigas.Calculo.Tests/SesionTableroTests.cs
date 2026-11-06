@@ -436,6 +436,50 @@ public sealed class SesionTableroTests : IDisposable
     }
 
     [Fact]
+    public void LoGeneradoQuedaTerminadoYSePuedeQuitar()
+    {
+        // 6-nov: la palomita de terminado se pone sola al generar; la de siempre la quita.
+        SesionTablero s = ConUbicacion();
+
+        IReadOnlyList<Salida> salidas = s.Manejar(new Generar(["Pórtico 1"], Forzar: true));
+
+        Assert.True(Assert.Single(salidas.OfType<ATerminado>()).Terminado);
+        Assert.Equal(["Pórtico 1"], Terminados(s));
+        s.Manejar(new MarcarTerminado("Pórtico 1", false));
+        Assert.Empty(Terminados(s));
+    }
+
+    [Fact]
+    public void SiAvisaChoquesYNoGenera_NoSeMarcaTerminado()
+    {
+        SesionTablero s = ConUbicacion();
+
+        IReadOnlyList<Salida> salidas = s.Manejar(new Generar(["Pórtico 1"]));
+
+        Assert.Empty(salidas.OfType<ATerminado>());
+        Assert.Empty(Terminados(s));
+    }
+
+    [Fact]
+    public void ConVariosElegidos_TodosSeGeneranConElAceroDelAbierto()
+    {
+        // 6-nov: con Ctrl se elegían varias vigas y cada una salía con el acero que tenía de antes.
+        PorticoLeido otro = PlanificadorAceroTests.Portico() with { Nombre = "Pórtico 2", Vigas = ["401", "402", "403", "404"] };
+        lectura = new([PlanificadorAceroTests.Portico(), otro], []);
+        var s = new SesionTablero(() => lectura, new AlmacenReglas(Path.Combine(carpeta, "reglas.json")), "Proyecto de prueba");
+        s.Manejar(new Listo());
+        s.Manejar(new Calcular("Pórtico 2", OpcionesTablero.PorDefecto));
+        s.Manejar(new Calcular("Pórtico 1", SinBastones));
+        s.Manejar(new ElegirVarios(["Pórtico 1", "Pórtico 2"], "Pórtico 1"));
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 1", "Pórtico 2"], Forzar: true)).OfType<AGenerar>());
+
+        Assert.Equal(2, g.Porticos.Count);
+        Assert.Empty(g.Porticos[0].Plan.Bastones);
+        Assert.Empty(g.Porticos[1].Plan.Bastones);
+    }
+
+    [Fact]
     public void ConChoquesYForzandoGenera()
     {
         SesionTablero s = ConUbicacion();
@@ -454,7 +498,8 @@ public sealed class SesionTableroTests : IDisposable
         IReadOnlyList<Salida> salidas = s.Manejar(new Generar(["Pórtico 1"]));
 
         Assert.Single(salidas.OfType<AGenerar>());
-        Assert.Empty(salidas.OfType<AJs>());
+        // solo la vista con la marca de terminado: ninguna lista de choques
+        Assert.DoesNotContain(salidas.OfType<AJs>(), a => JsonDocument.Parse(a.Json).RootElement.GetProperty("tipo").GetString() == "choques");
     }
 
     [Fact]
