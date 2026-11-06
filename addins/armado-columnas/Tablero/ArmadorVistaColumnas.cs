@@ -242,8 +242,9 @@ public static class ArmadorVistaColumnas
                 continue;
             }
 
-            // En los nudos no van grapas ni cerrados, como en GeneradorArmado.
-            List<EstriboMenor> piezas = tramo.Tipo == TipoTramo.Libre ? longitudinal.MenoresParaGenerar() : new List<EstriboMenor>();
+            // Grapas y cerrados en los tramos libres y en los nudos, como en
+            // GeneradorArmado (los tramos contra la zapata ya salieron arriba).
+            List<EstriboMenor> piezas = longitudinal.MenoresParaGenerar();
             PaqueteEstribos.Paquete paquete = PaqueteEstribos.Calcular(piezas, d, p => barraDe(p.TipoBarraNombre)?.DiametroMm ?? d);
             RepartoEstribos.Resultado reparto = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete);
             if (reparto.Aviso is not null) avisos.Add($"Tramo {tramo.Indice + 1}: {reparto.Aviso}");

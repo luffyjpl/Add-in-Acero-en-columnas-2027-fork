@@ -129,7 +129,7 @@ public static class ChoquesSeccion
         };
 
         // Lo mismo que PanelVistaPrevia: el tramo contra zapata no lleva
-        // estribos, y en los nudos no van menores.
+        // estribos. Los nudos llevan menores como los tramos libres (06-nov).
         double? dEstribo = tramo.Tipo == TipoTramo.ContraZapata ? null : Diametro(cfgTramo.TipoBarraNombre);
         // Todo se cuenta en la zona común de la columna, donde el generador pone
         // las barras; el estribo, que es del tramo, se corre a ese marco
@@ -145,7 +145,8 @@ public static class ChoquesSeccion
             barras.Select((b, i) => new PiezaRedonda(b.X, b.Y, b.DiametroMm, i)).ToList(), Nombre));
 
         // Estribos menores, ubicados como los dibuja la vista previa.
-        List<EstriboMenor> menores = tramo.Tipo is TipoTramo.DentroDeViga or TipoTramo.ContraZapata
+        // Los nudos los llevan desde el 06-nov; contra la zapata, no.
+        List<EstriboMenor> menores = tramo.Tipo == TipoTramo.ContraZapata
             ? new List<EstriboMenor>()
             : cfgLong.MenoresParaGenerar();
         int columnas = Math.Max(0, cfgLong.BarrasPorCaraX / 2), filas = Math.Max(0, cfgLong.BarrasPorCaraY / 2);

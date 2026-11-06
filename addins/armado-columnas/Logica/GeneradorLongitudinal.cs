@@ -910,8 +910,9 @@ public static class GeneradorLongitudinal
             if (columnaPlan.Tramos[i] is not ConfigTramo cfgTramo) continue;
 
             Tramo tramo = contexto.Tramos[i];
-            // Ni en los nudos ni contra la zapata (Luciano, 20-oct).
-            if (tramo.Tipo is TipoTramo.DentroDeViga or TipoTramo.ContraZapata) continue;
+            // Contra la zapata no (Luciano, 20-oct). En los nudos sí, con las
+            // mismas reglas que en los tramos libres (Luciano, 06-nov).
+            if (tramo.Tipo == TipoTramo.ContraZapata) continue;
             if (tramo.IdElementoHost is null) continue;
             if (!long.TryParse(tramo.IdElementoHost, out long idHost) ||
                 doc.GetElement(new ElementId(idHost)) is not FamilyInstance host) continue;
