@@ -67,3 +67,12 @@ public sealed record BastonEnSeccion(int Fila, BarraEnSeccion Barra);
 /// un error, <paramref name="Barras"/> queda vacía y <paramref name="Error"/> lo dice.
 /// </summary>
 public sealed record UbicacionBastones(IReadOnlyList<BastonEnSeccion> Barras, ErrorCara Error);
+
+/// <summary>Un par de barras de piel a una altura del corte, una por cada lado. <paramref name="Altura"/> empieza en 1, la más baja.</summary>
+public sealed record PielEnSeccion(int Altura, BarraEnSeccion Izquierda, BarraEnSeccion Derecha);
+
+/// <summary>
+/// Dónde va la piel en el corte (06-nov). <paramref name="CabenPorLado"/> es el máximo que admite el espacio libre entre
+/// las filas de abajo y las de arriba; <paramref name="Alturas"/> trae las que se piden, recortadas a ese máximo.
+/// </summary>
+public sealed record UbicacionPiel(IReadOnlyList<PielEnSeccion> Alturas, int CabenPorLado);

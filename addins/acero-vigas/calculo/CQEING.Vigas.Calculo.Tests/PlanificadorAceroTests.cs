@@ -73,18 +73,24 @@ public class PlanificadorAceroTests
         });
     }
 
-    [Fact]
-    public void UnBastonRectoEnElBorde_TerminaAntesDelGanchoDeLaCorrida()
+    private static PorticoLeido ViguetaAngosta() => Portico() with
     {
-        // Vigueta 1 (VB #388864, 26-oct): el bastón de arriba llegaba hasta la cara de afuera de la pata del gancho de 90°
-        // de la corrida y se metía 1.3 cm en ella. Termina donde acaba el doblez: 76/2 + 12.7 = 50.7 más adentro.
-        PorticoLeido vigueta = Portico() with
-        {
-            Elemento = Elemento.Vigueta,
-            Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
-            Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
-        };
-        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4)) };
+        Elemento = Elemento.Vigueta,
+        Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
+        Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
+    };
+
+    /// <summary>
+    /// Juan (06-nov): el bastón del borde quedaba metido por dentro del gancho de la corrida. Llega al límite, por la
+    /// línea del gancho de las barras, con o sin gancho, y conserva su largo.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnBastonEnElBorde_LlegaAlLimiteComoLaCorrida(bool conGancho)
+    {
+        PorticoLeido vigueta = ViguetaAngosta();
+        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4), ConGancho: conGancho) };
         Baston enElCalculo = CalculoPortico.Calcular(vigueta, o, Reglas.Generales)!.Vigas.Bastones.First(b => b.Id == "BS1");
 
         PlanAcero plan = PlanificadorAcero.Planificar("Vigueta 1", vigueta, o, Reglas.Generales)!;
@@ -92,33 +98,8 @@ public class PlanificadorAceroTests
         PiezaLongitudinal corrida = plan.Barras.Where(b => b.Capa == Posicion.Superior).MinBy(b => b.Desde)!;
         PiezaLongitudinal baston = plan.Bastones.Single(b => b.Pieza == "BS1");
         Assert.Equal(TipoGancho.De90, corrida.GanchoInicio);
-        Assert.Equal(enElCalculo.Desde, corrida.Desde);
-        // sale por la punta de adentro lo mismo y conserva su largo (Juan, 29-oct)
-        Assert.Equal((corrida.Desde + 51, enElCalculo.Hasta + 51, enElCalculo.Largo), (baston.Desde, baston.Hasta, baston.Largo));
-    }
-
-    /// <summary>
-    /// Juan (29-oct, VIG_25X35 #392698): el bastón con gancho en el borde, anidado dentro del gancho de la corrida, quedaba
-    /// de 1.246. Su gancho sigue por dentro, pero sale por la punta de adentro y su largo queda en múltiplo del módulo.
-    /// </summary>
-    [Fact]
-    public void UnBastonConGanchoAnidado_ConservaSuLargoEnMultiploDelModulo()
-    {
-        PorticoLeido vigueta = Portico() with
-        {
-            Elemento = Elemento.Vigueta,
-            Tramos = Portico().Tramos.Select(t => t with { Ancho = 100, Alto = 350 }).ToList(),
-            Ubicacion = Portico().Ubicacion! with { Ancho = 100, Alto = 350, ZAbajo = 3150 },
-        };
-        OpcionesTablero o = OpcionesTablero.DeVigueta with { Bastones = new ArmadoBastones(new GrupoBarras(1, 4), ConGancho: true) };
-        Baston enElCalculo = CalculoPortico.Calcular(vigueta, o, Reglas.Generales)!.Vigas.Bastones.First(b => b.Id == "BS1");
-
-        PiezaLongitudinal baston = PlanificadorAcero.Planificar("Vigueta 1", vigueta, o, Reglas.Generales)!.Bastones.Single(b => b.Pieza == "BS1");
-
-        Assert.Equal(TipoGancho.De90, baston.GanchoInicio);
-        Assert.True(baston.Desde > enElCalculo.Desde, "el gancho va por dentro del de la corrida");
-        Assert.Equal((baston.Desde - enElCalculo.Desde, enElCalculo.Largo), (baston.Hasta - enElCalculo.Hasta, baston.Largo));
-        Assert.Equal(0, baston.Largo % Reglas.Generales.Modulo);
+        Assert.Equal(conGancho ? TipoGancho.De90 : TipoGancho.Sin, baston.GanchoInicio);
+        Assert.Equal((corrida.Desde, enElCalculo.Hasta, enElCalculo.Largo), (baston.Desde, baston.Hasta, baston.Largo));
     }
 
     [Fact]
@@ -298,6 +279,73 @@ public class PlanificadorAceroTests
         if (arriba.Count > 1)
             Assert.All(plan.Barras.Where(p => p.Pieza == arriba[0]), p => Assert.Equal(TipoGancho.Sin, p.GanchoFin));
         Assert.All(plan.Barras, p => Assert.Equal(c.Vigas.Barras.Single(b => b.Id == p.Pieza) is var b ? (b.Desde, b.Largo) : default, (p.Desde, p.Largo)));
+    }
+
+    private static OpcionesTablero ConPielOpciones(int cantidad = 2, TipoGancho? inicio = null) => OpcionesTablero.PorDefecto with
+    {
+        Piel = new GrupoBarras(cantidad, 4),
+        Cambios = inicio is { } g ? new CambiosManuales(Ganchos: new Dictionary<string, TipoGancho> { ["P.inicio"] = g }) : null,
+    };
+
+    /// <summary>
+    /// La piel (06-nov): cada barra P sale una vez por altura y por lado, a la altura del corte. La segunda, cuarta… se
+    /// corre un diámetro hacia el centro, para que el traslapo vaya al lado y no una dentro de la otra (Juan, 06-nov).
+    /// </summary>
+    [Fact]
+    public void ConPiel_DosPiezasPorAlturaYBarra()
+    {
+        PorticoCalculado c = Calcular(ConPielOpciones());
+
+        PlanAcero plan = Planificar(ConPielOpciones());
+
+        Assert.Equal(c.Vigas.Piel!.Barras.Count * 4, plan.Barras.Count(x => x.Capa == Posicion.Piel));
+        List<Barra> enOrden = c.Vigas.Piel.Barras.OrderBy(b => b.Desde).ToList();
+        Assert.True(enOrden.Count > 1, "el pórtico de prueba debe traslapar la piel");
+        for (int i = 0; i < enOrden.Count; i++)
+        {
+            List<PiezaLongitudinal> piezas = plan.Barras.Where(x => x.Pieza == enOrden[i].Id).ToList();
+            Assert.All(piezas, x => Assert.Equal(Posicion.Piel, x.Capa));
+            foreach (PielEnSeccion a in c.Piel!.Alturas)
+            {
+                double alLado = i % 2 == 1 ? Reglas.Generales.PorDiametro[a.Izquierda.Diametro].Diametro : 0;
+                List<PiezaLongitudinal> fila = piezas.Where(x => x.Fila == a.Altura).ToList();
+                Assert.Equal([a.Izquierda.X + alLado, a.Derecha.X - alLado], fila.Select(x => x.XCorte).Order());
+                Assert.All(fila, x => Assert.Equal(a.Izquierda.Y, x.YCorte));
+            }
+        }
+    }
+
+    [Fact]
+    public void ConPiel_LlegaAlLimiteSinAnidar()
+    {
+        PorticoCalculado c = Calcular(ConPielOpciones(inicio: TipoGancho.De90));
+        Barra primera = c.Vigas.Piel!.Barras.OrderBy(b => b.Desde).First();
+
+        PlanAcero plan = Planificar(ConPielOpciones(inicio: TipoGancho.De90));
+
+        PiezaLongitudinal pieza = plan.Barras.First(x => x.Capa == Posicion.Piel);
+        Assert.Equal(TipoGancho.De90, pieza.GanchoInicio);
+        Assert.Equal(c.Vigas.Superior!.Barras.Min(b => b.Desde), pieza.Desde);
+        Assert.All(plan.Barras.Where(x => x.Pieza == primera.Id), x => Assert.Equal(primera.Desde, x.Desde));
+    }
+
+    [Fact]
+    public void ConPiel_GanchoArribaPorAltura()
+    {
+        PlanAcero plan = Planificar(ConPielOpciones());
+
+        List<PiezaLongitudinal> piel = plan.Barras.Where(x => x.Capa == Posicion.Piel).ToList();
+        Assert.All(piel.Where(x => x.Fila == 1), x => Assert.False(x.GanchoArriba));
+        Assert.All(piel.Where(x => x.Fila == 2), x => Assert.True(x.GanchoArriba));
+        Assert.All(plan.Barras.Where(x => x.Capa != Posicion.Piel), x => Assert.Null(x.GanchoArriba));
+    }
+
+    [Fact]
+    public void ConPielEnCero_NoHayPiezas()
+    {
+        PlanAcero plan = Planificar(ConPielOpciones(0));
+
+        Assert.DoesNotContain(plan.Barras, x => x.Capa == Posicion.Piel);
     }
 
     /// <summary>

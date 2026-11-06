@@ -33,6 +33,12 @@ public static class Rotulo
         string.Join(" · ", b.Grupos.GroupBy(g => (b.Medida(g.Diametro).LargoRecto, b.Medida(g.Diametro).Largo))
             .Select(m => Armar(string.Join("+", m.Select(grupo)), m.Key.LargoRecto, m.Key.Largo)));
 
+    /// <summary>La piel (06-nov): <c>"2#4 c/lado L=5.40"</c>, con el largo de su barra más larga.</summary>
+    public static string Piel(int porLado, int diametro, int largo) => $"{porLado}#{diametro} c/lado L={M(largo)}";
+
+    /// <inheritdoc cref="Piel"/>
+    public static string PielEnPulgadas(int porLado, int diametro, int largo) => $"{porLado}Ø{Pulgadas(diametro)} c/lado L={M(largo)}";
+
     /// <summary>El #n en pulgadas (n/8"), simplificado: <c>"⅝\""</c>, <c>"1\""</c>, <c>"1¼\""</c>.</summary>
     public static string Pulgadas(int diametro)
     {

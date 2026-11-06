@@ -63,9 +63,14 @@ public static class ArmadorVista
         (ResultadoVigas rv, ResultadoEstribos re, EntradaSeccion seccion, var porTramo) = (c.Vigas, c.Estribos, c.Seccion, c.PorTramo);
         avisos.AddRange(c.Avisos);
 
+        // La punta está en el borde por posición, no por tener gancho: la piel arranca sin gancho y aun así sus botones
+        // (Sin · 90° · 135° · 180°) deben salir en la primera y en la última barra (revisión final, 06-nov).
+        Barra? primeraPiel = rv.Barras.Where(b => b.Capa == Posicion.Piel).MinBy(b => b.Desde);
+        Barra? ultimaPiel = rv.Barras.Where(b => b.Capa == Posicion.Piel).MaxBy(b => b.Hasta);
         var barras = rv.Barras.Select(b => new BarraVista(b.Id, Capa(b.Capa), M(b.Desde), M(b.Hasta), b.GanchoInicio > 0, b.GanchoFin > 0,
             M(b.Largo), Recta(b), b.Manual, b.LlegaAlVoladizo, Cantidad(b.Grupos), b.Kg,
-            Grados(b.TipoInicio), Grados(b.TipoFin), b.TipoInicio != TipoGancho.Sin, b.TipoFin != TipoGancho.Sin,
+            Grados(b.TipoInicio), Grados(b.TipoFin), b.Capa == Posicion.Piel ? b == primeraPiel : b.TipoInicio != TipoGancho.Sin,
+            b.Capa == Posicion.Piel ? b == ultimaPiel : b.TipoFin != TipoGancho.Sin,
             ColoresDiametro.De(b.Grupos.Max(g => g.Diametro)), Rotulo.De(b), Rotulo.EnPulgadas(b))).ToList();
         var traslapos = rv.Traslapos.Select(t => new TraslapoVista(t.Id, t.BarraIzquierda, t.BarraDerecha, Capa(t.Capa), M(t.Desde), M(t.Hasta),
             M(t.Minimo), $"#{t.Diametro}", t.Manual, F(M(t.Hasta - t.Desde), "0.00"))).ToList();
@@ -90,7 +95,7 @@ public static class ArmadorVista
 
         OpcionesCorte oc = o.Corte ?? new OpcionesCorte();
         CorteEnPunto corte = CalculadoraCorte.En(portico, rv, re, oc);
-        (SeccionVista enCorte, IReadOnlyList<BarraSeccion> proyeccion, string? avisoBastones) = SeccionDe(p, r, rv, re, seccion, corte);
+        (SeccionVista enCorte, IReadOnlyList<BarraSeccion> proyeccion, string? avisoBastones) = SeccionDe(p, r, rv, re, seccion, corte, c.Piel);
         return new VistaPortico(p.Nombre, NombreTipo(tipo), inicio, fin, apoyos, barras, traslapos, bastones,
             Zonas(portico, o, porTramo, r, re), Cara(re.Seccion.Superior), Cara(re.Seccion.Inferior),
             Opcion(rv.CaraInicio), Opcion(rv.CaraFinal), Lado(rv.CaraUsada), Lado(rv.CaraMasEconomica),
@@ -99,7 +104,21 @@ public static class ArmadorVista
             CorteDe(corte, oc, proyeccion, corte.SinLugar ? "No hay un punto sin traslapo para el corte." : avisoBastones),
             re.Estribos.Where(e => e.Id == MotorEstribos.IdCerrado).SelectMany(e => e.Posiciones).Order().Select(M).ToList(),
             diametros, p.Tramos.Select(t => new SeccionEnAlzado(M((t.Desde + t.Hasta) / 2.0), $"{F(t.Ancho / 10, "0.#")}×{F(t.Alto / 10, "0.#")}")).ToList(),
-            EsVigueta: esVigueta, DetectadaVigueta: detectadaVigueta);
+            EsVigueta: esVigueta, DetectadaVigueta: detectadaVigueta, Piel: PielDe(rv, c.Piel, esVigueta));
+    }
+
+    /// <summary>
+    /// Lo que la página necesita para la piel (06-nov): siempre que haya pórtico, para decir "caben N por lado" también con
+    /// la piel en 0. El rótulo lleva el largo de la barra de piel más larga.
+    /// </summary>
+    private static PielVista PielDe(ResultadoVigas rv, UbicacionPiel? ubicacion, bool esVigueta)
+    {
+        int alturas = ubicacion?.Alturas.Count ?? 0, caben = ubicacion?.CabenPorLado ?? 0;
+        if (rv.Piel?.Barras.MaxBy(b => b.Largo) is not { } mayor)
+            return new PielVista(alturas, caben, "", "", !esVigueta);
+        int diametro = mayor.Grupos[0].Diametro;
+        return new PielVista(alturas, caben, Rotulo.Piel(alturas, diametro, mayor.Largo),
+            Rotulo.PielEnPulgadas(alturas, diametro, mayor.Largo), !esVigueta);
     }
 
     /// <summary>El gancho como lo escribe la página: "90°", "135°", "180°" o "" (sin gancho).</summary>
@@ -173,6 +192,7 @@ public static class ArmadorVista
         TipoAviso.NoSePuedeAlinear => $"El estribo {a.Elemento} no cabe: las barras no quedan con la distancia libre.",
         TipoAviso.IgualAlCerrado => $"El estribo {a.Elemento} ya es el cerrado de las esquinas.",
         TipoAviso.RepiteOtroAdicional => $"El estribo {a.Elemento} abraza las mismas barras que otro adicional.",
+        TipoAviso.PielNoPermitida => "No lleva piel con estribo abierto.",
         _ => a.Elemento,
     };
 
@@ -230,12 +250,23 @@ public static class ArmadorVista
     /// docs/planes/2026-10-17-corte-vigas-91.md).
     /// </summary>
     private static (SeccionVista Seccion, IReadOnlyList<BarraSeccion> Proyeccion, string? Aviso) SeccionDe(PorticoLeido p, Reglas r,
-        ResultadoVigas rv, ResultadoEstribos re, EntradaSeccion e, CorteEnPunto corte)
+        ResultadoVigas rv, ResultadoEstribos re, EntradaSeccion e, CorteEnPunto corte, UbicacionPiel? piel)
     {
         double alto = Alto(p);
-        BarraSeccion Barra(string id, string nombre, bool arriba, int fila, BarraEnSeccion b, bool esquina, bool baston) =>
+        BarraSeccion Barra(string id, string nombre, bool arriba, int fila, BarraEnSeccion b, bool esquina, bool baston, bool esPiel = false) =>
             new(id, nombre, arriba, fila, Cm(b.X), Cm(alto - b.Y), Cm(r.PorDiametro[b.Diametro].Diametro), esquina, baston,
-                ColoresDiametro.De(b.Diametro));
+                ColoresDiametro.De(b.Diametro), esPiel);
+
+        // La piel corre todo el pórtico: está en cualquier corte. Ids pi1… (izquierda) y pd1… (derecha), de abajo hacia arriba.
+        IEnumerable<BarraSeccion> DePiel()
+        {
+            if (piel is null)
+                return [];
+            List<PielEnSeccion> alturas = piel.Alturas.OrderBy(a => a.Altura).ToList();
+            IEnumerable<BarraSeccion> Lado(string letra, string lado, Func<PielEnSeccion, BarraEnSeccion> de) =>
+                alturas.Select((a, i) => Barra($"{letra}{i + 1}", $"Piel #{de(a).Diametro} · {lado} {i + 1}", false, 0, de(a), false, false, true));
+            return Lado("pi", "izquierda", a => a.Izquierda).Concat(Lado("pd", "derecha", a => a.Derecha));
+        }
         IEnumerable<BarraSeccion> Cara(CaraSeccion c, bool arriba)
         {
             string letra = arriba ? "a" : "b", nombre = arriba ? "arriba" : "abajo";
@@ -297,7 +328,7 @@ public static class ArmadorVista
         var figuras = re.EnSeccion.Where(f => delTramo.ContainsKey(f.Id)).Select(f => new FiguraSeccion(f.Id, f.Tipo.ToString(),
             Cm(f.Izquierda), Cm(f.Derecha), Cm(alto - f.Arriba), Cm(alto - f.Abajo), delTramo[f.Id].Forma.ToString(),
             Trazo(f, delTramo[f.Id]), Cm(r.PorDiametro[delTramo[f.Id].Diametro].Diametro), ColoresDiametro.De(delTramo[f.Id].Diametro))).ToList();
-        var barras = Cara(re.Seccion.Superior, true).Concat(Cara(re.Seccion.Inferior, false)).Concat(bastones).ToList();
+        var barras = Cara(re.Seccion.Superior, true).Concat(Cara(re.Seccion.Inferior, false)).Concat(bastones).Concat(DePiel()).ToList();
         return (new SeccionVista(Cm(Ancho(p)), Cm(alto), barras, figuras), proyeccion, aviso);
     }
 
@@ -335,7 +366,12 @@ public static class ArmadorVista
 
     private static string Lado(Modelo.Cara c) => c == Modelo.Cara.Inicio ? "izq" : "der";
 
-    private static string Capa(Posicion p) => p == Posicion.Superior ? "arriba" : "abajo";
+    private static string Capa(Posicion p) => p switch
+    {
+        Posicion.Superior => "arriba",
+        Posicion.Piel => "piel",
+        _ => "abajo",
+    };
 
     private static string NombreTipo(TipoViga t) => t == TipoViga.Aerea ? "Aérea" : "Cimentación";
 

@@ -1,6 +1,7 @@
 using CQEING.Vigas.Calculo.Estribos;
 using CQEING.Vigas.Calculo.Modelo;
 using CQEING.Vigas.Calculo.Porticos;
+using CQEING.Vigas.Calculo.Seccion;
 using CQEING.Vigas.Calculo.Vigas;
 
 namespace CQEING.Vigas.Calculo.Tablero;
@@ -9,6 +10,7 @@ namespace CQEING.Vigas.Calculo.Tablero;
 /// Todo lo que se calcula de un pórtico con lo que eligió el usuario: barras, bastones, sección y estribos.
 /// <paramref name="PorTramo"/> es la configuración de estribos de los tramos marcados (null = la general en todos).
 /// <paramref name="SePuedeGenerar"/>: hay solución en las dos capas, la sección no tiene errores y ningún aviso lo impide.
+/// <paramref name="Piel"/>: dónde queda la piel en el corte (06-nov), con cuántas caben por lado; null si no se pidió o es vigueta.
 /// </summary>
 public sealed record PorticoCalculado(
     ResultadoVigas Vigas,
@@ -16,7 +18,8 @@ public sealed record PorticoCalculado(
     EntradaSeccion Seccion,
     IReadOnlyDictionary<string, ConfigEstribos>? PorTramo,
     IReadOnlyList<Aviso> Avisos,
-    bool SePuedeGenerar);
+    bool SePuedeGenerar,
+    UbicacionPiel? Piel = null);
 
 /// <summary>
 /// El cálculo de un pórtico que comparten la vista del tablero (<see cref="ArmadorVista"/>) y la generación en Revit
@@ -42,10 +45,12 @@ public static class CalculoPortico
         TipoEstribo principal = EsVigueta(p, o) ? TipoEstribo.Abierto : TipoEstribo.Cerrado;
         ResultadoEstribos re = MotorEstribos.Calcular(new EntradaEstribos(p.Portico, seccion, o.Estribos, porTramo, principal));
         List<Aviso> avisos = [.. rv.Avisos, .. re.Avisos];
+        if (EsVigueta(p, o) && o.Piel is { Cantidad: > 0 })
+            avisos.Add(new Aviso(TipoAviso.PielNoPermitida, nameof(Posicion.Piel)));
 
         bool seccionSinError = re.Seccion.Superior.Error == ErrorCara.Ninguno && re.Seccion.Inferior.Error == ErrorCara.Ninguno;
         bool sePuede = rv.Superior is not null && rv.Inferior is not null && seccionSinError && !avisos.Any(a => Bloquean.Contains(a.Tipo));
-        return new PorticoCalculado(rv, re, seccion, porTramo, avisos, sePuede);
+        return new PorticoCalculado(rv, re, seccion, porTramo, avisos, sePuede, UbicarPiel(p, o, r));
     }
 
     /// <summary>
@@ -56,13 +61,31 @@ public static class CalculoPortico
         o.Superior.Concat(o.Inferior).Select(g => g.Diametro)
             .Concat(new[] { o.Bastones.Superior, o.Bastones.Inferior }.OfType<GrupoBarras>().Select(g => g.Diametro))
             .Append(o.Estribos.Diametro)
+            .Concat(o.Piel is { Cantidad: > 0 } ? [o.Piel.Diametro] : [])
             .Concat(o.EstribosMarcados is null ? [] : [o.EstribosMarcados.Diametro])
             .Where(d => !r.PorDiametro.ContainsKey(d)).Distinct().Order().ToList();
 
     /// <summary>Lo que recibe el motor para el pórtico <paramref name="p"/> con lo que eligió el usuario (también la vista previa, #84).</summary>
     internal static EntradaVigas EntradaDe(PorticoLeido p, OpcionesTablero o, Reglas r) =>
         new(p.Portico, o.Tipo ?? p.Tipo, o.Superior, o.Inferior, r, o.Cara, Cambios: o.Cambios, Bastones: o.Bastones,
-            EstriboEnVoladizo: r.PorDiametro.TryGetValue(o.Estribos.Diametro, out ReglaDiametro? estribo) ? (int)Math.Ceiling(estribo.Diametro) : 0);
+            EstriboEnVoladizo: r.PorDiametro.TryGetValue(o.Estribos.Diametro, out ReglaDiametro? estribo) ? (int)Math.Ceiling(estribo.Diametro) : 0,
+            Piel: o.Piel is { Cantidad: > 0 } && UbicarPiel(p, o, r) is { CabenPorLado: > 0 } u ? new GrupoBarras(Math.Min(o.Piel!.Cantidad, u.CabenPorLado), o.Piel.Diametro) : null);
+
+    /// <summary>
+    /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si es vigueta o su diámetro no está en
+    /// las reglas. Con cantidad 0, o sin piel en las opciones, se calcula igual para decir cuántas caben; con 0 caben, la
+    /// ubicación se devuelve igual para que la vista diga "caben 0".
+    /// </summary>
+    internal static UbicacionPiel? UbicarPiel(PorticoLeido p, OpcionesTablero o, Reglas r)
+    {
+        // sin piel en las opciones (un pórtico recién abierto o un estado guardado de antes), con el #4 que la página trae
+        // por defecto (Juan, 06-nov: al abrir, el + no dejaba subir hasta mover otra cosa)
+        GrupoBarras piel = o.Piel ?? new GrupoBarras(0, 4);
+        if (EsVigueta(p, o) || !r.PorDiametro.ContainsKey(piel.Diametro))
+            return null;
+        EntradaSeccion seccion = Seccion(p, o, r);
+        return RepartidorPiel.Ubicar(seccion, RepartidorFilas.Repartir(seccion), piel, p.Tramos.Min(t => t.Alto));
+    }
 
     /// <summary>La sección del pórtico con los recubrimientos (cm en la página, mm en el motor) y las filas del paso 1.</summary>
     internal static EntradaSeccion Seccion(PorticoLeido p, OpcionesTablero o, Reglas r)

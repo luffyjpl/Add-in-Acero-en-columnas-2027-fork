@@ -113,6 +113,8 @@ public enum TipoAviso
     /// (hallazgo E14 del plan docs/planes/2026-10-19-generar-acero-vigas-85.md). No se agrega.
     /// </summary>
     RepiteOtroAdicional,
+    /// <summary>Se pidió piel en una vigueta, que lleva grapa en S y no la admite (06-nov). No se pone; no bloquea generar.</summary>
+    PielNoPermitida,
 }
 
 /// <summary>Por qué un traslapo quedó largo.</summary>
@@ -154,7 +156,8 @@ public sealed record ResultadoVigas(
     Cara CaraUsada,
     Cara CaraMasEconomica,
     IReadOnlyList<Aviso> Avisos,
-    IReadOnlyList<Baston> Bastones)
+    IReadOnlyList<Baston> Bastones,
+    SolucionCapa? Piel = null)
 {
     public IEnumerable<Barra> Barras => Capas.SelectMany(c => c.Barras);
     public IEnumerable<Traslapo> Traslapos => Capas.SelectMany(c => c.Traslapos);
@@ -163,5 +166,5 @@ public sealed record ResultadoVigas(
     /// <summary>Tramos con traslapo (de las dos capas en uso), donde el corte 1-1 no se puede ubicar (#91).</summary>
     public IReadOnlyList<(int Desde, int Hasta)> ZonasTraslapo => Capas.SelectMany(c => c.ZonasTraslapo).ToList();
 
-    private IEnumerable<SolucionCapa> Capas => new[] { Superior, Inferior }.OfType<SolucionCapa>();
+    private IEnumerable<SolucionCapa> Capas => new[] { Superior, Inferior, Piel }.OfType<SolucionCapa>();
 }

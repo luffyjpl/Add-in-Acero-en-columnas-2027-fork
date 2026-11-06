@@ -101,7 +101,14 @@
       // altura dinámica (Carlos 1:06:04, decisión 14): la viga crece un escalón de 14 por cada fila de más, arriba o
       // abajo, y todo lo que va debajo de su eje (y = 85) baja con ella. Sigue sin ser a escala ("no es real").
       const filasDe = (cara) => (cara && cara.porFila && cara.porFila.length) || 1;
-      const ex = 14 * (filasDe(p.superior) - 1 + filasDe(p.inferior) - 1);
+      const exFilas = 14 * (filasDe(p.superior) - 1 + filasDe(p.inferior) - 1);
+      // piel (06-nov): la viga crece una franja propia en su eje (y = 85), con una línea cada 8 unidades, para que la piel
+      // no quede encima de los bastones ni de sus rótulos (Juan, 06-nov: "que crezca la viga para que no se ponga todo
+      // encima de todo"). Todo lo de debajo del eje baja con ella, como con las filas de más.
+      const nPiel = (p.piel && p.piel.alturas) || 0;
+      const PASO_PIEL = 8, MARGEN_PIEL = 10;
+      const exPiel = nPiel ? 2 * MARGEN_PIEL + PASO_PIEL * (nPiel - 1) : 0;
+      const ex = exFilas + exPiel;
       const Y = (y) => (y > 85 ? y + ex : y);
       const FH = 170 + ex;
       const CH = 204 + ex;
@@ -141,7 +148,7 @@
 
       // barras: la y alterna 52/58 (C) y 118/112 (F) según el índice en su capa, como la maqueta
       const enCapa = { C: 0, F: 0 };
-      const b = p.barras.map((bar) => {
+      const b = p.barras.filter((bar) => bar.capa !== 'piel').map((bar) => {
         const isC = arribaAntes(bar.capa);
         const i = enCapa[isC ? 'C' : 'F']++;
         const y = Y(isC ? (i % 2 ? 58 : 52) : (i % 2 ? 112 : 118));
@@ -153,11 +160,18 @@
         // el rótulo de DC-CAD (C#, #100) va sobre la misma barra: encima de las de arriba y debajo de las de abajo
         const yS = inv ? FH - y : y, top = isC !== inv;
         const isHov = bar.id === hover && !isSel;
-        return { id: bar.id, y, isC, pts, isSel, isHov, col: isSel && cur ? colVivo : bar.color || '#3F4A57', sw: isSel || isHov ? 3.4 : 2.4, pick: pickBar(bar.id), entra: entra(bar.id), sale: sale(bar.id),
+        return { id: bar.id, y, isC, dir, alto: 22, pts, lineas: [pts], isSel, isHov, col: isSel && cur ? colVivo : bar.color || '#3F4A57', sw: isSel || isHov ? 3.4 : 2.4, pick: pickBar(bar.id), entra: entra(bar.id), sale: sale(bar.id),
           lx: (X(bar.desde) + X(bar.hasta)) / 2, ly: top ? yS - 3 * k : yS + 10 * k, lt: (pulg ? bar.rotuloPulgadas : bar.rotulo) || '' };
       });
 
       const warnLap = warn ? this.props.warnLap : '';
+      // el rectángulo de un traslapo: el de la piel abraza sus líneas, ceñido (Juan, 06-nov: estaba muy grande)
+      const yPielArriba = 85 + MARGEN_PIEL, yPielAbajo = yPielArriba + PASO_PIEL * Math.max(0, nPiel - 1);
+      const geomTraslapo = (t) => {
+        if (t.capa === 'piel') return { isC: false, ry: yPielArriba - 3, h: yPielAbajo - yPielArriba + 6 };
+        const isC = arribaAntes(t.capa);
+        return { isC, ry: Y(isC ? 45 : 106), h: 18 };
+      };
       const l = p.traslapos.map((t) => {
         const isSel = t.id === selLap, isMan = manualLaps.includes(t.id);
         const isWarn = t.id === warnLap && !isMan;
@@ -165,19 +179,42 @@
         const vivo = vivos.includes(t.id);
         const c = vivo ? colVivo : isSel || isMan ? '#1F5FAF' : (isWarn ? '#B26B00' : '#5E6670');
         // su largo con 2 decimales, en el medio del empalme
-        const isC = arribaAntes(t.capa), ry = Y(isC ? 45 : 106), yc = ry + 9;
-        return { isC, ry, x: X(t.desde), w: X(t.hasta) - X(t.desde), c, o: isSel || vivo ? 0.24 : 0.12, sw: isSel || vivo ? 2.4 : (isMan || isWarn ? 1.8 : 1), pick: pickLapFn(t.id),
+        const { isC, ry, h } = geomTraslapo(t), yc = ry + h / 2;
+        return { isC, ry, h, x: X(t.desde), w: X(t.hasta) - X(t.desde), c, o: isSel || vivo ? 0.24 : 0.12, sw: isSel || vivo ? 2.4 : (isMan || isWarn ? 1.8 : 1), pick: pickLapFn(t.id),
           lx: (X(t.desde) + X(t.hasta)) / 2, ly: (inv ? FH - yc : yc) + 3.2 * k, lt: t.rotulo || '' };
       });
 
+      // piel (06-nov): una polilínea por altura, más delgada que las corridas y los bastones, con un solo rótulo sobre la
+      // altura de arriba (los dos lados caen en la misma línea). Ganchos chicos, "Sin" por defecto.
+      const yPiel = (i) => yPielArriba + PASO_PIEL * i;
+      const lineasPiel = (bar) => {
+        const ti = bar.ganchoInicio ? bar.ganchoInicioTipo || '90°' : '', tf = bar.ganchoFin ? bar.ganchoFinTipo || '90°' : '';
+        // gancho por altura (decisión 9; RepartidorPiel.GanchoArriba): con la altura h contada desde abajo desde 1, sube si
+        // 2h > n + 1 (la del medio, con n impar, baja). La línea i se dibuja de arriba abajo; con inv el dibujo va volteado.
+        // El gancho no pasa de la mitad de la separación entre líneas (mínimo 4) para no cruzar a la vecina.
+        const alto = nPiel < 2 ? 8 : Math.max(4, Math.min(8, (yPielAbajo - yPielArriba) / (nPiel - 1) / 2));
+        return Array.from({ length: nPiel }, (_, i) => {
+          const h = inv ? i + 1 : nPiel - i;
+          const sube = 2 * h > nPiel + 1;
+          return conGanchos(X(bar.desde), X(bar.hasta), yPiel(i), (sube ? -1 : 1) * (inv ? -1 : 1), ti, tf, alto);
+        });
+      };
+      const pl = p.barras.filter((bar) => bar.capa === 'piel').map((bar, n) => {
+        const lineas = lineasPiel(bar);
+        const isSel = bar.id === sel && !selLap, isHov = bar.id === hover && !isSel;
+        const yArriba = inv ? FH - yPiel(nPiel - 1) : yPiel(0);
+        return { id: bar.id, y: (yPiel(0) + yPiel(nPiel - 1)) / 2, isC: !inv, dir: 1, alto: 8, lineas, pts: lineas[0] || '', isSel, isHov,
+          col: isSel && cur ? colVivo : bar.color || '#3F4A57', sw: isSel || isHov ? 2.2 : 1.2, pick: pickBar(bar.id), entra: entra(bar.id), sale: sale(bar.id),
+          lx: (X(bar.desde) + X(bar.hasta)) / 2, ly: yArriba - 3 * k, lt: n ? '' : (pulg ? p.piel.rotuloPulgadas : p.piel.rotulo) || '' };
+      });
+      const todasB = b.concat(pl);
+
       // bastones: los de arriba en y = 70 y los de abajo en y = 100, con el gancho hacia adentro de la viga. Una punta
-      // con gancho se dibuja 6 unidades más adentro: si no, su gancho cae en la misma vertical que el de la corrida y se
-      // ven como una sola raya (Juan, 16-oct). Solo es el dibujo; el largo no cambia.
-      const ADENTRO = 6;
+      // en el borde llega al límite y su gancho baja por la línea del de la corrida, como se genera (Juan, 06-nov).
       const t = p.bastones.map((bs) => {
         const top = (bs.id.indexOf('BS') === 0) !== inv;
         const y = Y(top ? 70 : 100), dir = top ? 1 : -1;
-        const xa = X(bs.desde) + (bs.ganchoInicio ? ADENTRO : 0), xz = X(bs.hasta) - (bs.ganchoFin ? ADENTRO : 0);
+        const xa = X(bs.desde), xz = X(bs.hasta);
         const ti = bs.ganchoInicio ? bs.ganchoInicioTipo || '90°' : '', tf = bs.ganchoFin ? bs.ganchoFinTipo || '90°' : '';
         const pts = conGanchos(xa, xz, y, dir, ti, tf, 16);
         const isSel = bs.id === sel && !selLap;
@@ -185,12 +222,12 @@
         // su rótulo, del lado de adentro de la viga
         const yS = inv ? FH - y : y, arriba = top !== inv;
         const isHov = bs.id === hover && !isSel;
-        return { id: bs.id, y, top, pts, isSel, isHov, col: isSel && cur ? colVivo : bs.color || '#0F7B6C', sw: isSel ? 3 : isHov ? 3 : 1.7, pick: pickBar(bs.id), entra: entra(bs.id), sale: sale(bs.id),
+        return { id: bs.id, y, top, dir, alto: 16, pts, lineas: [pts], isSel, isHov, col: isSel && cur ? colVivo : bs.color || '#0F7B6C', sw: isSel ? 3 : isHov ? 3 : 1.7, pick: pickBar(bs.id), entra: entra(bs.id), sale: sale(bs.id),
           lx: (xa + xz) / 2, ly: arriba ? yS + 10 * k : yS - 3 * k, lt: (pulg ? bs.rotuloPulgadas : bs.rotulo) || '' };
       });
       // la selección va con un halo detrás y no con otro color: el azul ya es del #8 (#100)
-      const halo = selLap ? null : (b.find((x) => x.isSel) || t.find((x) => x.isSel) || null);
-      const haloHover = b.find((x) => x.isHov) || t.find((x) => x.isHov) || null;
+      const halo = selLap ? null : (todasB.find((x) => x.isSel) || t.find((x) => x.isSel) || null);
+      const haloHover = todasB.find((x) => x.isHov) || t.find((x) => x.isHov) || null;
       const ley = (p.diametros || []).map((d) => ({ c: d.color, t: (pulg && d.nombrePulgadas) || d.nombre }));
 
       // estribos como DC-CAD (Carlos, #100): debajo de la viga, una línea por zona con una rayita en cada punta,
@@ -208,7 +245,7 @@
       // Uno sin barra en el alzado (dos estribos entre sí) va sobre la línea de los estribos. Mientras se arrastra, no
       // se pintan: son del pórtico de antes del salto.
       const choques = capas.choques && !cur ? (p.choques || []).map((c, i) => {
-        const d = b.find((x) => x.id === c.elemento) || t.find((x) => x.id === c.elemento);
+        const d = todasB.find((x) => x.id === c.elemento) || t.find((x) => x.id === c.elemento);
         return { i, x: X(c.x), y: d ? d.y : yE, enBarra: !!d, tip: c.texto + ' · ' + c.pista, on: i === this.state.choque || i === this.props.choqueAbierto,
           pick: () => { pickBar(c.elemento)(); if (this.props.onChoque) this.props.onChoque(i); }, entra: () => this.setState({ choque: i }),
           sale: () => this.setState((s) => (s.choque === i ? { choque: -1 } : null)) };
@@ -264,16 +301,17 @@
       const datoSel = selLap ? null : (p.barras.find((x) => x.id === sel) || p.bastones.find((x) => x.id === sel));
       if (datoSel && this.props.onHook && !cur) {
         const esBarra = p.barras.includes(datoSel);
-        const dib = (esBarra ? b : t).find((x) => x.id === sel);
+        const dib = (esBarra ? todasB : t).find((x) => x.id === sel);
+        const esPiel = datoSel.capa === 'piel';
         const arriba = esBarra ? dib.isC !== inv : dib.top;
-        const tipos = esBarra ? TIPOS.slice(1) : TIPOS;
+        const tipos = esBarra && !esPiel ? TIPOS.slice(1) : TIPOS;
         const ancho = tipos.length * ANCHO_BOTON + 2;
         [['inicio', datoSel.desde, datoSel.puntaInicioEnBorde, datoSel.ganchoInicioTipo], ['fin', datoSel.hasta, datoSel.puntaFinEnBorde, datoSel.ganchoFinTipo]]
           .filter(([, , enBorde]) => enBorde)
           .forEach(([punta, m, , actual]) => {
             const xs = v.tx + X(m) * v.z, ys = v.ty + (inv ? FH - dib.y : dib.y) * v.z;
             const clave = esBarra ? datoSel.id[0] + '.' + punta : datoSel.id + '.' + punta;
-            const vigente = actual || (esBarra ? '90°' : 'Sin');
+            const vigente = actual || (esBarra && !esPiel ? '90°' : 'Sin');
             ganchos.push({
               left: Math.max(4, Math.min(W - ancho - 4, punta === 'inicio' ? xs - 6 : xs - ancho + 6)) + 'px',
               // arriba, en la franja sobre la viga, justo encima de los rótulos de las barras (y = 33) y debajo de la leyenda:
@@ -295,7 +333,7 @@
       let footCol = '#5E6670';
       if (datoSel && this.props.onDrop) {
         const esBarra = p.barras.some((x) => x.id === sel);
-        const dib = (esBarra ? b : t).find((x) => x.id === sel);
+        const dib = (esBarra ? todasB : t).find((x) => x.id === sel);
         const arr = this.props.arrastre && this.props.arrastre.elemento === sel ? this.props.arrastre : null;
         const bloqueo = (punto) => {
           if (esBarra && (punto === 'Izquierda' ? datoSel.puntaInicioEnBorde : punto === 'Derecha' ? datoSel.puntaFinEnBorde
@@ -331,8 +369,8 @@
           const top = esBarra ? dib.isC !== inv : dib.top, yS = inv ? FH - dib.y : dib.y;
           const ti = viejo.ganchoInicio ? viejo.ganchoInicioTipo || '90°' : '', tf = viejo.ganchoFin ? viejo.ganchoFinTipo || '90°' : '';
           fantasma = {
-            pts: conGanchos(X(viejo.desde), X(viejo.hasta), dib.y, esBarra ? (dib.isC ? 1 : -1) : (dib.top ? 1 : -1), ti, tf, esBarra ? 22 : 16),
-            laps: p0.traslapos.filter((x) => vivos.includes(x.id)).map((x) => ({ x: X(x.desde), w: X(x.hasta) - X(x.desde), y: Y(arribaAntes(x.capa) ? 45 : 106) })),
+            lineas: viejo.capa === 'piel' ? lineasPiel(viejo) : [conGanchos(X(viejo.desde), X(viejo.hasta), dib.y, dib.dir, ti, tf, dib.alto)],
+            laps: p0.traslapos.filter((x) => vivos.includes(x.id)).map((x) => { const g = geomTraslapo(x); return { x: X(x.desde), w: X(x.hasta) - X(x.desde), y: g.ry, h: g.h }; }),
             lx: (X(datoSel.desde) + X(datoSel.hasta)) / 2, ly: top ? yS - 14 * k : yS + 24 * k, lt: cur.rotulo, col: colVivo,
           };
           if (esBarra) {
@@ -385,7 +423,7 @@
         // la sección de columnas va en el pedazo de columna sobre la viga: abajo chocaba con el texto de un voladizo corto
         yColSec: 30, yEje: 192 + ex,
         caption: (inv ? 'Cimentación' : 'Aérea') + ' · alzado · vertical ×3',
-        b, l, t, st, yE, secs, colSecs, cols, luces, vol, ejes, cut, ganchos, puntos3, fantasma, foot, footCol, k, halo, haloHover, ley,
+        b, pl, l, t, st, yE, secs, colSecs, cols, luces, vol, ejes, cut, ganchos, puntos3, fantasma, foot, footCol, k, halo, haloHover, ley,
         choquesEnBarra: choques.filter((c) => c.enBarra), choquesSueltos: choques.filter((c) => !c.enBarra), hayChoques: choques.length > 0, globo,
         // la x del mouse pasa a m y se pega al salto más cercano de los que mandó C#
         hdMove: (e) => {
@@ -456,11 +494,11 @@
     render() {
       const v = this.valores();
       const k = v.k, NS = 'non-scaling-stroke';
-      const lap = (x) => html`<rect data-clic x="${x.x}" y="${x.ry}" width="${x.w}" height="18" fill="${x.c}" fill-opacity="${x.o}" stroke="${x.c}" stroke-width="${x.sw}" vector-effect="${NS}" style="cursor: pointer" onClick=${x.pick}></rect>`;
-      const barra = (x) => html`<polyline data-clic points="${x.pts}" fill="none" stroke="${x.col}" stroke-width="${x.sw}" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer" onClick=${x.pick} onPointerEnter=${x.entra} onPointerLeave=${x.sale}></polyline>`;
+      const lap = (x) => html`<rect data-clic x="${x.x}" y="${x.ry}" width="${x.w}" height="${x.h}" fill="${x.c}" fill-opacity="${x.o}" stroke="${x.c}" stroke-width="${x.sw}" vector-effect="${NS}" style="cursor: pointer" onClick=${x.pick}></rect>`;
+      const barra = (x) => x.lineas.map((pts) => html`<polyline data-clic points="${pts}" fill="none" stroke="${x.col}" stroke-width="${x.sw}" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" style="cursor: pointer" onClick=${x.pick} onPointerEnter=${x.entra} onPointerLeave=${x.sale}></polyline>`);
       // zona de clic: una línea transparente de 14 px (no crece con el zoom) bajo los traslapos y las barras. Más ancha
       // se montaría con la de la barra vecina (la corrida y el bastón van a unos 18 px).
-      const zona = (x) => html`<polyline data-clic points="${x.pts}" fill="none" stroke="transparent" stroke-width="14" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="stroke" style="cursor: pointer" onClick=${x.pick} onPointerEnter=${x.entra} onPointerLeave=${x.sale}></polyline>`;
+      const zona = (x) => x.lineas.map((pts) => html`<polyline data-clic points="${pts}" fill="none" stroke="transparent" stroke-width="${x.lineas.length > 1 ? 6 : 14}" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="stroke" style="cursor: pointer" onClick=${x.pick} onPointerEnter=${x.entra} onPointerLeave=${x.sale}></polyline>`);
       // los textos llevan un borde del color del fondo para leerse sobre las líneas (#100)
       const texto = (x, y, t, col, tam, peso) => (t ? html`<text x="${x}" y="${y}" text-anchor="middle" font-size="${tam * k}" font-weight="${peso}" font-family="IBM Plex Mono, monospace" fill="${col}" stroke="#F1F3F5" stroke-width="${3.5 * k}" stroke-linejoin="round" paint-order="stroke" pointer-events="none">${t}</text>` : null);
       const rotulo = (x) => texto(x.lx, x.ly, x.lt, x.col, 10, 500);
@@ -480,18 +518,20 @@
       <g transform="${v.flip}">
         ${v.b.map(zona)}
         ${v.t.map(zona)}
+        ${v.pl.map(zona)}
         ${v.l.filter((x) => x.isC).map(lap)}
         ${v.l.filter((x) => !x.isC).map(lap)}
-        ${v.haloHover ? html`<polyline points="${v.haloHover.pts}" fill="none" stroke="#16191D" stroke-opacity="0.12" stroke-width="9" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>` : null}
-        ${v.halo ? html`<polyline points="${v.halo.pts}" fill="none" stroke="#16191D" stroke-opacity="0.22" stroke-width="10" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>` : null}
+        ${v.haloHover ? html`<g opacity="0.12">${v.haloHover.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-width="9" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`)}</g>` : null}
+        ${v.halo ? html`<g opacity="0.22">${v.halo.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#16191D" stroke-width="10" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`)}</g>` : null}
         ${v.b.filter((x) => x.isC).map(barra)}
         ${v.b.filter((x) => !x.isC).map(barra)}
         ${v.t.filter((x) => x.top).map(barra)}
         ${v.t.filter((x) => !x.top).map(barra)}
+        ${v.pl.map(barra)}
         ${v.choquesEnBarra.map(choque)}
         ${v.fantasma ? html`
-        ${v.fantasma.laps.map((x) => html`<rect x="${x.x}" y="${x.y}" width="${x.w}" height="18" fill="none" stroke="#9AA3AD" stroke-width="1.2" stroke-dasharray="4 3" vector-effect="${NS}" pointer-events="none"></rect>`)}
-        <polyline points="${v.fantasma.pts}" fill="none" stroke="#9AA3AD" stroke-width="1.6" stroke-dasharray="5 4" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>` : null}
+        ${v.fantasma.laps.map((x) => html`<rect x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" fill="none" stroke="#9AA3AD" stroke-width="1.2" stroke-dasharray="4 3" vector-effect="${NS}" pointer-events="none"></rect>`)}
+        ${v.fantasma.lineas.map((pts) => html`<polyline points="${pts}" fill="none" stroke="#9AA3AD" stroke-width="1.6" stroke-dasharray="5 4" vector-effect="${NS}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"></polyline>`)}` : null}
         ${v.puntos3 ? html`
         <g>
           ${v.puntos3.pts.map((o) => html`<circle cx="${o.x}" cy="${v.puntos3.y}" r="${5 * k}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="1.6" vector-effect="${NS}" pointer-events="none"></circle>`)}
@@ -509,7 +549,8 @@
       ${v.secs.map((s) => texto(s.x, 9, s.t, '#5E6670', 9, 400))}
       ${v.l.map((x) => texto(x.lx, x.ly, x.lt, '#3F4A57', 9, 600))}
       ${v.t.map((x) => texto(x.lx, x.ly, x.lt, x.col, 9, 400))}
-      ${v.b.map(rotulo)}` : null}
+      ${v.b.map(rotulo)}
+      ${v.pl.map(rotulo)}` : null}
       ${v.colSecs.map((c) => texto(c.x, v.yColSec, c.t, '#3F4A57', 9, 500))}
       ${v.fantasma ? html`<text x="${v.fantasma.lx}" y="${v.fantasma.ly}" text-anchor="middle" font-size="${12 * k}" font-weight="600" font-family="IBM Plex Mono, monospace" fill="${v.fantasma.col}" stroke="#FAFBFC" stroke-width="${4 * k}" paint-order="stroke" pointer-events="none">${v.fantasma.lt}</text>` : null}
       <text x="${v.warnX}" y="${v.warnY}" text-anchor="middle" font-size="${10 * k}" font-weight="600" font-family="IBM Plex Mono, monospace" fill="#B26B00">${v.warnText}</text>

@@ -109,10 +109,17 @@ public sealed record OpcionCaraVista(double Kg, bool Existe);
 /// <summary>
 /// Una barra en el corte, en cm: x desde la cara izquierda e y desde la cara de arriba, como la maqueta.
 /// <paramref name="Id"/> es <c>"a1"</c>… arriba y <c>"b1"</c>… abajo, por fila y de izquierda a derecha; los bastones
-/// (<paramref name="Baston"/>) son <c>"bs1"</c>… arriba y <c>"bi1"</c>… abajo, y no se eligen para estribos (#91).
+/// (<paramref name="Baston"/>) son <c>"bs1"</c>… arriba y <c>"bi1"</c>… abajo, y no se eligen para estribos (#91). La piel
+/// (<paramref name="Piel"/>, 06-nov) es <c>"pi1"</c>… a la izquierda y <c>"pd1"</c>… a la derecha, de abajo hacia arriba.
 /// </summary>
 public sealed record BarraSeccion(string Id, string Nombre, bool Arriba, int Fila, double X, double Y, double D, bool Esquina,
-    bool Baston = false, string Color = "");
+    bool Baston = false, string Color = "", bool Piel = false);
+
+/// <summary>
+/// La piel del pórtico para la página (06-nov): <paramref name="Alturas"/> puestas, <paramref name="CabenPorLado"/> (también
+/// con 0, para escribir "caben N por lado"), el rótulo del alzado (vacío sin piel) y si el elemento la admite (la vigueta no).
+/// </summary>
+public sealed record PielVista(int Alturas, int CabenPorLado, string Rotulo, string RotuloPulgadas, bool Permitida);
 
 /// <summary>Un diámetro que hay en el pórtico, para la leyenda: <c>"#5"</c> (o <c>"⅝\""</c>) y su color.</summary>
 public sealed record DiametroVista(string Nombre, string Color, string NombrePulgadas = "");
@@ -204,7 +211,8 @@ public sealed record VistaPortico(
     string? Estado = null,
     IReadOnlyList<ChoqueVista>? Choques = null,
     bool EsVigueta = false,
-    bool DetectadaVigueta = false);
+    bool DetectadaVigueta = false,
+    PielVista? Piel = null);
 
 /// <summary>
 /// La pantalla Reglas, con los textos de sus campos (m y kg/m, como <c>RULES0</c> de la maqueta).

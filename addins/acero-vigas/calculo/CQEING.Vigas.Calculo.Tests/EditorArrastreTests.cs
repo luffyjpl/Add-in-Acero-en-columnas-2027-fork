@@ -52,6 +52,18 @@ public class EditorArrastreTests
     }
 
     [Fact]
+    public void LaPielYSusTraslaposSeArrastran()
+    {
+        EntradaVigas e = Maqueta() with { Piel = new GrupoBarras(1, 4) };
+        string traslapo = MotorVigas.Calcular(e).Piel!.Traslapos[0].Id;
+
+        Assert.Equal("P1–P2", traslapo);
+        IReadOnlyList<Salto> saltos = Saltos(e, "P1", PuntoArrastre.Derecha);
+        Assert.NotEmpty(saltos);
+        Assert.Contains(saltos, s => s.Cambios.Any(c => c.Id == traslapo));
+    }
+
+    [Fact]
     public void LaPuntaDelBordeYElCentroDeUnaBarraDeBordeNoSeArrastran()
     {
         Assert.Empty(Saltos(Maqueta(), "S1", PuntoArrastre.Izquierda));

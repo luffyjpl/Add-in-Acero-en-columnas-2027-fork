@@ -222,6 +222,85 @@ public class ArmadorVistaTests
         Assert.Equal((true, false), (aVigueta.EsVigueta, aVigueta.DetectadaVigueta));
     }
 
+    private static readonly OpcionesTablero ConPiel = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(2, 4) };
+
+    [Fact]
+    public void Vista_ConPiel_BarrasConCapaPiel()
+    {
+        VistaPortico v = Armar(ConPiel);
+
+        Assert.Contains(v.Barras, b => b.Capa == "piel");
+        Assert.All(v.Barras.Where(b => b.Id.StartsWith('P')), b => Assert.Equal("piel", b.Capa));
+        Assert.All(v.Traslapos.Where(t => t.Capa == "piel"), t => Assert.StartsWith("P", t.Id));
+        Assert.Contains(v.Diametros!, d => d.Nombre == "#4");
+    }
+
+    [Fact]
+    public void Vista_ConPielSinGancho_LosBotonesDeGanchoSalenEnLasPuntasDelBorde()
+    {
+        BarraVista[] piel = Armar(ConPiel).Barras.Where(b => b.Capa == "piel").OrderBy(b => b.Desde).ToArray();
+
+        Assert.True(piel.Length >= 3);
+        Assert.True(piel[0].PuntaInicioEnBorde);
+        Assert.True(piel[^1].PuntaFinEnBorde);
+        Assert.Equal("", piel[0].GanchoInicioTipo);
+        Assert.All(piel.Skip(1), b => Assert.False(b.PuntaInicioEnBorde));
+        Assert.All(piel.SkipLast(1), b => Assert.False(b.PuntaFinEnBorde));
+    }
+
+    [Fact]
+    public void Vista_ConPiel_CorteConPiel()
+    {
+        VistaPortico v = Armar(ConPiel);
+
+        BarraSeccion[] piel = v.Seccion.Barras.Where(b => b.Piel).ToArray();
+        Assert.Equal(["pi1", "pi2", "pd1", "pd2"], piel.Select(b => b.Id));
+        Assert.Equal("Piel #4 · izquierda 1", piel[0].Nombre);
+        Assert.True(piel[0].X < piel[2].X);
+        Assert.True(piel[0].Y > piel[1].Y); // Y desde arriba: la 1 es la de abajo
+        Assert.All(piel, b => Assert.Equal(1.27, b.D, 2));
+    }
+
+    [Fact]
+    public void Vista_ConPiel_Rotulo()
+    {
+        PielVista piel = Armar(ConPiel).Piel!;
+
+        Assert.StartsWith("2#4 c/lado L=", piel.Rotulo);
+        Assert.StartsWith("2Ø½\" c/lado L=", piel.RotuloPulgadas);
+        Assert.Equal((2, true), (piel.Alturas, piel.Permitida));
+        Assert.True(piel.CabenPorLado >= 2);
+    }
+
+    [Fact]
+    public void Vista_Vigueta_PielNoPermitida()
+    {
+        PorticoLeido vigueta = Portico1() with { Elemento = Elemento.Vigueta };
+        PielVista piel = Armar(OpcionesTablero.DeVigueta with { Piel = new GrupoBarras(2, 4) }, vigueta).Piel!;
+
+        Assert.Equal((false, 0, 0), (piel.Permitida, piel.Alturas, piel.CabenPorLado));
+    }
+
+    [Fact]
+    public void Vista_SinPiel_SinAlturas()
+    {
+        VistaPortico v = Armar();
+
+        Assert.Equal((0, ""), (v.Piel!.Alturas, v.Piel.Rotulo));
+        // sin piel en las opciones dice igual cuántas caben (con #4), para que el + funcione al abrir (Juan, 06-nov)
+        Assert.True(v.Piel.CabenPorLado > 0);
+        Assert.DoesNotContain(v.Seccion.Barras, b => b.Piel);
+    }
+
+    [Fact]
+    public void Vista_PielEnCero_DiceCuantasCabenPorLado()
+    {
+        PielVista piel = Armar(OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(0, 4) }).Piel!;
+
+        Assert.Equal((0, ""), (piel.Alturas, piel.Rotulo));
+        Assert.True(piel.CabenPorLado > 0);
+    }
+
     [Fact]
     public void EnUnaVigueta_ElCorteDibujaLaGrapaYLaListaLaNombra()
     {

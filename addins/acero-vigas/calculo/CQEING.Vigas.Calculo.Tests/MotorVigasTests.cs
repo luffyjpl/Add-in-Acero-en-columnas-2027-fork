@@ -11,6 +11,15 @@ public class MotorVigasTests
         Superior: [new GrupoBarras(3, 5)], Inferior: [new GrupoBarras(3, 5)], Datos.ReglasSinRedondeo);
 
     [Fact]
+    public void LaPielAvisaVarillaLargaConSuElemento()
+    {
+        var e = new EntradaVigas(Datos.PorticoMaqueta(), TipoViga.Aerea, [new GrupoBarras(3, 5)], [new GrupoBarras(3, 5)],
+            Datos.ReglasDeLaMaqueta with { Varilla = 3000 }, Piel: new GrupoBarras(1, 4));
+
+        Assert.Contains(MotorVigas.Calcular(e).Avisos, a => a.Tipo == TipoAviso.VarillaLarga && a.Elemento.StartsWith('P'));
+    }
+
+    [Fact]
     public void LosIdsSiguenLaPosicionYVanDeIzquierdaADerecha()
     {
         ResultadoVigas r = MotorVigas.Calcular(Aerea());

@@ -70,13 +70,38 @@ public static class PlanificadorAcero
         bool PuedeCrecer(int i, bool alInicio) => i < corridas
             ? (alInicio ? barras[i].GanchoInicio : barras[i].GanchoFin) == TipoGancho.Sin
             : !(alInicio ? bordes[i - corridas].Inicio : bordes[i - corridas].Fin);
-        List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer);
+        // un bastón que llega al borde va hasta el límite, por la línea del gancho de las barras, y su gancho baja con el
+        // de ellas (Juan, 06-nov: quedaba metido por dentro del gancho)
+        bool AlLimite(int i, bool alInicio) => i >= corridas && !PuedeCrecer(i, alInicio);
+        List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
         barras = anidadas.Take(barras.Count).ToList();
         bastones = anidadas.Skip(barras.Count).ToList();
+        barras.AddRange(PiezasDePiel(c, u, r));
 
         List<GrupoEstribos> estribos = Estribos(c, p.Portico, o.Estribos, r, u);
         List<int> diametros = barras.Concat(bastones).Select(x => x.Diametro).Concat(estribos.Select(e => e.Diametro)).Distinct().Order().ToList();
         return new PlanAcero(idPortico, barras, bastones, sinLugar, estribos, diametros, montados);
+    }
+
+    /// <summary>
+    /// Las piezas de la piel (06-nov): cada barra <c>P*</c> sale una vez por altura y por lado. No se anidan con los ganchos
+    /// de arriba y abajo: van a media altura, y la de la mitad de arriba dobla hacia arriba (<see cref="RepartidorPiel.GanchoArriba"/>).
+    /// El traslapo va al lado, como en las corridas (decisión 2 del plan de #85): la segunda, cuarta… barra se corre un
+    /// diámetro hacia el centro de la viga (Juan, 06-nov: en Revit las barras de piel traslapaban una dentro de la otra).
+    /// </summary>
+    private static IEnumerable<PiezaLongitudinal> PiezasDePiel(PorticoCalculado c, UbicacionPortico u, Reglas r)
+    {
+        if (c.Vigas.Piel is not { } piel || c.Piel is not { } ubicacion)
+            return [];
+        return piel.Barras.OrderBy(b => b.Desde).SelectMany((b, i) => ubicacion.Alturas.SelectMany(a =>
+        {
+            MedidaBarra m = b.Medida(a.Izquierda.Diametro);
+            bool arriba = RepartidorPiel.GanchoArriba(a.Altura, ubicacion.Alturas.Count);
+            double alLado = i % 2 == 1 ? r.PorDiametro[a.Izquierda.Diametro].Diametro : 0;
+            return new[] { (Barra: a.Izquierda, HaciaElCentro: 1), (Barra: a.Derecha, HaciaElCentro: -1) }.Select(s =>
+                new PiezaLongitudinal(b.Id, b.Capa, s.Barra.Diametro, s.Barra.X + s.HaciaElCentro * alLado, s.Barra.Y,
+                    m.Desde, m.Hasta, b.TipoInicio, b.TipoFin, Host(u, m.Desde, m.Hasta), m.Largo, a.Altura, arriba));
+        }));
     }
 
     /// <summary>
@@ -107,7 +132,9 @@ public static class PlanificadorAcero
     /// ahí lo que se corrió y conserva su largo, en múltiplo del módulo (Juan, 29-oct: la #5 de la fila 2 quedaba de 3.436
     /// en vez de 3.50, y un bastón con gancho de 1.246).
     /// </summary>
-    private static List<PiezaLongitudinal> AnidarGanchos(List<PiezaLongitudinal> piezas, Reglas r, Func<int, bool, bool> puedeCrecer)
+    /// <param name="alLimite">Índice de la pieza y si es la punta del inicio: un bastón en el borde no se corre, queda en el límite.</param>
+    private static List<PiezaLongitudinal> AnidarGanchos(List<PiezaLongitudinal> piezas, Reglas r, Func<int, bool, bool> puedeCrecer,
+        Func<int, bool, bool> alLimite)
     {
         const double tolerancia = 1e-6;
         PiezaLongitudinal[] p = piezas.ToArray();
@@ -125,6 +152,8 @@ public static class PlanificadorAcero
             {
                 for (int k = 0; k < capa.Length; k++)
                 {
+                    if (alLimite(capa[k], inicio))
+                        continue;
                     PiezaLongitudinal adentro = p[capa[k]];
                     int punta = Punta(adentro);
                     foreach (PiezaLongitudinal afuera in capa.Take(k).Select(i => p[i]))

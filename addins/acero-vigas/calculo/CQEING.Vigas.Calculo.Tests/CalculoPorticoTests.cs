@@ -1,5 +1,6 @@
 using CQEING.Vigas.Calculo.Modelo;
 using CQEING.Vigas.Calculo.Porticos;
+using CQEING.Vigas.Calculo.Seccion;
 using CQEING.Vigas.Calculo.Tablero;
 
 namespace CQEING.Vigas.Calculo.Tests;
@@ -47,6 +48,71 @@ public class CalculoPorticoTests
     {
         Superior = [new GrupoBarras(1, 4)], Inferior = [new GrupoBarras(1, 4)], RecubrimientoCm = 2.5,
     };
+
+    [Fact]
+    public void Calcular_ConPiel_UbicaLaPielConElTramoMasBajo()
+    {
+        PorticoLeido p = ArmadorVistaTests.Portico1();
+        p = p with { Tramos = p.Tramos.Select((t, i) => t with { Alto = i % 2 == 0 ? 500 : 400 }).ToList() };
+        var o = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(2, 4) };
+
+        PorticoCalculado c = CalculoPortico.Calcular(p, o, Reglas.Generales)!;
+
+        EntradaSeccion s = CalculoPortico.Seccion(p, o, Reglas.Generales);
+        UbicacionPiel esperada = RepartidorPiel.Ubicar(s, RepartidorFilas.Repartir(s), new GrupoBarras(2, 4), 400);
+        UbicacionPiel con500 = RepartidorPiel.Ubicar(s, RepartidorFilas.Repartir(s), new GrupoBarras(2, 4), 500);
+        Assert.Equal(2, c.Piel!.Alturas.Count);
+        Assert.Equal(esperada.Alturas.Select(a => a.Izquierda.Y), c.Piel.Alturas.Select(a => a.Izquierda.Y));
+        Assert.NotEqual(con500.Alturas[0].Izquierda.Y, c.Piel.Alturas[0].Izquierda.Y);
+        Assert.NotNull(c.Vigas.Piel);
+    }
+
+    [Fact]
+    public void Calcular_ConPielQueNoCabe_LaEntradaVaSinPiel()
+    {
+        var o = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(30, 4) };
+
+        PorticoCalculado c = CalculoPortico.Calcular(ArmadorVistaTests.Portico1(), o, Reglas.Generales)!;
+
+        int caben = c.Piel!.Alturas.Count;
+        Assert.InRange(caben, 1, 29);
+        Assert.All(c.Vigas.Piel!.Barras, b => Assert.Equal([new GrupoBarras(2 * caben, 4)], b.Grupos));
+    }
+
+    [Fact]
+    public void Calcular_PielEnCero_DiceCuantasCaben()
+    {
+        var o = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(0, 4) };
+
+        PorticoCalculado c = CalculoPortico.Calcular(ArmadorVistaTests.Portico1(), o, Reglas.Generales)!;
+
+        Assert.Empty(c.Piel!.Alturas);
+        Assert.True(c.Piel.CabenPorLado > 0);
+        Assert.Null(c.Vigas.Piel);
+    }
+
+    [Fact]
+    public void Calcular_Vigueta_NoPonePielYAvisa()
+    {
+        var o = UnaBarra with { Piel = new GrupoBarras(2, 4) };
+
+        PorticoCalculado c = CalculoPortico.Calcular(Vigueta(), o, Reglas.Generales)!;
+
+        Assert.Null(c.Vigas.Piel);
+        Assert.Null(c.Piel);
+        Assert.Contains(c.Avisos, a => a.Tipo == TipoAviso.PielNoPermitida);
+        Assert.Equal(CalculoPortico.Calcular(Vigueta(), UnaBarra, Reglas.Generales)!.SePuedeGenerar, c.SePuedeGenerar);
+    }
+
+    [Fact]
+    public void DiametrosSinReglas_IncluyeLaPiel()
+    {
+        var o = OpcionesTablero.PorDefecto with { Piel = new GrupoBarras(2, 2) };
+        Reglas sinDos = Reglas.Generales with { PorDiametro = Reglas.Generales.PorDiametro.Where(k => k.Key != 2).ToDictionary(k => k.Key, k => k.Value) };
+
+        Assert.Contains(2, CalculoPortico.DiametrosSinReglas(o, sinDos));
+        Assert.Null(CalculoPortico.Calcular(ArmadorVistaTests.Portico1(), o, sinDos));
+    }
 
     [Fact]
     public void UnaViguetaConUnaBarraPorCara_SePuedeGenerar()

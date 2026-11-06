@@ -34,6 +34,18 @@ public class AgrupadorBarrasTests
         Assert.Same(c.Piezas[0], c.Primera);
     }
 
+    [Fact]
+    public void Piel_IzquierdaYDerechaDeUnaFila_UnConjuntoDeDos()
+    {
+        PiezaLongitudinal Piel(double x, bool arriba) => Pieza(x, 250, "P1", 2) with { Capa = Posicion.Piel, GanchoArriba = arriba };
+
+        List<ConjuntoBarras> c = AgrupadorBarras.Agrupar([Piel(61, true), Piel(239, true), Piel(61, false), Piel(239, false)]);
+
+        Assert.Equal(2, c.Count);
+        Assert.All(c, k => Assert.Equal(2, k.Piezas.Count));
+        Assert.All(c, k => Assert.Single(k.Piezas.Select(p => p.GanchoArriba).Distinct()));
+    }
+
     [Theory]
     [InlineData("pieza")]
     [InlineData("fila")]

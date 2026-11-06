@@ -104,11 +104,23 @@ internal static class CalculadorBastones
         int ganchoInicio = e.Reglas.LargoGanchoRedondeado(regla, tipoInicio), ganchoFin = e.Reglas.LargoGanchoRedondeado(regla, tipoFin);
         desde = Math.Max(desde, g.InicioBarras);
         hasta = Math.Min(hasta, g.FinBarras);
+        // el largo escrito en un bastón del borde es el total, gancho incluido (Juan, 06-nov: se cortaba en el borde y
+        // quedaba de otro largo): la punta del borde queda en el límite y la otra sale del largo escrito
+        bool escritoEnBorde = escrito > 0 && puntas is null && bordeInicio != bordeFin
+            && escrito.Value - ganchoInicio - ganchoFin > 0;
+        if (escritoEnBorde)
+        {
+            int recto = escrito!.Value - ganchoInicio - ganchoFin;
+            if (bordeInicio)
+                hasta = Math.Min(g.FinBarras, desde + recto);
+            else
+                desde = Math.Max(g.InicioBarras, hasta - recto);
+        }
         int total = hasta - desde + ganchoInicio + ganchoFin;
         // con gancho, el total sube al múltiplo y el sobrante va a la otra punta (decisión 9 del plan de #84, Carlos 17-oct:
         // "1.95… va a aumentar cinco para afuera"), venga de los botones o del "con gancho" general (Juan, 29-oct: quedaban
-        // de 1.31); el escrito sin gancho no se redondea
-        if ((bordeInicio && tipoInicio != TipoGancho.Sin) || (bordeFin && tipoFin != TipoGancho.Sin))
+        // de 1.31); el escrito no se redondea
+        if (!escritoEnBorde && ((bordeInicio && tipoInicio != TipoGancho.Sin) || (bordeFin && tipoFin != TipoGancho.Sin)))
         {
             int modulo = e.Reglas.Modulo, sobra = (total + modulo - 1) / modulo * modulo - total;
             if (bordeInicio && !bordeFin)

@@ -1,3 +1,4 @@
+using CQEING.Vigas.Calculo.Nucleo;
 using CQEING.Vigas.Calculo.Modelo;
 using CQEING.Vigas.Calculo.Vigas;
 
@@ -44,9 +45,12 @@ public static class MotorVigas
             avisos.AddRange(Avisos.De(capaCara, usada == Cara.Inicio ? solucionFinal : solucionInicio, otra, varilla));
 
         IReadOnlyList<Baston> bastones = CalculadorBastones.Calcular(entrada, g, avisos);
+        SolucionCapa? piel = CalcularPiel(entrada, g, capaDeLaCara, usada, avisos);
+        if (piel is not null)
+            avisos.AddRange(Avisos.De(piel, otraCara: null, otra, varilla));
         return capaDeLaCara == Posicion.Inferior
-            ? new ResultadoVigas(capaCentro, capaCara, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones)
-            : new ResultadoVigas(capaCara, capaCentro, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones);
+            ? new ResultadoVigas(capaCentro, capaCara, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones, piel)
+            : new ResultadoVigas(capaCara, capaCentro, capaDeLaCara, solucionInicio, solucionFinal, usada, masEconomica, avisos, bastones, piel);
     }
 
     /// <summary>Cómo quedaría el pórtico si la barra <paramref name="id"/> pasa a <paramref name="nuevoLargo"/> (Subir / Bajar).</summary>
@@ -98,12 +102,13 @@ public static class MotorVigas
     /// </summary>
     public static Previsualizacion PrevisualizarBaston(EntradaVigas entrada, string id, int largo)
     {
-        if (Calcular(entrada).Bastones.All(b => b.Id != id))
+        if (Calcular(entrada).Bastones.FirstOrDefault(b => b.Id == id) is not { } actual)
             return new Previsualizacion(false, MotivoBloqueo.NoExiste, null);
         if (largo <= 0)
             return new Previsualizacion(false, MotivoBloqueo.LargoNoValido, null);
         ArmadoBastones armado = entrada.Bastones ?? new ArmadoBastones();
-        if (CalculadorBastones.LargoDe(armado, id) == largo)
+        // se compara con el largo que tiene (en el borde, cortado y con gancho), no con el general
+        if (actual.Largo == largo)
             return new Previsualizacion(false, MotivoBloqueo.SinCambio, null);
         ResultadoVigas r = Calcular(entrada with { Bastones = armado with { Largos = Con(armado.Largos, id, largo) } });
         return new Previsualizacion(true, MotivoBloqueo.Ninguno, r);
@@ -134,6 +139,28 @@ public static class MotorVigas
     }
 
     /// <summary>
+    /// El gancho de una punta de la piel (<c>"P.inicio"</c>…): sin gancho si no se cambió, y "Sin" es válido (06-nov,
+    /// a diferencia de las corridas del borde).
+    /// </summary>
+    private static TipoGancho GanchoPiel(CambiosManuales? cambios, string clave) =>
+        cambios?.Ganchos?.TryGetValue(clave, out TipoGancho tipo) == true ? tipo : TipoGancho.Sin;
+
+    /// <summary>
+    /// La piel (06-nov): corre todo el pórtico hasta el límite con la geometría común y traslapa con la referencia de la
+    /// capa de arriba (la del centro en la aérea; la cara elegida en la cimentación).
+    /// </summary>
+    private static SolucionCapa? CalcularPiel(EntradaVigas e, GeometriaPortico g, Posicion capaDeLaCara, Cara usada, List<Aviso> avisos)
+    {
+        if (e.Piel is not { Cantidad: > 0 } piel)
+            return null;
+        Cara caraDeArriba = capaDeLaCara == Posicion.Superior ? usada : Cara.Inicio;
+        Referencia referencia = GeometriaPortico.ReferenciaDe(e.Tipo, Posicion.Superior, caraDeArriba);
+        CapaCalculada? calculada = Resolver(e, g, Posicion.Piel, [new GrupoBarras(2 * piel.Cantidad, piel.Diametro)], referencia,
+            GanchoPiel(e.Cambios, "P.inicio"), GanchoPiel(e.Cambios, "P.fin"), avisos);
+        return calculada is null ? null : AplicadorCambios.Aplicar(calculada, g, e.Cambios, avisos);
+    }
+
+    /// <summary>
     /// Dónde terminan las barras corridas de <paramref name="capa"/>. Las de abajo terminan antes, la mitad del diámetro de
     /// arriba más la mitad del de abajo: la pata de su gancho queda pegada por dentro a la de arriba (ganchos anidados, como
     /// se arma en obra). Con las dos capas hasta el mismo borde las patas quedaban una encima de otra (#85, novena prueba
@@ -141,7 +168,7 @@ public static class MotorVigas
     /// </summary>
     public static GeometriaPortico GeometriaDe(EntradaVigas e, Posicion capa, GeometriaPortico comun)
     {
-        if (capa == Posicion.Superior)
+        if (capa != Posicion.Inferior)
             return comun;
         double Mayor(IReadOnlyList<GrupoBarras> grupos) => e.Reglas.PorDiametro[grupos.Max(gr => gr.Diametro)].Diametro;
         int anidado = (int)Math.Round((Mayor(e.Superior) + Mayor(e.Inferior)) / 2);
@@ -152,17 +179,23 @@ public static class MotorVigas
         new(actuales ?? new Dictionary<string, int>()) { [id] = valor };
 
     private static IEnumerable<int> DiametrosSinTraslapo(EntradaVigas e) =>
-        e.Superior.Concat(e.Inferior).Select(gr => gr.Diametro).Distinct().Order()
+        e.Superior.Concat(e.Inferior).Concat(e.Piel is { Cantidad: > 0 } ? [e.Piel] : []).Select(gr => gr.Diametro).Distinct().Order()
             .Where(d => !e.Reglas.PorDiametro.TryGetValue(d, out ReglaDiametro? r) || r.Traslapo is null);
 
     private static CapaCalculada? Resolver(EntradaVigas e, GeometriaPortico g, Posicion capa, Cara cara, List<Aviso> avisos)
     {
         IReadOnlyList<GrupoBarras> grupos = capa == Posicion.Superior ? e.Superior : e.Inferior;
+        string prefijo = capa == Posicion.Superior ? "S" : "I";
+        return Resolver(e, g, capa, grupos, GeometriaPortico.ReferenciaDe(e.Tipo, capa, cara),
+            GanchoCorrida(e.Cambios, prefijo + ".inicio", avisos), GanchoCorrida(e.Cambios, prefijo + ".fin", avisos), avisos);
+    }
+
+    private static CapaCalculada? Resolver(EntradaVigas e, GeometriaPortico g, Posicion capa, IReadOnlyList<GrupoBarras> grupos,
+        Referencia referencia, TipoGancho inicio, TipoGancho fin, List<Aviso> avisos)
+    {
         int diametro = grupos.Max(gr => gr.Diametro);
         ReglaDiametro regla = e.Reglas.PorDiametro[diametro];
-        string prefijo = capa == Posicion.Superior ? "S" : "I";
-        TipoGancho inicio = GanchoCorrida(e.Cambios, prefijo + ".inicio", avisos), fin = GanchoCorrida(e.Cambios, prefijo + ".fin", avisos);
-        var parametros = new ParametrosCapa(GeometriaPortico.ReferenciaDe(e.Tipo, capa, cara), regla.Traslapo!.Value,
+        var parametros = new ParametrosCapa(referencia, regla.Traslapo!.Value,
             e.Reglas.LargoGanchoRedondeado(regla, inicio), e.Reglas.LargoGanchoRedondeado(regla, fin), e.Reglas.Modulo, e.Reglas.Varilla, e.Reglas.VarillaLarga,
             inicio, fin);
 
