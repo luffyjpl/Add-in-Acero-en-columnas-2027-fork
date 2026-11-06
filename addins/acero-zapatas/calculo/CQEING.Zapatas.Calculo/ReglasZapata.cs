@@ -14,7 +14,7 @@ public static class ReglasZapata
     /// <summary>El largo que suma un gancho del cuadro, en mm, con la misma clase que vigas y sin redondeo propio.</summary>
     public static int LargoGancho(Reglas reglas, int numero, Terminacion t) => t switch
     {
-        Terminacion.Gancho135 => Reglas.LargoGancho(reglas.PorDiametro[numero], TipoGancho.De135),
+        Terminacion.Gancho135 or Terminacion.Cerrada => Reglas.LargoGancho(reglas.PorDiametro[numero], TipoGancho.De135),
         Terminacion.Gancho180 => Reglas.LargoGancho(reglas.PorDiametro[numero], TipoGancho.De180),
         _ => 0,
     };

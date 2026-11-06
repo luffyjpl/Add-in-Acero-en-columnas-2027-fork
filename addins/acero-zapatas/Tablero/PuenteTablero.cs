@@ -1,7 +1,12 @@
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using Autodesk.Revit.UI.Selection;
+using CQEING.Vigas.Calculo.Generacion;
+using System.IO;
 using CQEING.Vigas.Calculo.Modelo;
+using CQEING.Vigas.Calculo.Tablero;
 using CQEING.Zapatas.Calculo;
 using CQEING.Zapatas.Revit;
 
@@ -9,24 +14,32 @@ namespace CQEING.Zapatas.Tablero;
 
 /// <summary>
 /// Une la página del tablero con Revit (#252). Calcular no usa la API y se contesta enseguida; leer, seleccionar y generar
-/// van al hilo de Revit por <see cref="AccionesRevit"/>.
+/// van al hilo de Revit por <see cref="AccionesRevit"/>. Sigue al modelo activo como vigas: al cambiar de modelo o cerrarlo,
+/// el tablero se recarga (decisión 33 del plan docs/planes/2026-11-05-correcciones-zapatas-reunion.md).
 /// </summary>
 internal sealed class PuenteTablero
 {
     private readonly VentanaTablero ventana;
-    private readonly Document doc;
+    private readonly UIApplication uiapp;
     private readonly AccionesRevit acciones = new();
-    private readonly Reglas reglas = Reglas.Generales;
+    private Document? doc;
+    /// <summary>Las reglas compartidas con vigas (decisión 38): se leen al recargar y al guardarlas.</summary>
+    private readonly AlmacenReglas almacen = new(AlmacenReglas.RutaPorDefecto);
+    private ReglasCargadas cargadas = new(Reglas.Generales, null);
+    private Reglas reglas => cargadas.Reglas;
     private List<ZapataLeida> zapatas = [];
     private CatalogoZapatas catalogo = new([], [], []);
 
-    public PuenteTablero(VentanaTablero ventana, Document doc)
+    public PuenteTablero(VentanaTablero ventana, UIApplication uiapp)
     {
         this.ventana = ventana;
-        this.doc = doc;
+        this.uiapp = uiapp;
+        doc = uiapp.ActiveUIDocument?.Document;
         ventana.MensajeRecibido += Recibir;
         acciones.Fallo += texto => ventana.Enviar(ProtocoloZapatas.Aviso($"No se pudo hacer en Revit: {texto}"));
-        ventana.Closed += (_, _) => acciones.Dispose();
+        uiapp.ViewActivated += AlActivarVista;
+        uiapp.Application.DocumentClosing += AlCerrarDocumento;
+        ventana.Closed += (_, _) => Soltar();
     }
 
     private void Recibir(string json)
@@ -50,34 +63,62 @@ internal sealed class PuenteTablero
 
     private void Atender(UIApplication app, MensajeZapatas mensaje)
     {
-        if (!doc.IsValidObject)
+        if (mensaje is ListoZapatas)
         {
-            ventana.Enviar(ProtocoloZapatas.Aviso("El modelo se cerró. Cierre esta ventana y vuelva a abrirla."));
+            Recargar(app);
+            return;
+        }
+        if (mensaje is GuardarReglasZapatas g)
+        {
+            GuardarReglas(app, g.Reglas);
+            return;
+        }
+        // Lo que toca el modelo se hace solo sobre el leído, y solo si sigue siendo el activo: si no, se mezclarían
+        // elementos de un modelo con la vista o la selección de otro.
+        if (doc is null || !doc.IsValidObject || app.ActiveUIDocument?.Document is not Document activo || !activo.Equals(doc))
+        {
+            Recargar(app);
             return;
         }
         switch (mensaje)
         {
-            case ListoZapatas:
-                Leer();
-                break;
             case SeleccionarEnRevit:
-                Seleccionar(app);
+                Seleccionar(app, doc);
                 break;
             case MostrarEnRevit m:
-                Mostrar(app, m.Ids);
+                Mostrar(app, doc, m.Ids);
                 break;
             case AplicarZapatas a:
-                Aplicar(app, a);
+                Aplicar(app, doc, a);
                 break;
         }
     }
 
-    private void Leer()
+    /// <summary>Lee el modelo activo; sin modelo de proyecto, el tablero queda vacío y lo dice.</summary>
+    private void Recargar(UIApplication app)
     {
+        doc = app.ActiveUIDocument?.Document;
+        if (doc is null || doc.IsFamilyDocument)
+        {
+            doc = null;
+            zapatas = [];
+            catalogo = new([], [], []);
+            ventana.Enviar(ProtocoloZapatas.Datos("", zapatas, [], catalogo, new Dictionary<string, (int, int)>()));
+            ventana.Enviar(ProtocoloZapatas.Aviso("No hay un modelo de proyecto abierto. Abra uno para armar las zapatas."));
+            return;
+        }
+        Leer(doc);
+    }
+
+    private void Leer(Document doc)
+    {
+        cargadas = almacen.Cargar();
         zapatas = LectorZapatas.Leer(doc);
         catalogo = TiposZapata.Catalogo(doc, reglas);
         var existentes = zapatas.ToDictionary(z => z.Id, z => doc.GetElement(Id(z.Id)) is { } e ? MarcaZapata.Contar(e) : (0, 0));
-        ventana.Enviar(ProtocoloZapatas.Datos(doc.Title, zapatas, Grupos(zapatas), catalogo, existentes));
+        ventana.Enviar(ProtocoloZapatas.Datos(doc.Title, zapatas, Grupos(zapatas), catalogo, existentes, cargadas));
+        if (cargadas.Problema is { } problema)
+            ventana.Enviar(ProtocoloZapatas.Aviso(problema));
         if (zapatas.Count == 0)
             ventana.Enviar(ProtocoloZapatas.Aviso("El modelo no tiene zapatas que puedan llevar acero (categoría Cimentación estructural)."));
     }
@@ -95,13 +136,50 @@ internal sealed class PuenteTablero
         var errores = new List<string>();
         if (Grupos(elegidas).Count > 1)
             errores.Add("Las zapatas elegidas no son iguales: la misma configuración no se puede aplicar a todas. Elija un solo grupo.");
-        ResultadoZapata r = MotorParrillas.Calcular(elegidas[0].Entrada, c.Config, reglas);
+        (ResultadoZapata r, IReadOnlyList<Trazo> trazos, IReadOnlyList<ChoqueZapata> choques) = Previa(elegidas[0], c.Config, c.Tipos);
         avisos.AddRange(r.Avisos);
         errores.AddRange(r.Errores);
         foreach ((string nombre, ConfigDireccion d) in new[] { ("X", c.Config.X), ("Y", c.Config.Y) })
             if (Grados(d.Terminacion) is int grados && ReglasZapata.AvisoTabla(reglas, d.Numero, grados, catalogo.Barras.FirstOrDefault(b => b.Numero == d.Numero)?.Doblado) is { } aviso)
                 avisos.Add($"Dirección {nombre}: {aviso}");
-        ventana.Enviar(ProtocoloZapatas.Resultado(r, c.Ids, avisos, errores));
+        ventana.Enviar(ProtocoloZapatas.Resultado(r, c.Ids, avisos, errores, trazos, choques));
+    }
+
+    /// <summary>
+    /// Lo que se verá y se creará, con lo elegido en el catálogo (paso 6 del plan de 2026-11-05): el cálculo, las barras
+    /// como trazos y dónde chocan. La misma cuenta para la vista previa y para decidir si «Aplicar» pregunta.
+    /// </summary>
+    private (ResultadoZapata R, IReadOnlyList<Trazo> Trazos, IReadOnlyList<ChoqueZapata> Choques) Previa(ZapataLeida z, ConfigParrillas config, TiposElegidos tipos)
+    {
+        ConfigParrillas conTipos = ProtocoloZapatas.ConTipos(config, tipos, catalogo);
+        ResultadoZapata r = MotorParrillas.Calcular(z.Entrada, conTipos, reglas);
+        IReadOnlyList<Trazo> trazos = TrazosZapata.Trazos(r.Conjuntos, reglas, conTipos.Doblados, conTipos.DobladosEstribo);
+        return (r, trazos, TrazosZapata.Choques(r.Conjuntos, trazos));
+    }
+
+    /// <summary>
+    /// «Guardar y bloquear»: guarda en el archivo de vigas y vuelve a leer el modelo, para que el catálogo, la vista previa
+    /// y lo que se genere usen las reglas nuevas (decisión 38). Como <c>SesionTablero.Guardar</c> de vigas.
+    /// </summary>
+    private void GuardarReglas(UIApplication app, VistaReglas pantalla)
+    {
+        (Reglas? nuevas, string? error) = ProtocoloZapatas.ReglasAGuardar(pantalla, reglas);
+        if (nuevas is null)
+        {
+            ventana.Enviar(ProtocoloZapatas.Aviso($"No se guardaron las reglas: {error}"));
+            return;
+        }
+        try
+        {
+            almacen.Guardar(nuevas);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            ventana.Enviar(ProtocoloZapatas.Aviso($"No se pudieron guardar las reglas: {e.Message}"));
+            return;
+        }
+        Recargar(app);
+        ventana.Enviar(ProtocoloZapatas.Aviso("Reglas guardadas para vigas y zapatas en este PC.", bien: true));
     }
 
     private static int? Grados(Terminacion t) => t switch
@@ -112,30 +190,40 @@ internal sealed class PuenteTablero
         _ => null,
     };
 
-    private void Seleccionar(UIApplication app)
+    private void Seleccionar(UIApplication app, Document doc)
     {
         UIDocument ui = app.ActiveUIDocument;
         HashSet<string> conocidas = zapatas.Select(z => z.Id).ToHashSet();
         List<string> ids = ui.Selection.GetElementIds().Select(i => i.ToString()).Where(conocidas.Contains).ToList();
-        if (ids.Count == 0)
+        // El tablero se aparta para dejar ver Revit y vuelve con lo elegido (decisión 40, como vigas).
+        ventana.Apartar();
+        try
         {
-            ventana.Enviar(ProtocoloZapatas.Aviso("Elija las zapatas en Revit y pulse Terminar en la barra de opciones."));
-            ids = ui.Selection.PickObjects(ObjectType.Element, new SoloZapatas(conocidas), "Elija las zapatas").Select(r => r.ElementId.ToString()).ToList();
+            if (ids.Count == 0)
+            {
+                ventana.Enviar(ProtocoloZapatas.Aviso("Elija las zapatas en Revit y pulse Terminar en la barra de opciones."));
+                ids = ui.Selection.PickObjects(ObjectType.Element, new SoloZapatas(conocidas), "Elija las zapatas").Select(r => r.ElementId.ToString()).ToList();
+            }
+            ventana.Enviar(ProtocoloZapatas.Seleccion(ids));
         }
-        ventana.Enviar(ProtocoloZapatas.Seleccion(ids));
-        ventana.Volver();
+        finally
+        {
+            ventana.Volver();
+        }
     }
 
-    private void Mostrar(UIApplication app, IReadOnlyList<string> ids)
+    /// <summary>Selecciona y muestra las zapatas en Revit; el tablero se aparta y vuelve con el botón de la cinta (decisión 40).</summary>
+    private void Mostrar(UIApplication app, Document doc, IReadOnlyList<string> ids)
     {
         List<ElementId> elementos = ids.Select(Id).Where(i => doc.GetElement(i) is not null).ToList();
         if (elementos.Count == 0)
             return;
+        ventana.Apartar();
         app.ActiveUIDocument.Selection.SetElementIds(elementos);
         app.ActiveUIDocument.ShowElements(elementos);
     }
 
-    private void Aplicar(UIApplication app, AplicarZapatas a)
+    private void Aplicar(UIApplication app, Document doc, AplicarZapatas a)
     {
         List<ZapataLeida> elegidas = Elegidas(a.Ids);
         if (elegidas.Count == 0)
@@ -145,8 +233,14 @@ internal sealed class PuenteTablero
             ventana.Enviar(ProtocoloZapatas.Aviso("Las zapatas elegidas no son iguales: no se les puede aplicar la misma configuración."));
             return;
         }
-        ResumenGeneracion r = GeneradorZapatas.Generar(doc, elegidas, a.Config, new EleccionTipos(a.FormaX, a.FormaY, a.GanchoX, a.GanchoY), reglas, app.ActiveUIDocument.ActiveView);
-        Leer();
+        // Con choques no se genera sin preguntar: la página ofrece «Revisar» o «Aplicar de todos modos» (decisión 35).
+        if (!a.Forzar && Previa(elegidas[0], a.Config, a.Tipos).Choques.Count is > 0 and int choques)
+        {
+            ventana.Enviar(ProtocoloZapatas.Choques(choques));
+            return;
+        }
+        ResumenGeneracion r = GeneradorZapatas.Generar(doc, elegidas, a.Config, a.Tipos, reglas, app.ActiveUIDocument.ActiveView);
+        Leer(doc);
         if (r.Hecho)
         {
             string resto = r.Fallas.Count > 0 ? $" Revise: {string.Join(" ", r.Fallas)}" : " Ctrl+Z en Revit lo deshace.";
@@ -156,6 +250,54 @@ internal sealed class PuenteTablero
         {
             ventana.Enviar(ProtocoloZapatas.Aviso($"No se creó nada; el modelo quedó como estaba. {string.Join(" ", r.Fallas)}"));
         }
+    }
+
+    // Los manejadores de eventos de Revit nunca dejan escapar una excepción: Revit los llama desde su lado nativo y
+    // podría caerse entero. Solo encolan; el trabajo corre en AccionesRevit, que ya atrapa los errores. Igual que vigas.
+
+    /// <summary>Otro modelo pasó a ser el activo: el tablero muestra sus zapatas.</summary>
+    private void AlActivarVista(object? sender, ViewActivatedEventArgs e)
+    {
+        try
+        {
+            if (!e.Document.Equals(doc))
+                acciones.Encolar(Recargar);
+        }
+        catch
+        {
+            // ver arriba
+        }
+    }
+
+    /// <summary>Se cierra el modelo leído: al terminar, el tablero lee el que quede activo (o ninguno).</summary>
+    private void AlCerrarDocumento(object? sender, DocumentClosingEventArgs e)
+    {
+        try
+        {
+            if (e.Document.Equals(doc))
+            {
+                doc = null;
+                acciones.Encolar(Recargar);
+            }
+        }
+        catch
+        {
+            // ver arriba
+        }
+    }
+
+    private void Soltar()
+    {
+        try
+        {
+            uiapp.ViewActivated -= AlActivarVista;
+            uiapp.Application.DocumentClosing -= AlCerrarDocumento;
+        }
+        catch
+        {
+            // Revit puede estar cerrándose.
+        }
+        acciones.Dispose();
     }
 
     private List<ZapataLeida> Elegidas(IReadOnlyList<string> ids) => ids.Select(i => zapatas.FirstOrDefault(z => z.Id == i)).OfType<ZapataLeida>().ToList();
