@@ -830,6 +830,8 @@
         pielMenos: () => this.cambiar({ pielN: String(Math.max(0, pielCant - 1)) }),
         pielMas: () => this.cambiar({ pielN: String(Math.min(pielCaben, pielCant + 1)) }),
         setPielD: (e) => this.cambiar({ pielD: e.target.value }),
+        // también se escribe a mano (Juan, 06-nov); se recorta a las que caben al mostrarla y al mandarla
+        setPielN: (e) => this.cambiar({ pielN: e.target.value }),
         rulesWarn: s.rulesWarn,
         // abierta, la lista de barras toma todo el alto que sobra en la columna (Juan, 19-oct: "que la tabla llegue al límite")
         listOpen: s.listOpen, listLabel: s.listOpen ? 'Ocultar' : 'Ver lista', rows: rowsList.concat(estRows),
@@ -1459,7 +1461,7 @@
               <div style="display: flex; align-items: center; gap: 8px">
                 <div style="display: flex; align-items: center; border: 1px solid #C9CFD6; border-radius: 6px; height: 32px">
                   <button type="button" aria-label="Quitar barra de piel" disabled=${v.pielMenosOff} onClick=${v.pielMenos} style="width: 30px; height: 30px; border: 0; background: transparent; font: inherit; cursor: ${v.pielMenosOff ? 'default' : 'pointer'}; opacity: ${v.pielMenosOff ? 0.4 : 1}">−</button>
-                  <span style="width: 28px; text-align: center; font-family: 'IBM Plex Mono', monospace">${v.pielN}</span>
+                  <input type="text" inputmode="numeric" aria-label="Barras de piel por lado" value=${v.pielN} disabled=${!v.pielPermitida} onFocus=${(e) => e.target.select()} onInput=${v.setPielN} style="width: 28px; height: 28px; padding: 0; border: 0; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #16191D; background: transparent" />
                   <button type="button" aria-label="Añadir barra de piel" disabled=${v.pielMasOff} onClick=${v.pielMas} style="width: 30px; height: 30px; border: 0; background: transparent; font: inherit; cursor: ${v.pielMasOff ? 'default' : 'pointer'}; opacity: ${v.pielMasOff ? 0.4 : 1}">+</button>
                 </div>
                 <span style="color: #5E6670">por lado</span>

@@ -102,10 +102,13 @@
       // abajo, y todo lo que va debajo de su eje (y = 85) baja con ella. Sigue sin ser a escala ("no es real").
       const filasDe = (cara) => (cara && cara.porFila && cara.porFila.length) || 1;
       const exFilas = 14 * (filasDe(p.superior) - 1 + filasDe(p.inferior) - 1);
-      // piel (06-nov): una línea por altura entre y = 76 y y = 94; con más de 3 el alzado crece lo necesario para dejar
-      // al menos 6 unidades entre línea y línea
+      // piel (06-nov): la viga crece una franja propia en su eje (y = 85), con una línea cada 8 unidades, para que la piel
+      // no quede encima de los bastones ni de sus rótulos (Juan, 06-nov: "que crezca la viga para que no se ponga todo
+      // encima de todo"). Todo lo de debajo del eje baja con ella, como con las filas de más.
       const nPiel = (p.piel && p.piel.alturas) || 0;
-      const ex = exFilas + Math.max(0, 6 * (nPiel - 1) - (18 + exFilas));
+      const PASO_PIEL = 8, MARGEN_PIEL = 10;
+      const exPiel = nPiel ? 2 * MARGEN_PIEL + PASO_PIEL * (nPiel - 1) : 0;
+      const ex = exFilas + exPiel;
       const Y = (y) => (y > 85 ? y + ex : y);
       const FH = 170 + ex;
       const CH = 204 + ex;
@@ -162,10 +165,10 @@
       });
 
       const warnLap = warn ? this.props.warnLap : '';
-      // el rectángulo de un traslapo: el de la piel cubre sus líneas de arriba a abajo
-      const yPielArriba = 76, yPielAbajo = Y(94);
+      // el rectángulo de un traslapo: el de la piel abraza sus líneas, ceñido (Juan, 06-nov: estaba muy grande)
+      const yPielArriba = 85 + MARGEN_PIEL, yPielAbajo = yPielArriba + PASO_PIEL * Math.max(0, nPiel - 1);
       const geomTraslapo = (t) => {
-        if (t.capa === 'piel') return { isC: false, ry: yPielArriba - 6, h: yPielAbajo - yPielArriba + 12 };
+        if (t.capa === 'piel') return { isC: false, ry: yPielArriba - 3, h: yPielAbajo - yPielArriba + 6 };
         const isC = arribaAntes(t.capa);
         return { isC, ry: Y(isC ? 45 : 106), h: 18 };
       };
@@ -183,7 +186,7 @@
 
       // piel (06-nov): una polilínea por altura, más delgada que las corridas y los bastones, con un solo rótulo sobre la
       // altura de arriba (los dos lados caen en la misma línea). Ganchos chicos, "Sin" por defecto.
-      const yPiel = (i) => (nPiel < 2 ? (yPielArriba + yPielAbajo) / 2 : yPielArriba + (yPielAbajo - yPielArriba) * i / (nPiel - 1));
+      const yPiel = (i) => yPielArriba + PASO_PIEL * i;
       const lineasPiel = (bar) => {
         const ti = bar.ganchoInicio ? bar.ganchoInicioTipo || '90°' : '', tf = bar.ganchoFin ? bar.ganchoFinTipo || '90°' : '';
         // gancho por altura (decisión 9; RepartidorPiel.GanchoArriba): con la altura h contada desde abajo desde 1, sube si

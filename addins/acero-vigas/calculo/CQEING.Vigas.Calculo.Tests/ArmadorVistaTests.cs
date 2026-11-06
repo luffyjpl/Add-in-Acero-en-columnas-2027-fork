@@ -287,7 +287,8 @@ public class ArmadorVistaTests
         VistaPortico v = Armar();
 
         Assert.Equal((0, ""), (v.Piel!.Alturas, v.Piel.Rotulo));
-        Assert.Equal(0, v.Piel.CabenPorLado);
+        // sin piel en las opciones dice igual cuántas caben (con #4), para que el + funcione al abrir (Juan, 06-nov)
+        Assert.True(v.Piel.CabenPorLado > 0);
         Assert.DoesNotContain(v.Seccion.Barras, b => b.Piel);
     }
 

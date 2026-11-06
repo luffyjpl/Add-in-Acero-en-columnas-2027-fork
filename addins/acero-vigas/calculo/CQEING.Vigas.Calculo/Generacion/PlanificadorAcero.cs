@@ -76,7 +76,7 @@ public static class PlanificadorAcero
         List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
         barras = anidadas.Take(barras.Count).ToList();
         bastones = anidadas.Skip(barras.Count).ToList();
-        barras.AddRange(PiezasDePiel(c, u));
+        barras.AddRange(PiezasDePiel(c, u, r));
 
         List<GrupoEstribos> estribos = Estribos(c, p.Portico, o.Estribos, r, u);
         List<int> diametros = barras.Concat(bastones).Select(x => x.Diametro).Concat(estribos.Select(e => e.Diametro)).Distinct().Order().ToList();
@@ -86,17 +86,21 @@ public static class PlanificadorAcero
     /// <summary>
     /// Las piezas de la piel (06-nov): cada barra <c>P*</c> sale una vez por altura y por lado. No se anidan con los ganchos
     /// de arriba y abajo: van a media altura, y la de la mitad de arriba dobla hacia arriba (<see cref="RepartidorPiel.GanchoArriba"/>).
+    /// El traslapo va al lado, como en las corridas (decisión 2 del plan de #85): la segunda, cuarta… barra se corre un
+    /// diámetro hacia el centro de la viga (Juan, 06-nov: en Revit las barras de piel traslapaban una dentro de la otra).
     /// </summary>
-    private static IEnumerable<PiezaLongitudinal> PiezasDePiel(PorticoCalculado c, UbicacionPortico u)
+    private static IEnumerable<PiezaLongitudinal> PiezasDePiel(PorticoCalculado c, UbicacionPortico u, Reglas r)
     {
         if (c.Vigas.Piel is not { } piel || c.Piel is not { } ubicacion)
             return [];
-        return piel.Barras.OrderBy(b => b.Desde).SelectMany(b => ubicacion.Alturas.SelectMany(a =>
+        return piel.Barras.OrderBy(b => b.Desde).SelectMany((b, i) => ubicacion.Alturas.SelectMany(a =>
         {
             MedidaBarra m = b.Medida(a.Izquierda.Diametro);
             bool arriba = RepartidorPiel.GanchoArriba(a.Altura, ubicacion.Alturas.Count);
-            return new[] { a.Izquierda, a.Derecha }.Select(s => new PiezaLongitudinal(b.Id, b.Capa, s.Diametro, s.X, s.Y,
-                m.Desde, m.Hasta, b.TipoInicio, b.TipoFin, Host(u, m.Desde, m.Hasta), m.Largo, a.Altura, arriba));
+            double alLado = i % 2 == 1 ? r.PorDiametro[a.Izquierda.Diametro].Diametro : 0;
+            return new[] { (Barra: a.Izquierda, HaciaElCentro: 1), (Barra: a.Derecha, HaciaElCentro: -1) }.Select(s =>
+                new PiezaLongitudinal(b.Id, b.Capa, s.Barra.Diametro, s.Barra.X + s.HaciaElCentro * alLado, s.Barra.Y,
+                    m.Desde, m.Hasta, b.TipoInicio, b.TipoFin, Host(u, m.Desde, m.Hasta), m.Largo, a.Altura, arriba));
         }));
     }
 

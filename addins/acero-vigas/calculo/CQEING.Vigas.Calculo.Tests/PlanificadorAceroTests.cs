@@ -287,7 +287,10 @@ public class PlanificadorAceroTests
         Cambios = inicio is { } g ? new CambiosManuales(Ganchos: new Dictionary<string, TipoGancho> { ["P.inicio"] = g }) : null,
     };
 
-    /// <summary>La piel (06-nov): cada barra P sale una vez por altura y por lado, a la altura y x del corte.</summary>
+    /// <summary>
+    /// La piel (06-nov): cada barra P sale una vez por altura y por lado, a la altura del corte. La segunda, cuarta… se
+    /// corre un diámetro hacia el centro, para que el traslapo vaya al lado y no una dentro de la otra (Juan, 06-nov).
+    /// </summary>
     [Fact]
     public void ConPiel_DosPiezasPorAlturaYBarra()
     {
@@ -296,14 +299,17 @@ public class PlanificadorAceroTests
         PlanAcero plan = Planificar(ConPielOpciones());
 
         Assert.Equal(c.Vigas.Piel!.Barras.Count * 4, plan.Barras.Count(x => x.Capa == Posicion.Piel));
-        foreach (Barra b in c.Vigas.Piel.Barras)
+        List<Barra> enOrden = c.Vigas.Piel.Barras.OrderBy(b => b.Desde).ToList();
+        Assert.True(enOrden.Count > 1, "el pórtico de prueba debe traslapar la piel");
+        for (int i = 0; i < enOrden.Count; i++)
         {
-            List<PiezaLongitudinal> piezas = plan.Barras.Where(x => x.Pieza == b.Id).ToList();
+            List<PiezaLongitudinal> piezas = plan.Barras.Where(x => x.Pieza == enOrden[i].Id).ToList();
             Assert.All(piezas, x => Assert.Equal(Posicion.Piel, x.Capa));
             foreach (PielEnSeccion a in c.Piel!.Alturas)
             {
+                double alLado = i % 2 == 1 ? Reglas.Generales.PorDiametro[a.Izquierda.Diametro].Diametro : 0;
                 List<PiezaLongitudinal> fila = piezas.Where(x => x.Fila == a.Altura).ToList();
-                Assert.Equal([a.Izquierda.X, a.Derecha.X], fila.Select(x => x.XCorte).Order());
+                Assert.Equal([a.Izquierda.X + alLado, a.Derecha.X - alLado], fila.Select(x => x.XCorte).Order());
                 Assert.All(fila, x => Assert.Equal(a.Izquierda.Y, x.YCorte));
             }
         }

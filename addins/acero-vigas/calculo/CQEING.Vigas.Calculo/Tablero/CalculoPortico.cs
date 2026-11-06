@@ -72,12 +72,16 @@ public static class CalculoPortico
             Piel: o.Piel is { Cantidad: > 0 } && UbicarPiel(p, o, r) is { CabenPorLado: > 0 } u ? new GrupoBarras(Math.Min(o.Piel!.Cantidad, u.CabenPorLado), o.Piel.Diametro) : null);
 
     /// <summary>
-    /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si no hay piel en las opciones (con
-    /// cantidad 0 sí se calcula, para decir cuántas caben), es vigueta o su diámetro no está en las reglas. Con 0 caben, la ubicación se devuelve igual para que la vista diga "caben 0".
+    /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si es vigueta o su diámetro no está en
+    /// las reglas. Con cantidad 0, o sin piel en las opciones, se calcula igual para decir cuántas caben; con 0 caben, la
+    /// ubicación se devuelve igual para que la vista diga "caben 0".
     /// </summary>
     internal static UbicacionPiel? UbicarPiel(PorticoLeido p, OpcionesTablero o, Reglas r)
     {
-        if (o.Piel is not { } piel || EsVigueta(p, o) || !r.PorDiametro.ContainsKey(piel.Diametro))
+        // sin piel en las opciones (un pórtico recién abierto o un estado guardado de antes), con el #4 que la página trae
+        // por defecto (Juan, 06-nov: al abrir, el + no dejaba subir hasta mover otra cosa)
+        GrupoBarras piel = o.Piel ?? new GrupoBarras(0, 4);
+        if (EsVigueta(p, o) || !r.PorDiametro.ContainsKey(piel.Diametro))
             return null;
         EntradaSeccion seccion = Seccion(p, o, r);
         return RepartidorPiel.Ubicar(seccion, RepartidorFilas.Repartir(seccion), piel, p.Tramos.Min(t => t.Alto));
