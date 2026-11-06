@@ -113,6 +113,8 @@ public enum TipoAviso
     /// (hallazgo E14 del plan docs/planes/2026-10-19-generar-acero-vigas-85.md). No se agrega.
     /// </summary>
     RepiteOtroAdicional,
+    /// <summary>Se pidió piel en una vigueta, que lleva grapa en S y no la admite (06-nov). No se pone; no bloquea generar.</summary>
+    PielNoPermitida,
 }
 
 /// <summary>Por qué un traslapo quedó largo.</summary>

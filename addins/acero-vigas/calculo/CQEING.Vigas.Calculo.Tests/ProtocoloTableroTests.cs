@@ -83,6 +83,27 @@ public class ProtocoloTableroTests
     }
 
     [Fact]
+    public void Opciones_SinPiel_EsNull()
+    {
+        string sinCampo = OpcionesJson(OpcionesTablero.PorDefecto).Replace(",\"piel\":null", "");
+
+        Assert.DoesNotContain("\"piel\":", sinCampo);
+        var m = Assert.IsType<Calcular>(ProtocoloTablero.Leer($$"""{"tipo":"calcular","id":"P1","opciones":{{sinCampo}}}"""));
+
+        Assert.Null(m.Opciones.Piel);
+    }
+
+    [Fact]
+    public void Opciones_ConPiel_LaLee()
+    {
+        string opciones = OpcionesJson(OpcionesTablero.PorDefecto with { Piel = null }).Replace("\"piel\":null", "\"piel\":{\"cantidad\":2,\"diametro\":4}");
+
+        var m = Assert.IsType<Calcular>(ProtocoloTablero.Leer($$"""{"tipo":"calcular","id":"P1","opciones":{{opciones}}}"""));
+
+        Assert.Equal(new GrupoBarras(2, 4), m.Opciones.Piel);
+    }
+
+    [Fact]
     public void LosEnumsVanComoTexto()
     {
         string json = OpcionesJson(OpcionesTablero.PorDefecto with { Cara = Cara.Final });
