@@ -4,7 +4,7 @@ namespace CQEING.Despiece.Calculo.Tests;
 public class TamanoLetraTests
 {
     [Fact]
-    public void PorDefectoEsTresYMedio() => Assert.Equal(3.5, TamanoLetra.PorDefecto);
+    public void PorDefectoEsDosYMedio() => Assert.Equal(2.5, TamanoLetra.PorDefecto);
 
     [Theory]
     [InlineData(3.5, 3.5)]
@@ -12,7 +12,7 @@ public class TamanoLetraTests
     [InlineData(3.8, 4.0)]
     [InlineData(1.0, 2.0)]
     [InlineData(9.0, 5.0)]
-    [InlineData(double.NaN, 3.5)]
+    [InlineData(double.NaN, 2.5)]
     public void SeRedondeaAMedioMilimetroYDentroDeLosLimites(double pedido, double esperado) =>
         Assert.Equal(esperado, TamanoLetra.Limitar(pedido));
 

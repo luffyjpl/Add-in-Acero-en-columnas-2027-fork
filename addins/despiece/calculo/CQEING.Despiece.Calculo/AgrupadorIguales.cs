@@ -2,8 +2,12 @@ using System.Globalization;
 
 namespace CQEING.Despiece.Calculo;
 
-/// <summary>Una barra de un elemento. <paramref name="PosicionMm"/>: dónde está su centro, desde un extremo del elemento. <paramref name="RectoMm"/>: su largo sin ganchos.</summary>
-public record BarraLeida(string Tipo, string Forma, int Cantidad, int LargoMm, int PosicionMm, int RectoMm = 0);
+/// <summary>
+/// Una barra de un elemento. <paramref name="PosicionMm"/>: dónde está su centro, desde un extremo del elemento.
+/// <paramref name="RectoMm"/>: su largo sin ganchos. <paramref name="Gancho"/>: en una columna, hacia dónde van sus
+/// ganchos en la sección, <c>A</c> (adentro) o <c>F</c> (afuera), uno por gancho (decisión 19 del plan de #287).
+/// </summary>
+public record BarraLeida(string Tipo, string Forma, int Cantidad, int LargoMm, int PosicionMm, int RectoMm = 0, string Gancho = "");
 
 /// <summary>
 /// Una viga continua (o una columna) leída del modelo, con su acero. En una columna (<paramref name="EsColumna"/>) el largo es
@@ -55,7 +59,7 @@ public static class AgrupadorIguales
     }
 
     private static string Barras(ElementoLeido e, Func<BarraLeida, int> posicion) => string.Join(";", e.Barras
-        .Select(b => $"{b.Tipo},{b.Forma},{b.Cantidad},{Redondear(b.LargoMm)},{Redondear(posicion(b))}")
+        .Select(b => $"{b.Tipo},{b.Forma},{b.Cantidad},{Redondear(b.LargoMm)},{Redondear(posicion(b))},{b.Gancho}")
         .Order(StringComparer.Ordinal));
 
     private static int Redondear(int mm) => (int)Math.Round((double)mm / Tolerancia) * Tolerancia;

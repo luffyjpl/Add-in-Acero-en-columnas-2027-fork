@@ -1,50 +1,55 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using CQEING.Despiece.Calculo;
+using CQEING.Vigas.Calculo.Modelo;
 
 namespace CQEING.Despiece.Revit.Columnas;
 
 /// <summary>
-/// La sección superior de una columna (#228), armada como dice la decisión 16 del plan
-/// docs/planes/2026-10-31-despiece-columnas-226-228.md y ajustada por la 17: una planta propia cortada cerca del tope,
-/// debajo de los ganchos, mirando hacia abajo, con las barras cortadas y el estribo; etiquetas, cotas, recubrimiento y el
-/// estribo aparte.
+/// La sección de una columna (#228), armada como dice la decisión 16 del plan
+/// docs/planes/2026-10-31-despiece-columnas-226-228.md: una planta propia mirando hacia abajo, con las barras cortadas y el
+/// estribo; cotas, recubrimiento, leyenda y el estribo aparte. Se corta al comienzo de la columna, donde las barras
+/// están en su lugar (#280, decisión 30 del plan docs/planes/2026-11-05-reunion-despiece-287.md).
 /// </summary>
 internal static class SeccionColumna
 {
     private const double M = 1 / 0.3048;
-    private const int Escala = 15;
+    /// <summary>La que se eligió en el tablero (#272).</summary>
+    private static int Escala => Letra.EscalaSeccion;
 
-    /// <summary>El corte va así de debajo del tope: el concreto sale cortado y los ganchos quedan debajo, a la vista.</summary>
-    private const double BajoTope = 0.01 * M;
+    /// <summary>El corte va así de sobre la base del primer elemento con la sección de la columna (decisión 30).</summary>
+    private const double SobreLaBase = 0.15 * M;
 
-    /// <summary>Una barra que termina a menos de esto del tope llega arriba: su gancho es de los de arriba.</summary>
-    private const double BajoGanchos = 0.30 * M;
+    /// <summary>Y nunca a menos de esto bajo el primer traslapo, donde las barras se corren.</summary>
+    private const double BajoElTraslapo = 0.03 * M;
 
-    /// <summary>El corte va así de debajo del final del tramo recto, donde empieza el doblez del gancho.</summary>
-    private const double DebajoDelGancho = 0.03 * M;
+    /// <summary>Lo que se deja entre la base del elemento y el fondo del rango de vista: el dado y la zapata no se ven.</summary>
+    private const double SobreElFondo = 0.005 * M;
 
-    /// <summary>Lo que mira hacia abajo desde el corte: alcanza los estribos de arriba.</summary>
-    private const double Profundidad = 0.50 * M;
+    /// <summary>Dos medidas de sección iguales al centímetro.</summary>
+    private const double AlCentimetro = 0.01 * M;
 
     /// <summary>Una barra vertical que termina más abajo que esto del corte es una pieza de abajo: se oculta.</summary>
     private const double PiezaDeAbajo = 0.15 * M;
 
-    // Como la sección de la viga: las etiquetas en filas encima y debajo, y debajo de ellas la cota y el recubrimiento.
-    private static double FilaArriba => 0.38 * M * Letra.Factor;
-    private static double FilaAbajo => 0.20 * M * Letra.Factor;
-    private static double PasoEtiquetas => 0.28 * M * Letra.Factor;
-    private static double CotaAncho => 0.42 * M * Letra.Factor;
-    private static double TextoAncho => 0.46 * M * Letra.Factor;
-    private static double CotaAlto => 0.15 * M * Letra.Factor;
-    private static double TextoAlto => 0.30 * M * Letra.Factor;
-    private static double Leyenda => 0.62 * M * Letra.Factor;
+    // Sin etiquetas por barra (#281): la leyenda de colores dice qué es cada una. Debajo de la columna quedan el
+    // recubrimiento, la cota total y la leyenda; arriba, nada.
+    /// <summary>Del cuadrito de color de la leyenda a su texto (decisión 22 del plan de #287).</summary>
+    private static double AnchoCuadro => 0.09 * M * Letra.Factor;
+    // Primero (más cerca de la columna) las medidas parciales, el recubrimiento `0.04 · 0.22 · 0.04`, y después la cota
+    // total (#282, Santiago en la reunión del 05-nov: "las primeras que van siempre son las pequeñas y después va la
+    // total"). Abajo, la caja del texto baja 0.09 m desde su punto; la cota va debajo, con su número encima de la línea.
+    private static double TextoAncho => 0.12 * M * Letra.Factor;
+    private static double CotaAncho => 0.32 * M * Letra.Factor;
+    private static double TextoAlto => 0.15 * M * Letra.Factor;
+    private static double CotaAlto => 0.32 * M * Letra.Factor;
+    private static double Leyenda => 0.50 * M * Letra.Factor;
     private static double EstriboAparte => 0.70 * M * Letra.Factor;
-    private const double AireNota = 0.01 * M;
+    private static double AireNota => 0.01 * M * Letra.Papel;
 
     /// <summary>A 1:15 la caja de una nota mide 0.12 m (medido en la viga); entre una forma de estribo y la siguiente, 0.08 m.</summary>
     private static double FilaTexto => 0.13 * M * Letra.Factor;
-    private const double HuecoEstribos = 0.08 * M;
+    private static double HuecoEstribos => 0.08 * M * Letra.Papel;
 
     /// <summary>Los colores de traslapo (decisión 3): no están en la paleta de diámetros.</summary>
     private static readonly Color ColorA = new(0x00, 0xAC, 0xC1);
@@ -56,16 +61,17 @@ internal static class SeccionColumna
     /// </summary>
     public static View Crear(Document doc, ColumnaLeida columna, List<Rebar> barras, TiposPropios tipos, bool porTraslapo)
     {
-        Element arriba = columna.Elementos.Select(doc.GetElement).OrderByDescending(e => e.get_BoundingBox(null)?.Max.Z ?? double.MinValue).First();
+        Letra.EnSeccion();
+        Element arriba = Comienzo(doc, columna);
         BoundingBoxXYZ caja = arriba.get_BoundingBox(null);
-        double zCorte = Corte(columna, barras);
+        double zCorte = Corte(columna, caja.Min.Z);
         XYZ centro = new((caja.Min.X + caja.Max.X) / 2, (caja.Min.Y + caja.Max.Y) / 2, zCorte);
         double ancho = caja.Max.X - caja.Min.X, alto = caja.Max.Y - caja.Min.Y;
         XYZ En(double x, double y) => new(x, y, zCorte);
 
-        ViewPlan vista = Planta(doc, zCorte);
-        Registro.Paso($"sección de columna: {(porTraslapo ? "traslapos" : "varillas")}, nivel {vista.GenLevel?.Name}, corte a {zCorte * 0.3048:0.00}");
-        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M, ancho / 2 + 1.20 * M, alto / 2 + Leyenda + 0.15 * M, alto / 2 + 0.60 * M);
+        ViewPlan vista = Planta(doc, zCorte, caja.Min.Z + SobreElFondo);
+        Registro.Paso($"sección de columna: {(porTraslapo ? "traslapos" : "varillas")}, nivel {vista.GenLevel?.Name}, corte a {zCorte * 0.3048:0.00} en el elemento {arriba.Id} (base {caja.Min.Z * 0.3048:0.00})");
+        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor, alto / 2 + Leyenda + 0.15 * M * Letra.Factor, alto / 2 + 0.10 * M * Letra.Factor);
         Limpiar(doc, vista, columna, barras);
 
         // Las piezas de abajo se verían como un segundo círculo junto a cada varilla.
@@ -78,6 +84,16 @@ internal static class SeccionColumna
 
         Dictionary<ElementId, GrupoTraslapo> grupos = Grupos(columna);
         Color? DeGrupo(Rebar b) => porTraslapo && grupos.TryGetValue(b.Id, out GrupoTraslapo g) ? (g == GrupoTraslapo.A ? ColorA : ColorB) : null;
+
+        // Las piezas corridas por el traslapo se dibujan en su lugar (decisión 34 del plan de #287): se ocultan y va un
+        // círculo relleno donde está la pieza de su varilla que no se corrió.
+        bool rectangular = GeneradorPrevia.Caras(arriba, vista).Any(c => Math.Abs(c.FaceNormal.X) > 0.99);
+        // Solo las piezas que cruzan la altura del corte: las de arriba empiezan más alto y no se ven (con ellas se contaban 13).
+        var cruzan = new HashSet<ElementId>(verticales.Where(b => LectorColumnas.Alturas(b) is var (z0, z1) && z0 <= zCorte && z1 >= zCorte).Select(b => b.Id));
+        Dictionary<ElementId, XYZ> corridas = rectangular ? Corridas(doc, columna, cruzan, centro) : [];
+        List<ElementId> ocultarCorridas = corridas.Keys.Where(id => doc.GetElement(id).CanBeHidden(vista)).ToList();
+        if (ocultarCorridas.Count > 0)
+            vista.HideElements(ocultarCorridas);
         foreach (Rebar b in barras)
         {
             b.SetUnobscuredInView(vista, true);
@@ -86,6 +102,18 @@ internal static class SeccionColumna
             else
                 GeneradorPrevia.Pintar(vista, b.Id, b, null);
         }
+        foreach ((ElementId id, XYZ lugar) in corridas)
+        {
+            var barra = (Rebar)doc.GetElement(id);
+            if (Circulo(doc, vista, lugar, ((RebarBarType)doc.GetElement(barra.GetTypeId())).BarNominalDiameter) is { } circulo)
+            {
+                if (DeGrupo(barra) is { } color)
+                    Pintar(vista, circulo, color);
+                else
+                    GeneradorPrevia.Pintar(vista, circulo, barra, null);
+            }
+        }
+        Registro.Paso($"sección de columna: {corridas.Count} piezas corridas dibujadas en su lugar");
         // Concreto gris, sin el rayado (hallazgo 22).
         var gris = new OverrideGraphicSettings();
         gris.SetCutBackgroundPatternId(GeneradorPrevia.Solido(doc));
@@ -97,45 +125,146 @@ internal static class SeccionColumna
         vista.DisplayStyle = DisplayStyle.FlatColors;
         doc.Regenerate();
 
-        Etiquetar(doc, vista, verticales.Where(b => arribaIds.Contains(b.Id)).ToList(), centro, alto, zCorte, tipos, b => DeGrupo(b));
         Rebar? estribo = Estribo(doc, vista, columna, barras);
         Acotar(doc, vista, arriba, estribo, caja, zCorte, tipos);
         if (estribo is not null)
             SacarEstribo(doc, vista, barras, estribo, En(caja.Max.X + EstriboAparte, centro.Y), tipos);
-        if (porTraslapo)
+        List<Rebar> cortadas = verticales.Where(b => arribaIds.Contains(b.Id)).ToList();
+        List<(string Texto, Color Color)> leyenda = porTraslapo
+            ? [("Traslapo A", ColorA), ("Traslapo B", ColorB)]
+            : cortadas.GroupBy(b => doc.GetElement(b.GetTypeId()).Name)
+                .OrderByDescending(g => LectorDespiece.Numero(g.Key))
+                .Select(g =>
+                {
+                    int n = LectorDespiece.Numero(g.Key);
+                    (byte r, byte v, byte a) = ColoresDiametro.Rgb(n);
+                    return ($"{g.Sum(b => b.Quantity)} {(n > 0 ? "#" + n : g.Key)}", new Color(r, v, a));
+                }).ToList();
+        // Una debajo de otra: el cuadrito en el color y el texto en negro (decisión 22 del plan de #287).
+        for (int i = 0; i < leyenda.Count; i++)
         {
-            TextNote a = TextNote.Create(doc, vista.Id, En(caja.Min.X, caja.Min.Y - Leyenda), "Traslapo A", tipos.Nota(HorizontalTextAlignment.Left));
-            TextNote b = TextNote.Create(doc, vista.Id, En(caja.Min.X + 0.45 * M, caja.Min.Y - Leyenda), "Traslapo B", tipos.Nota(HorizontalTextAlignment.Left));
-            // La leyenda es la clave de los colores: va en color aunque se pidan los textos en negro.
-            Pintar(vista, a.Id, ColorA, siempre: true);
-            Pintar(vista, b.Id, ColorB, siempre: true);
+            double y = caja.Min.Y - Leyenda - i * FilaTexto;
+            TextNote cuadro = TextNote.Create(doc, vista.Id, En(caja.Min.X, y), "■", tipos.Nota(HorizontalTextAlignment.Left));
+            // El cuadrito es la clave de los colores: va en color aunque se pidan los textos en negro.
+            Pintar(vista, cuadro.Id, leyenda[i].Color, siempre: true);
+            TextNote.Create(doc, vista.Id, En(caja.Min.X + AnchoCuadro, y), leyenda[i].Texto, tipos.Nota(HorizontalTextAlignment.Left));
         }
+        // El recorte de abajo crece con las filas de la leyenda.
+        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor,
+            alto / 2 + Leyenda + Math.Max(0, leyenda.Count - 1) * FilaTexto + 0.15 * M * Letra.Factor, alto / 2 + 0.10 * M * Letra.Factor);
+        Registro.Paso("sección de columna: leyenda " + string.Join(", ", leyenda.Select(l => l.Texto)));
         doc.Regenerate();
         return vista;
     }
 
     /// <summary>
-    /// Sin ganchos (decisión 17): 3 cm debajo de donde termina el tramo recto más bajo de las barras que llegan arriba,
-    /// así los ganchos quedan sobre el corte y no se ven; y nunca más arriba que <see cref="BajoTope"/> bajo el tope.
+    /// Las barras cortadas que no están en su lugar, con el lugar donde van (decisiones 34 y 35 del plan de #287). El lugar
+    /// sale de <see cref="PosicionesIdeales"/>: las esquinas tocan las dos caras y las de cada cara se reparten entre sus
+    /// esquinas. Solo en columnas rectangulares.
     /// </summary>
-    private static double Corte(ColumnaLeida columna, List<Rebar> barras)
+    private static Dictionary<ElementId, XYZ> Corridas(Document doc, ColumnaLeida columna, HashSet<ElementId> cortadas, XYZ centro)
     {
-        double tope = columna.ZSuperior - BajoTope;
-        List<double> rectos = barras.Where(LectorColumnas.EsVertical)
-            .Where(b => LectorColumnas.Alturas(b).Arriba > columna.ZSuperior - BajoGanchos)
-            .Select(b =>
+        const double Igual = 0.005 * M;
+        var corridas = new Dictionary<ElementId, XYZ>();
+        var varillas = new List<List<(ElementId Barra, XYZ Punto)>>();
+        foreach (Varilla v in columna.Varillas)
+        {
+            List<(ElementId, XYZ)> piezas = v.Piezas
+                .Select(p => (p.Barra, Punto: doc.GetElement(p.Barra) is Rebar r ? GeneradorPrevia.Mayor(r).GetEndPoint(0) : null))
+                .Where(p => p.Punto is not null).Select(p => (p.Barra, p.Punto!)).ToList();
+            if (piezas.Count > 0)
+                varillas.Add(piezas);
+        }
+        IReadOnlyList<PuntoModelo>? ideales = PosicionesIdeales.Calcular(
+            varillas.Select(v => (IReadOnlyList<PuntoModelo>)v.Select(p => new PuntoModelo(p.Punto.X, p.Punto.Y)).ToList()).ToList(),
+            new PuntoModelo(centro.X, centro.Y));
+        if (ideales is null)
+        {
+            Registro.Paso("sección de columna: no se reconocieron las cuatro esquinas; las barras van como están");
+            return corridas;
+        }
+        for (int i = 0; i < varillas.Count; i++)
+        {
+            // Para medir en Revit si el lugar sale bien (decisión 35): cada pieza, si está cortada, y el lugar calculado.
+            Registro.Paso($"sección de columna: varilla {i}: " + string.Join(", ", varillas[i].Select(p =>
+                $"{p.Barra}{(cortadas.Contains(p.Barra) ? "*" : "")} ({p.Punto.X * 0.3048:0.000}, {p.Punto.Y * 0.3048:0.000})"))
+                + $" -> lugar ({ideales[i].X * 0.3048:0.000}, {ideales[i].Y * 0.3048:0.000})");
+            foreach ((ElementId barra, XYZ punto) in varillas[i].Where(p => cortadas.Contains(p.Barra)))
             {
-                Curve recta = GeneradorPrevia.Mayor(b);
-                return Math.Max(recta.GetEndPoint(0).Z, recta.GetEndPoint(1).Z);
-            }).ToList();
-        return rectos.Count == 0 ? tope : Math.Min(tope, rectos.Min() - DebajoDelGancho);
+                if (Math.Abs(punto.X - ideales[i].X) > Igual || Math.Abs(punto.Y - ideales[i].Y) > Igual)
+                    corridas[barra] = new XYZ(ideales[i].X, ideales[i].Y, punto.Z);
+            }
+        }
+        return corridas;
+    }
+
+    /// <summary>Un círculo relleno del diámetro de la barra en <paramref name="lugar"/>, en la planta. Null si Revit no lo acepta.</summary>
+    private static ElementId? Circulo(Document doc, ViewPlan vista, XYZ lugar, double diametro)
+    {
+        try
+        {
+            double z = vista.GenLevel?.Elevation ?? lugar.Z;
+            var c = new XYZ(lugar.X, lugar.Y, z);
+            double r = diametro / 2;
+            var lazo = new CurveLoop();
+            lazo.Append(Arc.Create(c, r, 0, Math.PI, XYZ.BasisX, XYZ.BasisY));
+            lazo.Append(Arc.Create(c, r, Math.PI, 2 * Math.PI, XYZ.BasisX, XYZ.BasisY));
+            return FilledRegion.Create(doc, TipoRelleno(doc), vista.Id, [lazo]).Id;
+        }
+        catch (Exception e)
+        {
+            Registro.Paso("sección de columna: círculo no creado: " + e.Message);
+            return null;
+        }
+    }
+
+    /// <summary>Un relleno sólido para los círculos: el del proyecto que ya lo sea o uno propio.</summary>
+    private static ElementId TipoRelleno(Document doc)
+    {
+        ElementId solido = GeneradorPrevia.Solido(doc);
+        List<FilledRegionType> tipos = new FilteredElementCollector(doc).OfClass(typeof(FilledRegionType)).Cast<FilledRegionType>().ToList();
+        if (tipos.FirstOrDefault(t => t.Name == "CQ Despiece barra") is { } propio)
+            return propio.Id;
+        var nuevo = (FilledRegionType)tipos.First().Duplicate("CQ Despiece barra");
+        nuevo.ForegroundPatternId = solido;
+        nuevo.ForegroundPatternColor = new Color(0, 0, 0);
+        return nuevo.Id;
     }
 
     /// <summary>
-    /// La planta propia (decisión 9), sobre el nivel más alto que esté debajo del corte, con el corte y el rango de vista
-    /// puestos a mano: de 2 cm sobre el corte hasta <see cref="Profundidad"/> debajo.
+    /// El comienzo de la columna (decisión 30): el elemento más bajo de la pila con la sección de la columna, que es la
+    /// común a toda la pila. Un dado más ancho abajo no cuenta. Si ninguno la tiene, el más bajo.
     /// </summary>
-    private static ViewPlan Planta(Document doc, double zCorte)
+    private static Element Comienzo(Document doc, ColumnaLeida columna)
+    {
+        double ancho = columna.Elemento.AnchoMm / 304.8, alto = columna.Elemento.AltoMm / 304.8;
+        List<Element> pila = columna.Elementos.Select(doc.GetElement).Where(e => e.get_BoundingBox(null) is not null)
+            .OrderBy(e => e.get_BoundingBox(null).Min.Z).ToList();
+        return pila.FirstOrDefault(e =>
+        {
+            BoundingBoxXYZ c = e.get_BoundingBox(null);
+            return Math.Abs(c.Max.X - c.Min.X - ancho) < AlCentimetro && Math.Abs(c.Max.Y - c.Min.Y - alto) < AlCentimetro;
+        }) ?? pila.First();
+    }
+
+    /// <summary>
+    /// <see cref="SobreLaBase"/> sobre la base del elemento, sin pasar de <see cref="BajoElTraslapo"/> bajo el primer
+    /// traslapo (donde empieza la segunda pieza de cualquier varilla), y nunca por debajo de 1 cm sobre la base.
+    /// </summary>
+    private static double Corte(ColumnaLeida columna, double zBase)
+    {
+        List<double> traslapos = columna.Varillas.Where(v => v.Piezas.Count > 1).Select(v => v.Piezas[1].ZInferior).ToList();
+        double corte = zBase + SobreLaBase;
+        if (traslapos.Count > 0)
+            corte = Math.Min(corte, traslapos.Min() - BajoElTraslapo);
+        return Math.Max(corte, zBase + AlCentimetro);
+    }
+
+    /// <summary>
+    /// La planta propia (decisión 9 del plan de columnas), sobre el nivel más alto que esté debajo del corte, con el corte
+    /// y el rango de vista puestos a mano: de 2 cm sobre el corte hasta <paramref name="zFondo"/>.
+    /// </summary>
+    private static ViewPlan Planta(Document doc, double zCorte, double zFondo)
     {
         List<Level> niveles = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().OrderBy(n => n.Elevation).ToList();
         Level nivel = niveles.LastOrDefault(n => n.Elevation <= zCorte) ?? niveles.First();
@@ -153,13 +282,22 @@ internal static class SeccionColumna
         foreach ((PlanViewPlane plano, double desplazamiento) in new[]
         {
             (PlanViewPlane.TopClipPlane, corte + 0.02 * M), (PlanViewPlane.CutPlane, corte),
-            (PlanViewPlane.BottomClipPlane, corte - Profundidad), (PlanViewPlane.ViewDepthPlane, corte - Profundidad),
+            (PlanViewPlane.BottomClipPlane, zFondo - nivel.Elevation), (PlanViewPlane.ViewDepthPlane, zFondo - nivel.Elevation),
         })
         {
             rango.SetLevelId(plano, nivel.Id);
             rango.SetOffset(plano, desplazamiento);
         }
         vista.SetViewRange(rango);
+        // Sin esto, lo que cuelga por debajo del fondo se dibuja entero: los ganchos de la zapata (decisión 33 del plan de
+        // #287). "Depth Clipping": 0 no recorta, 1 recorta con línea, 2 recorta sin línea; se anota para comprobarlo.
+        if (vista.get_Parameter(BuiltInParameter.VIEW_BACK_CLIPPING) is { IsReadOnly: false } recorte)
+        {
+            recorte.Set(2);
+            Registro.Paso($"sección de columna: recorte en profundidad = {recorte.AsInteger()} ({recorte.AsValueString()})");
+        }
+        else
+            Registro.Paso("sección de columna: la planta no deja recortar en profundidad");
         vista.CropBoxActive = true;
         vista.CropBoxVisible = false;
         doc.Regenerate();
@@ -188,7 +326,7 @@ internal static class SeccionColumna
     /// El grupo de cada conjunto de Revit, por sus varillas (decisión 4). Un conjunto con barras de los dos grupos (hecho
     /// a mano) va con el de la mayoría y queda en la traza.
     /// </summary>
-    private static Dictionary<ElementId, GrupoTraslapo> Grupos(ColumnaLeida columna)
+    internal static Dictionary<ElementId, GrupoTraslapo> Grupos(ColumnaLeida columna)
     {
         var grupos = new Dictionary<ElementId, GrupoTraslapo>();
         foreach (IGrouping<ElementId, GrupoTraslapo> conjunto in columna.Varillas.Where(v => v.Grupo is not null)
@@ -215,43 +353,6 @@ internal static class SeccionColumna
         o.SetCutForegroundPatternId(solido);
         o.SetCutForegroundPatternColor(color);
         vista.SetElementOverrides(id, o);
-    }
-
-    /// <summary>
-    /// Una etiqueta <c>1 #4</c> con flecha por cada barra, como en la sección de la viga: las de la mitad de arriba en una
-    /// fila encima de la columna y las demás en una fila debajo, ordenadas de izquierda a derecha.
-    /// </summary>
-    private static void Etiquetar(Document doc, View vista, List<Rebar> verticales, XYZ centro, double alto, double zCorte, TiposPropios tipos, Func<Rebar, Color?> deGrupo)
-    {
-        var puntos = new List<(Rebar Barra, XYZ Punto)>();
-        foreach (Rebar b in verticales)
-        {
-            for (int i = 0; i < b.Quantity; i++)
-            {
-                Curve recta = b.GetTransformedCenterlineCurves(false, true, false, MultiplanarOption.IncludeOnlyPlanarCurves, i).OrderByDescending(c => c.Length).First();
-                XYZ p = recta.GetEndPoint(0);
-                puntos.Add((b, new XYZ(p.X, p.Y, zCorte)));
-            }
-        }
-        void Fila(List<(Rebar Barra, XYZ Punto)> fila, double y)
-        {
-            List<(Rebar Barra, XYZ Punto)> orden = fila.OrderBy(f => f.Punto.X).ToList();
-            for (int i = 0; i < orden.Count; i++)
-            {
-                double x = centro.X + (i - (orden.Count - 1) / 2.0) * PasoEtiquetas - 0.08 * M;
-                (Rebar barra, XYZ punto) = orden[i];
-                string tipo = doc.GetElement(barra.GetTypeId()).Name;
-                int n = LectorDespiece.Numero(tipo);
-                TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(x, y, zCorte), "1 " + (n > 0 ? "#" + n : tipo), tipos.Nota(HorizontalTextAlignment.Left));
-                nota.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_L).End = punto;
-                if (deGrupo(barra) is { } color)
-                    Pintar(vista, nota.Id, color);
-                else
-                    GeneradorPrevia.Pintar(vista, nota.Id, barra, null);
-            }
-        }
-        Fila(puntos.Where(p => p.Punto.Y > centro.Y).ToList(), centro.Y + alto / 2 + FilaArriba);
-        Fila(puntos.Where(p => p.Punto.Y <= centro.Y).ToList(), centro.Y - alto / 2 - FilaAbajo);
     }
 
     /// <summary>El estribo de más tramos que se ve en la planta (el cerrado: la grapa tiene menos).</summary>
@@ -322,7 +423,9 @@ internal static class SeccionColumna
     /// </summary>
     private static void SacarEstribo(Document doc, View vista, List<Rebar> barras, Rebar principal, XYZ punto, TiposPropios tipos)
     {
-        string Clave(Rebar b) => $"{b.GetTypeId()}|{b.GetShapeId()}|{Math.Round(LectorDespiece.LargoBarra(b) * 304.8)}";
+        // Por tipo, largo y gancho al centímetro, no por la forma de Revit: grapas de formas distintas con la misma medida
+        // salían como 27 #3, 14 #3 y 23 #3, todas L= 0.44 G= 0.11 (decisión 23 del plan de #287).
+        string Clave(Rebar b) => $"{b.GetTypeId()}|{Math.Round(LectorDespiece.LargoBarra(b) * 30.48)}|{Math.Round(GeneradorPrevia.Gancho(b) * 30.48)}";
         List<IGrouping<string, Rebar>> formas = barras.Where(b => !LectorColumnas.EsVertical(b)).GroupBy(Clave)
             .OrderByDescending(g => g.Key == Clave(principal) ? int.MaxValue : GeneradorPrevia.Curvas(g.First(), false).Count).ToList();
         var enLaVista = new HashSet<ElementId>(new FilteredElementCollector(doc, vista.Id).OfCategory(BuiltInCategory.OST_Rebar).ToElementIds());

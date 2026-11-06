@@ -9,16 +9,35 @@
   // Lo mínimo del dibujo que queda a la vista al moverlo, en píxeles de pantalla.
   const MARGEN_VISIBLE = 80;
   // El tamaño de letra de las vistas, en mm (#261): los mismos límites que TamanoLetra.cs. Se recuerda entre aperturas.
-  const LETRA = { min: 2, max: 5, paso: 0.5, defecto: 3.5, clave: 'despiece.letra' };
+  // La clave cambió con #272: lo guardado antes (3.5 por defecto) no tapa los 2.5 mm de norma.
+  const LETRA = { min: 2, max: 5, paso: 0.5, defecto: 2.5, clave: 'despiece.letra.2' };
   const limitarLetra = (mm) => Number.isFinite(mm) ? Math.min(LETRA.max, Math.max(LETRA.min, Math.round(mm / LETRA.paso) * LETRA.paso)) : LETRA.defecto;
-  const letraGuardada = () => {
+  // La escala de las vistas (#272): el texto mide lo mismo impreso y lo que cambia es la escala. Los mismos valores que
+  // EscalaVista.cs; con "Otra" se escribe cualquiera.
+  const ESCALA = { min: 1, max: 24000, defecto: 50, lista: [1, 2, 5, 10, 15, 20, 25, 50, 75, 100, 200, 500], clave: 'despiece.escala' };
+  const limitarEscala = (e) => Number.isFinite(e) ? Math.min(ESCALA.max, Math.max(ESCALA.min, Math.round(e))) : ESCALA.defecto;
+  const guardado = (clave, defecto, limitar) => {
     try {
-      const v = window.localStorage.getItem(LETRA.clave);
-      return v === null ? LETRA.defecto : limitarLetra(parseFloat(v));
+      const v = window.localStorage.getItem(clave);
+      return v === null ? defecto : limitar(parseFloat(v));
     } catch {
-      return LETRA.defecto;
+      return defecto;
     }
   };
+  const recordar = (clave, valor) => {
+    try {
+      window.localStorage.setItem(clave, String(valor));
+    } catch {
+      // Recordarlo es una ayuda: sin almacenamiento, la próxima vez vuelve al de por defecto.
+    }
+  };
+  const letraGuardada = () => guardado(LETRA.clave, LETRA.defecto, limitarLetra);
+  // Una escala para la vista larga o el alzado y otra para la sección (decisión 20 del plan de #287).
+  // Alzado 1:50 y sección 1:20 por defecto (decisión 27). La clave de la sección cambió para que lo guardado en las
+  // pruebas (1:15) no tape el 1:20.
+  const CLAVE_ESCALA_SECCION = 'despiece.escala.seccion.2', ESCALA_SECCION = 20; // = EscalaVista.PorDefectoSeccion
+  const escalaGuardada = () => guardado(ESCALA.clave, ESCALA.defecto, limitarEscala);
+  const escalaSeccionGuardada = () => guardado(CLAVE_ESCALA_SECCION, ESCALA_SECCION, limitarEscala);
   const TIPOS = [
     { n: 'Vigas', k: 'viga', icon: 'M3 14h30v8H3zM8 14v8M28 14v8' },
     { n: 'Columnas', k: 'columna', icon: 'M13 3h10v30H13zM13 12h10M13 24h10' },
@@ -30,7 +49,7 @@
     2: ['Revisa el despiece', 'Arrastra las barras y los textos para acomodarlos. Todavía no se creó nada en el proyecto.'],
     3: ['Vista previa', 'Las vistas quedan en el navegador de Revit, con etiquetas y colores. Tú las arrastras a tu plano.'],
     // Solo con columnas: la sección superior va en su propio paso (decisión 17 del plan de columnas).
-    seccion: ['Revisa la sección superior', 'Una con los colores de traslapo y otra con los de cada varilla. Todavía no se creó nada en el proyecto.']
+    seccion: ['Revisa la sección', 'Al comienzo de la columna: una con los colores de traslapo y otra con los de cada varilla. Todavía no se creó nada en el proyecto.']
   };
   /** Los pasos de cada tipo: la columna suma uno para la sección superior (decisión 17 del plan de columnas). */
   const PASOS = { viga: ['Elegir', 'Revisar', 'Crear vistas'], columna: ['Elegir', 'Alzado', 'Sección', 'Crear vistas'] };
@@ -308,7 +327,7 @@
   class Pasos extends Component {
     constructor(props) {
       super(props);
-      this.state = { paso: 1, modelo: null, plantaId: null, plantas: {}, grupo: null, previas: {}, negros: false, letra: letraGuardada(), tipo: 'viga', movimientos: {}, modo3d: false, modelos3d: {}, hechos: {}, error: null, hecho: false, ...(props.inicial ?? {}) };
+      this.state = { paso: 1, modelo: null, plantaId: null, plantas: {}, grupo: null, previas: {}, negros: true, letra: letraGuardada(), escala: escalaGuardada(), escalaSeccion: escalaSeccionGuardada(), tipo: 'viga', movimientos: {}, modo3d: false, modelos3d: {}, hechos: {}, error: null, hecho: false, ...(props.inicial ?? {}) };
       this.alCambiarTamano = () => this.forceUpdate();
       this.alRecibir = (e) => this.recibir(e.data);
     }
@@ -394,7 +413,7 @@
         if (!pv) return html`<div style="display: grid; place-items: center; height: 100%; color: #5E6670">Generando la vista en Revit…</div>`;
         if (!i) return html`<div style="display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; color: #5E6670">No se pudo saber qué varillas traslapan juntas: esta sección no se crea.</div>`;
         return html`
-          <${Visor} key=${'seccion' + vistaFinal} ancho=${i.ancho} alto=${i.alto} etiqueta="Sección superior de Revit">
+          <${Visor} key=${'seccion' + vistaFinal} ancho=${i.ancho} alto=${i.alto} etiqueta="Sección de Revit">
             <image href=${i.url} width=${i.ancho} height=${i.alto} draggable="false"></image>
           <//>`;
       }
@@ -431,18 +450,23 @@
      * Los pasos de revisar traen lo movible aparte y no dependen de lo movido; el último es la imagen real con todo
      * aplicado. La sección de la columna usa la misma previa que el alzado: no se vuelve a generar.
      */
-    mensajePrevia(g, negros, paso, letra = this.state.letra) {
+    mensajePrevia(g, negros, paso, letra = this.state.letra, escala = this.state.escala, escalaSeccion = this.state.escalaSeccion) {
       const separar = paso > 1 && paso < this.ultimo();
       const movimientos = separar ? {} : this.movimientos(g);
-      return { tipo: 'previa', grupo: g.indice, negros, letra, separar, movimientos, clave: `${g.indice}|${negros}|${letra}|${separar}|${JSON.stringify(movimientos)}` };
+      return { tipo: 'previa', grupo: g.indice, negros, letra, escala, escalaSeccion, separar, movimientos, clave: `${g.indice}|${negros}|${letra}|${escala}|${escalaSeccion}|${separar}|${JSON.stringify(movimientos)}` };
     }
 
+    /**
+     * Mientras Revit genera la del otro color, queda a la vista la que ya estaba (#274): los textos que se arrastran los
+     * dibuja la página con el color elegido, así que cambian al instante; solo los que van en la imagen esperan.
+     */
     previa(g) {
-      return this.state.previas[this.mensajePrevia(g, this.state.negros, this.state.paso).clave];
+      const { previas, negros, paso } = this.state;
+      return previas[this.mensajePrevia(g, negros, paso).clave] ?? previas[this.mensajePrevia(g, !negros, paso).clave];
     }
 
-    pedirPrevia(g, negros, paso, letra = this.state.letra) {
-      const m = this.mensajePrevia(g, negros, paso, letra);
+    pedirPrevia(g, negros, paso, letra = this.state.letra, escala = this.state.escala, escalaSeccion = this.state.escalaSeccion) {
+      const m = this.mensajePrevia(g, negros, paso, letra, escala, escalaSeccion);
       if (!this.state.previas[m.clave]) enviar(m);
     }
 
@@ -460,13 +484,38 @@
       const letra = limitarLetra(this.state.letra + delta);
       if (letra === this.state.letra) return;
       this.setState({ letra });
-      try {
-        window.localStorage.setItem(LETRA.clave, String(letra));
-      } catch {
-        // Recordarla es una ayuda: sin almacenamiento, la próxima vez vuelve a la de por defecto.
-      }
+      recordar(LETRA.clave, letra);
       clearTimeout(this.esperaLetra);
       this.esperaLetra = setTimeout(() => this.pedirPrevia(g, this.state.negros, this.state.paso, letra), 500);
+    }
+
+    /** Como la letra: la vista previa se pide medio segundo después del último cambio (al escribir una escala, por ejemplo). */
+    /** <campo> es 'escala' (vista larga o alzado) o 'escalaSeccion'. */
+    cambiarEscala(g, valor, campo = 'escala') {
+      const escala = limitarEscala(valor);
+      if (escala === this.state[campo]) return;
+      this.setState({ [campo]: escala });
+      recordar(campo === 'escala' ? ESCALA.clave : CLAVE_ESCALA_SECCION, escala);
+      clearTimeout(this.esperaLetra);
+      this.esperaLetra = setTimeout(() => this.pedirPrevia(g, this.state.negros, this.state.paso), 500);
+    }
+
+    selectorEscala(g, campo = 'escala', titulo = 'Escala') {
+      const escala = this.state[campo];
+      const claveOtra = campo + 'Otra';
+      const otra = this.state[claveOtra] || !ESCALA.lista.includes(escala);
+      const estilo = 'height: 24px; border: 1px solid #C9CED6; border-radius: 4px; background: #FFFFFF; color: #1F2329; font: inherit; font-size: 12px';
+      return html`
+        <label style="display: flex; align-items: center; gap: 6px">
+          ${titulo}
+          <select value=${otra ? 'otra' : String(escala)} style="${estilo}; padding: 0 4px"
+            onChange=${(e) => e.target.value === 'otra' ? this.setState({ [claveOtra]: true }) : (this.setState({ [claveOtra]: false }), this.cambiarEscala(g, Number(e.target.value), campo))}>
+            ${ESCALA.lista.map((n) => html`<option value=${String(n)}>1:${n}</option>`)}
+            <option value="otra">Otra…</option>
+          </select>
+          ${otra ? html`<span style="display: flex; align-items: center; gap: 2px">1:<input type="number" min=${ESCALA.min} max=${ESCALA.max} step="1" value=${escala} aria-label=${titulo + ', el número después de 1:'}
+            onInput=${(e) => { const n = parseFloat(e.target.value); if (Number.isFinite(n)) this.cambiarEscala(g, n, campo); }} style="${estilo}; width: 64px; padding: 0 4px" /></span>` : null}
+        </label>`;
     }
 
     selectorLetra(g) {
@@ -485,13 +534,17 @@
 
     selectorTextos(g) {
       const movido = this.state.paso === 2 && Object.keys(this.movimientos(g)).length > 0;
+      // Con las dos escalas ya no entra todo en una línea: los controles pasan a la siguiente en vez de aplastarse
+      // (el botón de volver a la posición automática quedaba en una sola letra, Luciano 06-nov).
       return html`
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; font-size: 12px; color: #5E6670">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; column-gap: 16px; row-gap: 6px; flex-shrink: 0; font-size: 12px; color: #5E6670; white-space: nowrap">
           <label style="display: flex; align-items: center; gap: 6px; cursor: pointer">
             <input type="checkbox" checked=${this.state.negros} onChange=${(e) => this.elegirTextos(g, e.target.checked)} style="margin: 0; accent-color: ${AZUL}" />Textos en negro
           </label>
+          ${this.selectorEscala(g, 'escala', 'Escala alzado')}
+          ${this.selectorEscala(g, 'escalaSeccion', 'Escala sección')}
           ${this.selectorLetra(g)}
-          ${movido ? html`<button type="button" onClick=${() => this.setState((s) => ({ movimientos: { ...s.movimientos, [g.vigas[0]]: {} } }))} style="padding: 0; border: 0; background: transparent; color: ${AZUL}; font: inherit; cursor: pointer">Volver a la posición automática</button>` : null}
+          ${movido ? html`<button type="button" onClick=${() => this.setState((s) => ({ movimientos: { ...s.movimientos, [g.vigas[0]]: {} } }))} style="flex-shrink: 0; padding: 0; border: 0; background: transparent; color: ${AZUL}; font: inherit; cursor: pointer">Volver a la posición automática</button>` : null}
         </div>`;
     }
 
@@ -571,18 +624,36 @@
       const p = plantas[plantaId];
       if (!modelo) return html`<span style="color: #5E6670">Leyendo el modelo…</span>`;
       if (modelo.plantas.length === 0) return html`<span style="color: #5E6670">El proyecto no tiene vigas con nivel de referencia.</span>`;
-      if (!p) return html`<span style="color: #5E6670">Generando la planta en Revit…</span>`;
+      if (!p) return html`<span style="color: #5E6670">Leyendo la planta…</span>`;
       const elegidas = new Set(this.grupoElegido()?.vigas ?? []);
+      // La planta la dibuja la página con lo que se leyó del modelo, como el tablero de vigas (decisión 7 del plan
+      // docs/planes/2026-11-05-reunion-despiece-287.md): ejes, vigas y columnas, y nada más (ni CAD ni anotaciones).
+      const R = 20;
+      const puntos = (e) => e.puntos.map((q) => q.join(',')).join(' ');
+      const forma = (e) => {
+        const g = this.grupoDeViga(e.viga);
+        const base = e.columna
+          ? html`<polygon points=${puntos(e)} fill="#9AA2AB" stroke="#3F454C" stroke-width="1.5" vector-effect="non-scaling-stroke"></polygon>`
+          : html`<polygon points=${puntos(e)} fill="#ECEFF2" stroke="#5E6670" stroke-width="1.2" vector-effect="non-scaling-stroke"></polygon>`;
+        if (!this.delTipo(g)) return base;
+        const color = g && hechos[g.indice] ? VERDE : elegidas.has(e.viga) ? AZUL : 'transparent';
+        return html`${base}<polygon points=${puntos(e)} fill=${color} fill-opacity="0.55" pointer-events="all" style="cursor: pointer" onClick=${() => this.elegirViga(g)}><title>${g?.nombre ?? ''}</title></polygon>`;
+      };
       return html`
         <div style="position: absolute; inset: 0">
-          <${Visor} ref=${(v) => (this.visor = v)} ancho=${p.ancho} alto=${p.alto} etiqueta="Planta de Revit con las vigas para elegir">
-            <image href=${p.url} width=${p.ancho} height=${p.alto} draggable="false"></image>
-            ${p.cajas.map((c) => {
-              const g = this.grupoDeViga(c.viga);
-              if (!this.delTipo(g)) return null;
-              const color = g && hechos[g.indice] ? VERDE : elegidas.has(c.viga) ? AZUL : 'transparent';
-              return html`<rect x=${c.x} y=${c.y} width=${c.w} height=${c.h} fill=${color} fill-opacity="0.55" pointer-events="all" style="cursor: pointer" onClick=${() => this.elegirViga(g)}><title>${g?.nombre ?? ''}</title></rect>`;
+          <${Visor} ref=${(v) => (this.visor = v)} ancho=${p.ancho} alto=${p.alto} etiqueta="Planta con las vigas y columnas para elegir">
+            <rect x="0" y="0" width=${p.ancho} height=${p.alto} fill="#FFFFFF"></rect>
+            ${p.ejes.map((e) => {
+              // El nombre en un círculo al comienzo del eje, dentro del margen del dibujo: ahí no hay elementos que tapar.
+              const largo = Math.hypot(e.x2 - e.x1, e.y2 - e.y1) || 1;
+              const cx = e.x1 + ((e.x2 - e.x1) / largo) * R, cy = e.y1 + ((e.y2 - e.y1) / largo) * R;
+              return html`
+                <line x1=${e.x1} y1=${e.y1} x2=${e.x2} y2=${e.y2} stroke="#8A929B" stroke-width="1" stroke-dasharray="12 4 2 4" vector-effect="non-scaling-stroke"></line>
+                <circle cx=${cx} cy=${cy} r=${R} fill="#FFFFFF" stroke="#5E6670" stroke-width="1" vector-effect="non-scaling-stroke"></circle>
+                <text x=${cx} y=${cy} font-size="18" font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill="#16191D">${e.nombre}</text>`;
             })}
+            ${p.elementos.filter((e) => !e.columna).map(forma)}
+            ${p.elementos.filter((e) => e.columna).map(forma)}
           <//>
         </div>`;
     }
@@ -619,7 +690,7 @@
           <span style="font-weight: 600">${titulo}</span>
           <div style="flex: 1; min-height: 0; position: relative; background: #FFFFFF; border: 1px solid #D9DDE2; border-radius: 6px; overflow: hidden">
             ${i ? html`
-              <${Visor} ancho=${i.ancho} alto=${i.alto} etiqueta=${'Sección superior de Revit: ' + titulo}>
+              <${Visor} ancho=${i.ancho} alto=${i.alto} etiqueta=${'Sección de Revit: ' + titulo}>
                 <image href=${i.url} width=${i.ancho} height=${i.alto} draggable="false"></image>
               <//>` : html`<div style="display: grid; place-items: center; height: 100%; padding: 16px; text-align: center; color: #5E6670">No se pudo saber qué varillas traslapan juntas: va solo la sección con los colores de cada varilla.</div>`}
           </div>
@@ -646,7 +717,7 @@
       const elemento = tipo === 'vigueta' ? 'vigueta' : tipo === 'columna' ? 'columna' : 'viga';
       const texto = enSeccion ? TEXTOS.seccion : TEXTOS[paso === ultimo ? 3 : paso];
       const titulo = texto[0], ayuda = paso === 1 && tipo !== 'viga' ? TEXTOS[1][1].replace('una viga', 'una ' + elemento) : texto[1];
-      const enEstaPlanta = g ? g.vigas.filter((v) => plantas[plantaId]?.cajas.some((c) => c.viga === v)).length : 0;
+      const enEstaPlanta = g ? g.vigas.filter((v) => plantas[plantaId]?.elementos.some((e) => e.viga === v)).length : 0;
       const hechas = modelo ? modelo.grupos.filter((x) => hechos[x.indice] && this.delTipo(x)).length : 0;
       const puedeSeguir = !creando && (paso === ultimo || !!g?.tieneAcero);
       const back = () => {
@@ -657,7 +728,7 @@
         if (paso < ultimo) return this.irA(paso + 1);
         if (hecho) return set({ paso: 1, hecho: false, grupo: null });
         set({ creando: true, error: null });
-        enviar({ tipo: 'crearVistas', grupo: g.indice, negros: this.state.negros, letra: this.state.letra, movimientos: this.movimientos(g) });
+        enviar({ tipo: 'crearVistas', grupo: g.indice, negros: this.state.negros, letra: this.state.letra, escala: this.state.escala, escalaSeccion: this.state.escalaSeccion, movimientos: this.movimientos(g) });
       };
 
       return html`
