@@ -312,8 +312,9 @@ public static class GeneradorLongitudinal
             return;
         }
 
-        // El gancho de cada barra: el propio, ajustado al cuadro para que el
-        // largo de corte en Revit sea el de la pestaña «Traslapos»; si no se
+        // El gancho de cada barra: el propio, ajustado al cuadro para que su
+        // pata mida por fuera el B (#177), y así las cotas de cada varilla sean
+        // las de la pestaña «Traslapos» (#245); si no se
         // pudo, el configurado del modelo (y si tampoco hay, sale recta).
         var ganchoPorBarra = new Dictionary<ElementId, RebarHookType?>();
         if (contexto.IdZapata is not null)

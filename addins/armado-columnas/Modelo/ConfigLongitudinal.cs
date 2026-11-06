@@ -36,8 +36,9 @@ public sealed class ConfigLongitudinal
     public string? TipoBarraCaraYNombre { get; set; }
 
     /// <summary>
-    /// Todo largo de corte de varilla (ganchos incluidos) es múltiplo de esto,
-    /// en metros, para que en obra sea fácil de cortar. Ver
+    /// Todo largo de varilla por cotas (parte recta + pata de cada gancho medida
+    /// por fuera, el B del cuadro) es múltiplo de esto, en metros, igual que en
+    /// vigas (#245). Ver
     /// <see cref="PlanTraslapos.Redondeos"/>.
     /// </summary>
     public double RedondeoVarillas { get; set; } = PlanTraslapos.RedondeoPorDefecto;

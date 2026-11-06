@@ -55,8 +55,12 @@ public static class PlanTraslapos
 
     /// <summary>
     /// Una varilla. <see cref="ZDesde"/>/<see cref="ZHasta"/> son las cotas de
-    /// su parte recta; <see cref="LargoCorte"/> incluye los ganchos de la
-    /// primera y la última.
+    /// su parte recta; <see cref="LargoCorte"/> es el largo por cotas: la
+    /// parte recta más la pata de cada gancho medida por fuera del doblez (el
+    /// B del cuadro), en la primera y la última. Es lo que muestran el plano y
+    /// el despiece, y lo que cierra en el múltiplo del redondeo (#245, igual
+    /// que vigas en e993767: 2.70 + 0.30 = 3.00). El largo por el eje que da
+    /// Revit queda unos 3 cm por gancho por debajo, por la esquina del doblez.
     /// </summary>
     public sealed record Pieza(double ZDesde, double ZHasta, double LargoCorte);
 
@@ -173,13 +177,35 @@ public static class PlanTraslapos
         // todos: cualquiera de ellos puede ser vecino de una barra A.
         if (deA.Count == 0 && deB.Count > 0)
         {
-            PlanTipo? fallido = planesB.FirstOrDefault(b => !b.TieneSolucion);
-            List<Rango> huecos = Restar(deB, planesB.SelectMany(b => b.Traslapos).ToList());
-            List<PlanTipo> planesA = diametrosA
-                .Select(d => fallido is null
-                    ? Resolver("A", columna, d, Solape(d), opciones, huecos, enTramosDelOtro: true)
-                    : Fallido("A", d, Solape(d), true, $"el tipo A no tiene tramos propios y va en los del B, que no tiene solución. {fallido.Motivo}"))
-                .ToList();
+            List<PlanTipo> EnLoQueDejaB(List<PlanTipo> b)
+            {
+                PlanTipo? fallido = b.FirstOrDefault(p => !p.TieneSolucion);
+                List<Rango> huecos = Restar(deB, b.SelectMany(p => p.Traslapos).ToList());
+                return diametrosA
+                    .Select(d => fallido is null
+                        ? Resolver("A", columna, d, Solape(d), opciones, huecos, enTramosDelOtro: true)
+                        : Fallido("A", d, Solape(d), true, $"el tipo A no tiene tramos propios y va en los del B, que no tiene solución. {fallido.Motivo}"))
+                    .ToList();
+            }
+
+            List<PlanTipo> planesA = EnLoQueDejaB(planesB);
+
+            // Si A no entra en lo que deja B centrado, se corre el traslapo de
+            // B abajo del todo y después arriba del todo, para dejarle a A un
+            // hueco más grande (decisión 7 del plan de #245/#256). Solo cuando
+            // B tiene solución y A no: un plan que ya salía no cambia.
+            if (planesB.All(b => b.TieneSolucion) && planesA.Any(a => !a.TieneSolucion))
+                foreach (Preferencia corrido in new[] { Preferencia.Abajo, Preferencia.Arriba })
+                {
+                    List<PlanTipo> otroB = diametrosB
+                        .Select(d => Resolver("B", columna, d, Solape(d), opciones, deB, enTramosDelOtro: false, corrido))
+                        .ToList();
+                    if (!otroB.All(b => b.TieneSolucion)) continue;
+                    List<PlanTipo> otroA = EnLoQueDejaB(otroB);
+                    if (otroA.All(a => a.TieneSolucion))
+                        return new Resultado(otroA, otroB);
+                }
+
             return new Resultado(planesA, planesB);
         }
 
@@ -213,16 +239,28 @@ public static class PlanTraslapos
         return libres;
     }
 
+    /// <summary>
+    /// Qué plan gana entre los que tienen la misma cantidad de traslapos.
+    /// <see cref="Centrado"/> es el del spec (menos exceso de solape, después
+    /// el más centrado, después el más bajo); los otros dos solo se usan para
+    /// correr el traslapo de B cuando A no entra (decisión 7).
+    /// </summary>
+    private enum Preferencia { Centrado, Abajo, Arriba }
+
     private static PlanTipo Resolver(
         string grupo, Columna columna, double diametroMm, double? solape,
-        Opciones opciones, List<Rango> rangos, bool enTramosDelOtro)
+        Opciones opciones, List<Rango> rangos, bool enTramosDelOtro, Preferencia preferencia = Preferencia.Centrado)
     {
         if (CuadroVarillas.PorDiametro(diametroMm) is not { } varilla)
             return Fallido(grupo, diametroMm, null, enTramosDelOtro,
                 $"la barra Ø {diametroMm:0.#} mm del tipo {grupo} no está en el cuadro de la empresa: " +
                 "no se conoce su gancho ni su solape.");
 
-        var calculo = new Busqueda(columna, columna.ConGanchos ? varilla.AporteGancho90 : 0, solape, opciones, rangos);
+        // El gancho cuenta su B (la pata por fuera), no lo que suma al largo
+        // por el eje (AporteGancho90): así recto + pata, las cotas que ve el
+        // despiece, son el múltiplo del redondeo (#245). La pata en Revit la
+        // sigue calibrando GanchoLongitudinal con AporteGancho90 (#177).
+        var calculo = new Busqueda(columna, columna.ConGanchos ? varilla.Gancho90 : 0, solape, opciones, rangos, preferencia);
         return calculo.Resolver() is { } plan
             ? new PlanTipo(grupo, diametroMm, plan.Piezas, plan.Traslapos, solape, enTramosDelOtro, null)
             : Fallido(grupo, diametroMm, solape, enTramosDelOtro, calculo.Motivo(grupo, varilla, enTramosDelOtro));
@@ -257,6 +295,23 @@ public static class PlanTraslapos
 
         private readonly double _zInicio, _zFin;
         private readonly Opciones _opciones;
+        private readonly Preferencia _preferencia;
+
+        /// <summary>
+        /// Compara dos costos: primero la cantidad de traslapos, siempre. Con
+        /// <see cref="Preferencia.Centrado"/>, el orden del spec (exceso,
+        /// descentrado, altura). Con Abajo / Arriba, la altura primero (la
+        /// suma de las cotas de cada traslapo: menor = más abajo).
+        /// </summary>
+        private int Comparar((long Traslapos, long Exceso, long Descentrado, long Altura) a,
+                             (long Traslapos, long Exceso, long Descentrado, long Altura) b) =>
+            _preferencia switch
+            {
+                Preferencia.Abajo => (a.Traslapos, a.Altura, a.Exceso, a.Descentrado).CompareTo((b.Traslapos, b.Altura, b.Exceso, b.Descentrado)),
+                Preferencia.Arriba => (a.Traslapos, -a.Altura, a.Exceso, a.Descentrado).CompareTo((b.Traslapos, -b.Altura, b.Exceso, b.Descentrado)),
+                _ => a.CompareTo(b),
+            };
+
         private readonly double? _solapeMetros;
         private readonly int _gancho, _h, _paso, _pasosMax;
         private readonly int? _solape;
@@ -293,8 +348,10 @@ public static class PlanTraslapos
             public Camino Holgado;
         }
 
-        public Busqueda(Columna columna, double ganchoMetros, double? solape, Opciones opciones, List<Rango> rangos)
+        public Busqueda(Columna columna, double ganchoMetros, double? solape, Opciones opciones, List<Rango> rangos,
+            Preferencia preferencia = Preferencia.Centrado)
         {
+            _preferencia = preferencia;
             _zInicio = columna.ZInicio;
             _zFin = columna.ZFin;
             _opciones = opciones;
@@ -373,7 +430,7 @@ public static class PlanTraslapos
                         if (b > _h) break;
                         if (b == _h)
                         {
-                            if (mejorUltima < 0 || actual.Costo.CompareTo(costoMejor) < 0)
+                            if (mejorUltima < 0 || Comparar(actual.Costo, costoMejor) < 0)
                             {
                                 mejorUltima = a;
                                 mejorUltimaHolgado = holgado;
@@ -438,10 +495,10 @@ public static class PlanTraslapos
             };
 
             ref Estado destino = ref Celda(ap);
-            if (!destino.Mejor.Alcanzado || camino.Costo.CompareTo(destino.Mejor.Costo) < 0)
+            if (!destino.Mejor.Alcanzado || Comparar(camino.Costo, destino.Mejor.Costo) < 0)
                 destino.Mejor = camino;
             if (!destino.Holgado.Alcanzado || camino.Fin < destino.Holgado.Fin ||
-                (camino.Fin == destino.Holgado.Fin && camino.Costo.CompareTo(destino.Holgado.Costo) < 0))
+                (camino.Fin == destino.Holgado.Fin && Comparar(camino.Costo, destino.Holgado.Costo) < 0))
                 destino.Holgado = camino;
         }
 

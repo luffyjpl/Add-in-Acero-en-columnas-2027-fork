@@ -121,15 +121,14 @@ public static class PaqueteEstribos
 
     /// <summary>
     /// Las alturas de los estribos que de verdad tiene un grupo de Revit, desde
-    /// <paramref name="zInicio"/> hacia arriba. Con <paramref name="incluirUltimo"/>
-    /// en false el grupo tiene la última posición pero sin estribo (es el
-    /// primero del grupo siguiente): no se cuenta, o los menores verían dos
-    /// estribos a 0 cm (20-oct).
+    /// <paramref name="zInicio"/> hacia arriba. Desde #256 cada grupo es una
+    /// corrida de <see cref="RepartoEstribos"/> con estribo en todas sus
+    /// posiciones (antes los grupos vecinos compartían el borde y uno lo dejaba
+    /// sin estribo).
     /// </summary>
-    public static IEnumerable<double> PosicionesDelGrupo(int posiciones, double zInicio, double separacion, bool incluirUltimo)
+    public static IEnumerable<double> PosicionesDelGrupo(int posiciones, double zInicio, double separacion)
     {
-        int cantidad = incluirUltimo || posiciones <= 1 ? posiciones : posiciones - 1;
-        for (int i = 0; i < cantidad; i++)
+        for (int i = 0; i < posiciones; i++)
             yield return zInicio + i * separacion;
     }
 }

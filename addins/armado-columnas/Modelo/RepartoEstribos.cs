@@ -5,27 +5,66 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Alturas de los estribos de un tramo, sin Revit: la misma cuenta que hace
-/// <c>GeneradorArmado</c> (5 cm al borde del paquete, uno o tres grupos) más
-/// la de <c>SetLayoutAsMaximumSpacing</c> (n = ⌈L/s⌉ + 1 posiciones parejas).
-/// La usa la vista previa para mostrar lo mismo que se va a generar; el
-/// generador la compara con lo que puso Revit y avisa si difiere. Ver
-/// <c>docs/planes/2026-10-20-diseno-vista-previa-y-colores.md</c>.
+/// Alturas de los estribos de un tramo, sin Revit (#256,
+/// docs/planes/2026-11-05-largos-y-estribos-columnas-245-256.md, decisiones 2
+/// y 9): la misma regla que vigas (<c>DistribuidorEstribos.Repartir</c>,
+/// commit e993767). El primero y el último a 5 cm del borde del paquete, y
+/// entre medio cada zona a su separación exacta: lo que sobra queda en un
+/// último espacio más corto, nunca más largo. Si ese espacio da menos de 5 cm,
+/// los dos últimos se igualan para que no queden dos estribos casi juntos.
+///
+/// Las confinadas van exactas desde su nudo; la central, exacta desde el
+/// último confinado de abajo, con el espacio corto contra el primero del
+/// confinado de arriba (como el centro de una luz en vigas).
+///
+/// Antes cada grupo era un <c>SetLayoutAsMaximumSpacing</c> de Revit, que
+/// reparte parejo sin pasarse: pedido cada 0.14 salía cada 0.13.
+///
+/// La usan la vista previa (para mostrar lo mismo que se va a generar) y
+/// <c>GeneradorArmado</c>, que crea un conjunto de Revit por cada
+/// <see cref="Corrida"/>: el estribo del espacio corto, si no es el borde de
+/// una zona confinada, queda en un conjunto aparte, como en vigas.
 /// </summary>
 public static class RepartoEstribos
 {
     /// <summary>Del borde del tramo al borde del paquete, en cada punta.</summary>
     public const double SeparacionExtremosMetros = 0.05;
 
+    /// <summary>
+    /// El espacio más corto que se deja entre dos estribos, en metros: si lo
+    /// que sobra al final de una zona es menos, los dos últimos espacios se
+    /// igualan (como <c>EspacioMinimo</c> de vigas, 50 mm).
+    /// </summary>
+    public const double EspacioMinimoMetros = 0.05;
+
     private const double Tolerancia = 1e-6;
 
-    /// <param name="Nombre">El mismo rótulo que usa <c>GeneradorArmado.CrearGrupo</c>.</param>
-    /// <param name="Cantidad">Estribos que pone este grupo (sin el del borde que pone el vecino).</param>
-    public sealed record Zona(string Nombre, double ZDesde, double ZHasta, double Espaciado, int Cantidad);
+    /// <summary>Dos separaciones que difieren menos que esto (0,1 mm) son la misma corrida.</summary>
+    private const double ToleranciaCorrida = 1e-4;
+
+    /// <param name="Nombre">El rótulo del grupo: «uniforme», «confinado inferior», «zona central», «confinado superior» o «confinado (sin zona central)».</param>
+    /// <param name="ZDesde">Donde empieza la zona configurada (en las confinadas, L1 desde su punta).</param>
+    /// <param name="Espaciado">La separación pedida: la real entre todos, salvo el último espacio, que puede ser más corto.</param>
+    /// <param name="Alturas">Los estribos de esta zona, de abajo hacia arriba.</param>
+    public sealed record Zona(string Nombre, double ZDesde, double ZHasta, double Espaciado, IReadOnlyList<double> Alturas)
+    {
+        public int Cantidad => Alturas.Count;
+    }
+
+    /// <summary>
+    /// Estribos seguidos a la misma separación: un conjunto de Revit.
+    /// <paramref name="Separacion"/> es 0 cuando hay uno solo.
+    /// </summary>
+    /// <param name="Nombre">El de la <see cref="Zona"/> a la que pertenece.</param>
+    public sealed record Corrida(string Nombre, double ZPrimero, int Cantidad, double Separacion)
+    {
+        public IEnumerable<double> Alturas => Enumerable.Range(0, Cantidad).Select(i => ZPrimero + i * Separacion);
+    }
 
     /// <param name="Alturas">Eje del estribo principal de cada posición, de abajo hacia arriba, en metros.</param>
+    /// <param name="Corridas">Las mismas alturas, partidas en conjuntos de separación constante, de abajo hacia arriba.</param>
     /// <param name="Aviso">El mismo aviso que daría el generador para este tramo, o null.</param>
-    public sealed record Resultado(IReadOnlyList<double> Alturas, IReadOnlyList<Zona> Zonas, string? Aviso);
+    public sealed record Resultado(IReadOnlyList<double> Alturas, IReadOnlyList<Zona> Zonas, IReadOnlyList<Corrida> Corridas, string? Aviso);
 
     public static Resultado Calcular(double zInferior, double zSuperior, ConfigTramo cfg, PaqueteEstribos.Paquete paquete)
     {
@@ -33,40 +72,51 @@ public static class RepartoEstribos
         double altura = zSup - zInf;
 
         if (altura <= Tolerancia)
-            return new Resultado(Array.Empty<double>(), Array.Empty<Zona>(),
+            return new Resultado(Array.Empty<double>(), Array.Empty<Zona>(), Array.Empty<Corrida>(),
                 $"no deja altura libre para los {SeparacionExtremosMetros * 100:0} cm de extremo en ambos bordes; se omite.");
 
         var alturas = new List<double>();
         var zonas = new List<Zona>();
+        var corridas = new List<Corrida>();
 
-        void Grupo(string nombre, double desde, double largo, double espaciado, bool incluirUltimo = true)
+        void Agregar(string nombre, double desde, double hasta, double espaciado, IReadOnlyList<double> posiciones)
         {
-            int cantidad = CantidadEnGrupo(largo, espaciado, incluirUltimo);
-            if (cantidad == 0) return;
-
-            double separacion = largo / (Posiciones(largo, espaciado) - 1);
-            for (int i = 0; i < cantidad; i++) alturas.Add(desde + i * separacion);
-            zonas.Add(new Zona(nombre, desde, desde + largo, espaciado, cantidad));
+            if (posiciones.Count == 0) return;
+            alturas.AddRange(posiciones);
+            zonas.Add(new Zona(nombre, desde, hasta, espaciado, posiciones));
+            corridas.AddRange(Partir(nombre, posiciones));
         }
 
+        string? aviso = null;
         if (cfg.Modo == ModoEstribo.Uniforme)
         {
-            Grupo("uniforme", zInf, altura, cfg.EspaciadoUniforme);
-            return new Resultado(alturas, zonas, null);
+            if (cfg.EspaciadoUniforme > Tolerancia)
+                Agregar("uniforme", zInf, zSup, cfg.EspaciadoUniforme, Repartir(zInf, zSup, cfg.EspaciadoUniforme));
         }
-
-        double l1 = cfg.LongitudConfinamiento;
-        if (l1 * 2 >= altura - Tolerancia)
+        else if (cfg.LongitudConfinamiento * 2 >= altura - Tolerancia)
         {
-            Grupo("confinado (sin zona central)", zInf, altura, cfg.EspaciadoConfinado);
-            return new Resultado(alturas, zonas, "la longitud de confinamiento ×2 no deja zona central; se armó confinado de punta a punta.");
+            aviso = "la longitud de confinamiento ×2 no deja zona central; se armó confinado de punta a punta.";
+            if (cfg.EspaciadoConfinado > Tolerancia)
+                Agregar("confinado (sin zona central)", zInf, zSup, cfg.EspaciadoConfinado, Repartir(zInf, zSup, cfg.EspaciadoConfinado));
+        }
+        else if (cfg.EspaciadoConfinado > Tolerancia)
+        {
+            double sc = cfg.EspaciadoConfinado, l1 = cfg.LongitudConfinamiento;
+            int espacios = (int)Math.Floor(l1 / sc + Tolerancia);
+            double zFinInferior = zInf + espacios * sc, zInicioSuperior = zSup - espacios * sc;
+
+            List<double> inferior = Enumerable.Range(0, espacios + 1).Select(i => zInf + i * sc).ToList();
+            List<double> superior = Enumerable.Range(0, espacios + 1).Select(i => zSup - (espacios - i) * sc).ToList();
+            List<double> central = cfg.EspaciadoNoConfinado > Tolerancia
+                ? Repartir(zFinInferior, zInicioSuperior, cfg.EspaciadoNoConfinado).Skip(1).SkipLast(1).ToList()
+                : new List<double>();
+
+            Agregar("confinado inferior", zInf, zInf + l1, sc, inferior);
+            Agregar("zona central", zInf + l1, zSup - l1, cfg.EspaciadoNoConfinado, central);
+            Agregar("confinado superior", zSup - l1, zSup, sc, superior);
         }
 
-        double l2 = altura - 2 * l1;
-        Grupo("confinado inferior", zInf, l1, cfg.EspaciadoConfinado, incluirUltimo: false);
-        Grupo("zona central", zInf + l1, l2, cfg.EspaciadoNoConfinado, incluirUltimo: false);
-        Grupo("confinado superior", zInf + l1 + l2, l1, cfg.EspaciadoConfinado);
-        return new Resultado(alturas, zonas, null);
+        return new Resultado(alturas, zonas, corridas, aviso);
     }
 
     /// <summary>
@@ -81,18 +131,49 @@ public static class RepartoEstribos
          zSuperior - SeparacionExtremosMetros - paquete.Encima + paquete.DesplazamientoPrincipal);
 
     /// <summary>
-    /// Estribos que pone un grupo de largo <paramref name="largo"/> con
-    /// espaciado máximo <paramref name="espaciado"/> (mismas unidades los dos):
-    /// lo que se supone que hace <c>SetLayoutAsMaximumSpacing</c>. El generador
-    /// lo compara con lo que puso Revit.
+    /// De <paramref name="desde"/> a <paramref name="hasta"/> (los dos con
+    /// estribo) cada <paramref name="separacion"/>, con lo que sobra en el
+    /// último espacio. Si sobra menos de <see cref="EspacioMinimoMetros"/>,
+    /// los dos últimos espacios se igualan para que no queden dos estribos
+    /// casi juntos: ninguno pasa de la separación. Copia de
+    /// <c>DistribuidorEstribos.Repartir</c> de vigas, en metros.
     /// </summary>
-    public static int CantidadEnGrupo(double largo, double espaciado, bool incluirUltimo)
+    public static IReadOnlyList<double> Repartir(double desde, double hasta, double separacion)
     {
-        if (largo <= Tolerancia || espaciado <= Tolerancia) return 0;
-        int posiciones = Posiciones(largo, espaciado);
-        return incluirUltimo ? posiciones : posiciones - 1;
+        double largo = hasta - desde;
+        if (largo <= Tolerancia)
+            return new[] { desde };
+        int espacios = (int)Math.Ceiling(largo / separacion - Tolerancia);
+        List<double> distancias = Enumerable.Range(0, espacios).Select(i => i * separacion).ToList();
+        double sobra = largo - (espacios - 1) * separacion;
+        if (espacios > 1 && sobra < EspacioMinimoMetros - Tolerancia)
+            distancias[^1] = largo - (separacion + sobra) / 2;
+        distancias.Add(largo);
+        return distancias.Select(x => desde + x).ToList();
     }
 
-    private static int Posiciones(double largo, double espaciado) =>
-        (int)Math.Ceiling(largo / espaciado - 1e-9) + 1;
+    /// <summary>
+    /// Parte posiciones ordenadas en corridas de separación constante (como
+    /// <c>CorridasEstribos.Partir</c> de vigas): la separación pareja va en una
+    /// corrida y el espacio que sobra abre otra.
+    /// </summary>
+    private static IEnumerable<Corrida> Partir(string nombre, IReadOnlyList<double> posiciones)
+    {
+        int i = 0;
+        while (i < posiciones.Count)
+        {
+            int fin = i;
+            if (i + 1 < posiciones.Count)
+            {
+                double separacion = posiciones[i + 1] - posiciones[i];
+                fin = i + 1;
+                while (fin + 1 < posiciones.Count && Math.Abs(posiciones[fin + 1] - posiciones[fin] - separacion) <= ToleranciaCorrida)
+                    fin++;
+            }
+
+            int cantidad = fin - i + 1;
+            yield return new Corrida(nombre, posiciones[i], cantidad, cantidad > 1 ? (posiciones[fin] - posiciones[i]) / (cantidad - 1) : 0);
+            i = fin + 1;
+        }
+    }
 }

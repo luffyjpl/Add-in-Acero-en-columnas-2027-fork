@@ -384,71 +384,44 @@ public static class GeneradorArmado
             TerminationOrientationAtEnd = RebarTerminationOrientation.Left
         };
 
-        if (cfg.Modo == ModoEstribo.Uniforme)
-        {
-            double espaciado = EstandarCQ.APies(cfg.EspaciadoUniforme);
-            CrearGrupo(doc, host, contorno, zBase, zInf, altura, barra, formaEstribo, formasRechazadas, terminaciones, espaciado, etiquetaTramo, "uniforme", res, claveTramo);
-            return true;
-        }
+        // Uniforme, o confinado abajo / central / arriba (#5): cada zona a su
+        // separación exacta y lo que sobra en un último espacio más corto,
+        // como vigas (#256). Un conjunto de Revit por corrida de separación
+        // constante: la cuenta es la misma de la vista previa.
+        RepartoEstribos.Resultado reparto = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete);
+        if (reparto.Aviso is not null) res.Avisos.Add($"{etiquetaTramo}: {reparto.Aviso}");
 
-        // Confinado: tres grupos -- abajo confinado, centro no confinado, arriba
-        // confinado -- cada uno su propio Rebar (#5). Un estribo justo en cada
-        // uno de los 4 bordes (zInf, zInf+L1, zSup-L1, zSup): el de en medio no
-        // repite el de sus vecinos (includeFirstBar/includeLastBar se turnan).
-        double l1 = EstandarCQ.APies(cfg.LongitudConfinamiento);
-        double espaciadoConf = EstandarCQ.APies(cfg.EspaciadoConfinado);
-        double espaciadoNoConf = EstandarCQ.APies(cfg.EspaciadoNoConfinado);
-
-        if (l1 * 2 >= altura - Tolerancia)
-        {
-            // No queda zona central: todo el tramo confinado en un solo grupo.
-            res.Avisos.Add(
-                $"{etiquetaTramo}: la longitud de confinamiento ×2 no deja zona central; " +
-                "se armó confinado de punta a punta.");
-            CrearGrupo(doc, host, contorno, zBase, zInf, altura, barra, formaEstribo, formasRechazadas, terminaciones, espaciadoConf, etiquetaTramo, "confinado (sin zona central)", res, claveTramo);
-            return true;
-        }
-
-        double l2 = altura - 2 * l1;
-
-        CrearGrupo(doc, host, contorno, zBase, zInf, l1, barra, formaEstribo, formasRechazadas, terminaciones, espaciadoConf,
-            etiquetaTramo, "confinado inferior", res, claveTramo, incluirUltimo: false);
-
-        CrearGrupo(doc, host, contorno, zBase, zInf + l1, l2, barra, formaEstribo, formasRechazadas, terminaciones, espaciadoNoConf,
-            etiquetaTramo, "zona central", res, claveTramo, incluirUltimo: false);
-
-        CrearGrupo(doc, host, contorno, zBase, zInf + l1 + l2, l1, barra, formaEstribo, formasRechazadas, terminaciones, espaciadoConf,
-            etiquetaTramo, "confinado superior", res, claveTramo);
+        foreach (RepartoEstribos.Corrida corrida in reparto.Corridas)
+            CrearGrupo(doc, host, contorno, zBase, corrida, barra, formaEstribo, formasRechazadas, terminaciones,
+                etiquetaTramo, res, claveTramo);
 
         return true;
     }
 
     /// <summary>
-    /// Un solo <c>Rebar</c> con espaciado máximo, propagado hacia arriba
-    /// desde <paramref name="zInicio"/> a lo largo de <paramref name="longitud"/>.
-    /// <paramref name="incluirUltimo"/> en false evita duplicar el estribo que
-    /// el grupo vecino ya pone en el borde compartido (ver los tres llamados
-    /// del caso Confinado).
+    /// Un <c>Rebar</c> por corrida de <see cref="RepartoEstribos"/>: varios
+    /// estribos a la misma separación (<c>NumberWithSpacing</c>, como vigas) o
+    /// uno solo, el del espacio que sobra (<c>Single</c>) -- #256.
     /// </summary>
     private static void CrearGrupo(
         Document doc,
         FamilyInstance host,
         CurveLoop contorno,
         double zBaseContorno,
-        double zInicio,
-        double longitud,
+        RepartoEstribos.Corrida corrida,
         RebarBarType barra,
         RebarShape? formaEstribo,
         HashSet<ElementId> formasRechazadas,
         BarTerminationsData terminaciones,
-        double espaciado,
         string etiquetaTramo,
-        string etiquetaGrupo,
         ResultadoArmado res,
-        (string IdElementoHost, int IndiceTramo) claveTramo,
-        bool incluirUltimo = true)
+        (string IdElementoHost, int IndiceTramo) claveTramo)
     {
-        if (longitud <= Tolerancia || espaciado <= Tolerancia) return;
+        if (corrida.Cantidad <= 0) return;
+
+        string etiquetaGrupo = corrida.Nombre;
+        double zInicio = EstandarCQ.APies(corrida.ZPrimero);
+        double espaciado = EstandarCQ.APies(corrida.Separacion);
 
         var mover = Transform.CreateTranslation(XYZ.BasisZ * (zInicio - zBaseContorno));
         IList<Curve> curvasTrasladadas = contorno.Select(c => c.CreateTransformed(mover)).ToList();
@@ -500,12 +473,15 @@ public static class GeneradorArmado
                 $"gancho {GeometriaSeccion.Metros(hookLength) * 100:0.#}cm, recubrimiento+radio ya restado del contorno.");
         }
 
-        estribo.GetShapeDrivenAccessor().SetLayoutAsMaximumSpacing(
-            espaciado,
-            longitud,
-            barsOnNormalSide: true,
-            includeFirstBar: true,
-            includeLastBar: incluirUltimo);
+        if (corrida.Cantidad > 1)
+            estribo.GetShapeDrivenAccessor().SetLayoutAsNumberWithSpacing(
+                corrida.Cantidad,
+                espaciado,
+                barsOnNormalSide: true,
+                includeFirstBar: true,
+                includeLastBar: true);
+        else
+            estribo.GetShapeDrivenAccessor().SetLayoutAsSingle();
 
         MarcaEstribos.Marcar(estribo, host.Id);
 
@@ -526,7 +502,7 @@ public static class GeneradorArmado
         // (RepartoEstribos); si Revit puso otra cantidad, la vista previa
         // mintió y hay que corregir la cuenta. No cambia lo que se genera.
         // Va a Avisos (no a Detalles) porque Detalles no se muestra en la ventana.
-        int previstos = RepartoEstribos.CantidadEnGrupo(longitud, espaciado, incluirUltimo);
+        int previstos = corrida.Cantidad;
         if (previstos != estribo.Quantity)
             res.Avisos.Add(
                 $"{etiquetaTramo} ({etiquetaGrupo}): la vista previa calculó {previstos} estribos y Revit puso {estribo.Quantity} " +
@@ -537,7 +513,7 @@ public static class GeneradorArmado
             $"{etiquetaTramo} ({etiquetaGrupo}): {posiciones} estribos cada " +
             $"{GeometriaSeccion.Metros(separacionReal) * 100:0.#} cm sobre {GeometriaSeccion.Metros(reparto):0.00} m.");
 
-        RegistrarPosiciones(posiciones, zInicio, separacionReal, incluirUltimo, claveTramo, res);
+        RegistrarPosiciones(posiciones, zInicio, separacionReal, claveTramo, res);
 
         if (_traza is not null)
         {
@@ -561,10 +537,9 @@ public static class GeneradorArmado
 
                 _traza.AppendLine(
                     $"    {etiquetaGrupo}: posiciones {estribo.NumberOfBarPositions}, cantidad {estribo.Quantity}, " +
-                    $"largo del reparto {GeometriaSeccion.Metros(acceso.ArrayLength):0.####} m, espaciado máximo " +
-                    $"{GeometriaSeccion.Metros(estribo.MaxSpacing) * 100:0.##} cm, incluye primero: {estribo.IncludeFirstBar}, " +
+                    $"largo del reparto {GeometriaSeccion.Metros(acceso.ArrayLength):0.####} m, incluye primero: {estribo.IncludeFirstBar}, " +
                     $"último: {estribo.IncludeLastBar}; pedido: arranque Z {GeometriaSeccion.Metros(zInicio):0.####}, " +
-                    $"largo {GeometriaSeccion.Metros(longitud):0.####} m, espaciado {GeometriaSeccion.Metros(espaciado) * 100:0.##} cm");
+                    $"cantidad {corrida.Cantidad}, separación {corrida.Separacion * 100:0.##} cm");
 
                 foreach (int indice in new[] { 0, posiciones - 2, posiciones - 1 }.Where(i => i >= 0).Distinct())
                 {
@@ -715,8 +690,8 @@ public static class GeneradorArmado
     /// menores exactamente ahí, en vez de calcular sus propias posiciones.
     ///
     /// Calculado a mano (zInicio + i * separacionReal, propagando en +Z como
-    /// dice el propio <c>SetLayoutAsMaximumSpacing(..., barsOnNormalSide: true,
-    /// includeFirstBar: true, ...)</c>) y NO leído de vuelta con
+    /// dice el propio <c>SetLayoutAsNumberWithSpacing(..., barsOnNormalSide: true,
+    /// includeFirstBar: true, includeLastBar: true)</c>) y NO leído de vuelta con
     /// <c>Rebar.GetCenterlineCurves</c> -- probado sobre Revit real: esa
     /// llamada tira <c>NullReferenceException</c> justo después de fijar el
     /// layout, porque Revit todavía no recalculó la geometría del Rebar en
@@ -724,7 +699,7 @@ public static class GeneradorArmado
     /// medio). La cuenta a mano evita depender de eso.
     /// </summary>
     private static void RegistrarPosiciones(
-        int posiciones, double zInicio, double separacionReal, bool incluirUltimo,
+        int posiciones, double zInicio, double separacionReal,
         (string IdElementoHost, int IndiceTramo) claveTramo, ResultadoArmado res)
     {
         if (!res.PosicionesEstribosPorTramo.TryGetValue(claveTramo, out List<double>? zetas))
@@ -733,9 +708,7 @@ public static class GeneradorArmado
             res.PosicionesEstribosPorTramo[claveTramo] = zetas;
         }
 
-        // NumberOfBarPositions cuenta también la última posición aunque el
-        // grupo no tenga estribo ahí (includeLastBar: false).
-        zetas.AddRange(PaqueteEstribos.PosicionesDelGrupo(posiciones, zInicio, separacionReal, incluirUltimo));
+        zetas.AddRange(PaqueteEstribos.PosicionesDelGrupo(posiciones, zInicio, separacionReal));
     }
 
     /// <summary>

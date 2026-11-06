@@ -43,17 +43,29 @@ public static class ZonasEstribos
                 actual.SelectMany(n => n.Indices).ToList()));
             actual = [];
         }
-        foreach ((double Z, List<int> Indices) nivel in niveles)
+        for (int n = 0; n < niveles.Count; n++)
         {
-            double hueco = actual.Count > 0 ? nivel.Z - actual[^1].Z : 0;
-            bool sigue = actual.Count == 1 ? hueco <= maximo : actual.Count > 1 && Math.Abs(hueco - separacion) <= tolerancia;
+            double hueco = actual.Count > 0 ? niveles[n].Z - actual[^1].Z : 0;
+            bool sigue = actual.Count == 1 ? hueco <= maximo && !EmpiezaOtra(n, hueco) : actual.Count > 1 && Math.Abs(hueco - separacion) <= tolerancia;
             if (!sigue)
                 Cerrar();
             else if (actual.Count == 1)
                 separacion = hueco;
-            actual.Add(nivel);
+            actual.Add(niveles[n]);
         }
         Cerrar();
         return zonas;
+
+        // Un estribo solo no se empareja con el siguiente si ese no sigue la separación del par pero sí arranca una zona
+        // pareja con el de después: el suelto que deja el reparto de columnas al igualar los dos últimos espacios de la
+        // zona central se escribe «1 #3», y el confinado de arriba queda entero (decisión 10 del plan
+        // 2026-11-05-largos-y-estribos-columnas-245-256).
+        bool EmpiezaOtra(int n, double hueco)
+        {
+            if (n + 2 >= niveles.Count)
+                return false;
+            double siguiente = niveles[n + 1].Z - niveles[n].Z, despues = niveles[n + 2].Z - niveles[n + 1].Z;
+            return Math.Abs(siguiente - hueco) > tolerancia && Math.Abs(despues - siguiente) <= tolerancia;
+        }
     }
 }
