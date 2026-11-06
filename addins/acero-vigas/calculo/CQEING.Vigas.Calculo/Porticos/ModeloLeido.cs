@@ -37,12 +37,16 @@ public enum TipoApoyo
 /// </summary>
 public sealed record ApoyoLeido(string Id, TipoApoyo Tipo, IReadOnlyList<Punto> Huella, double ZAbajo, double ZArriba, Punto? Direccion = null);
 
+/// <summary>Una zapata o losa de cimentación: puntos de su contorno en planta y sus caras de abajo y de arriba, en mm.</summary>
+public sealed record ZapataLeida(string Id, IReadOnlyList<Punto> Huella, double ZAbajo, double ZArriba);
+
 /// <summary>
 /// Lo que el adaptador de Revit le pasa al agrupador (#81). Todo en mm. <paramref name="Niveles"/> son todos los niveles
-/// del proyecto: la planta los ofrece todos, aunque no tengan vigas (6-nov).
+/// del proyecto: la planta los ofrece todos, aunque no tengan vigas (6-nov). <paramref name="Zapatas"/> son las zapatas y
+/// losas de cimentación: los estribos no entran donde la viga está dentro de una (6-nov).
 /// </summary>
 public sealed record ModeloLeido(IReadOnlyList<EjeLeido> Ejes, IReadOnlyList<VigaLeida> Vigas, IReadOnlyList<ApoyoLeido> Apoyos,
-    IReadOnlyList<NivelLeido>? Niveles = null);
+    IReadOnlyList<NivelLeido>? Niveles = null, IReadOnlyList<ZapataLeida>? Zapatas = null);
 
 /// <summary>Un tramo del pórtico (una luz entre apoyos o un voladizo), en mm desde el eje A, con su sección.</summary>
 public sealed record TramoLeido(string Nombre, int Desde, int Hasta, bool EsVoladizo, double Ancho, double Alto);
@@ -54,9 +58,13 @@ public sealed record VigaEnPortico(string Id, int Desde, int Hasta);
 /// Dónde está el pórtico en el modelo (#85), en mm del modelo. (<paramref name="Ux"/>, <paramref name="Uy"/>) es la
 /// dirección en que crece x; (<paramref name="OrigenX"/>, <paramref name="OrigenY"/>), el eje A sobre el centro lateral
 /// de la viga. <paramref name="ZAbajo"/> y <paramref name="ZArriba"/> son las caras de abajo y de arriba.
+/// <paramref name="EnZapata"/> son los trechos donde la viga está dentro de una zapata (null = ninguno).
 /// </summary>
 public sealed record UbicacionPortico(double Ux, double Uy, double OrigenX, double OrigenY, double ZAbajo, double ZArriba,
-    double Ancho, double Alto, IReadOnlyList<VigaEnPortico> Vigas);
+    double Ancho, double Alto, IReadOnlyList<VigaEnPortico> Vigas, IReadOnlyList<TrechoEnZapata>? EnZapata = null);
+
+/// <summary>Un trecho de la viga dentro de una zapata, en mm desde el eje A.</summary>
+public readonly record struct TrechoEnZapata(double Desde, double Hasta);
 
 /// <summary>
 /// Un pórtico listo para el motor: <see cref="Portico"/> es lo que recibe <c>MotorVigas.Calcular</c>; el resto es

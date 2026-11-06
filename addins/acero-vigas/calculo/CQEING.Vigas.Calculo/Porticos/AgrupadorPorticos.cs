@@ -58,7 +58,7 @@ public static class AgrupadorPorticos
                     : clase == Elemento.Vigueta ? $"Vigueta {++viguetas}"
                     : $"Pórtico sin eje {++sinEje}";
 
-                porticos.Add(Armar(linea, modelo.Ejes, cadena, propios, nombre, eje?.Nombre, desde, hasta, avisos, clase));
+                porticos.Add(Armar(linea, modelo.Ejes, cadena, propios, nombre, eje?.Nombre, desde, hasta, avisos, clase, modelo.Zapatas));
             }
         }
         return new ResultadoLectura(porticos, avisos, modelo);
@@ -113,7 +113,8 @@ public static class AgrupadorPorticos
     }
 
     private static PorticoLeido Armar(Linea linea, IReadOnlyList<EjeLeido> ejes, List<Tramo> cadena, List<Soporte> soportes,
-        string nombre, string? eje, double desde, double hasta, List<AvisoLectura> avisos, Elemento clase)
+        string nombre, string? eje, double desde, double hasta, List<AvisoLectura> avisos, Elemento clase,
+        IReadOnlyList<ZapataLeida>? zapatas = null)
     {
         var nombres = new List<string>();
         var posiciones = new List<double>();
@@ -159,7 +160,8 @@ public static class AgrupadorPorticos
             new Portico(apoyos, voladizoInicio, voladizoFinal),
             soportes.Select(s => s.Tipo).ToList(), tramos, cadena.Select(t => t.Viga.Id).ToList(),
             soportes.Select(s => Math.Round(s.NormalHasta - s.NormalDesde)).ToList(),
-            Ubicacion(linea, cadena, origen, tramos[0], cadena.Select(t => new VigaEnPortico(t.Viga.Id, Mm(t.Desde), Mm(t.Hasta))).ToList()),
+            Ubicacion(linea, cadena, origen, tramos[0], cadena.Select(t => new VigaEnPortico(t.Viga.Id, Mm(t.Desde), Mm(t.Hasta))).ToList(),
+                EnZapata(linea, zapatas, desde, hasta, origen)),
             clase);
 
         TramoLeido Tramo(string nombreTramo, double a, double b, bool voladizo)
@@ -177,13 +179,32 @@ public static class AgrupadorPorticos
     /// centro de las vigas (su geometría, o su línea si no lo traen). La sección es la de <paramref name="primero"/>: el
     /// cambio de sección es #92.
     /// </summary>
-    private static UbicacionPortico Ubicacion(Linea linea, List<Tramo> cadena, double origen, TramoLeido primero, IReadOnlyList<VigaEnPortico> vigas)
+    private static UbicacionPortico Ubicacion(Linea linea, List<Tramo> cadena, double origen, TramoLeido primero, IReadOnlyList<VigaEnPortico> vigas,
+        IReadOnlyList<TrechoEnZapata> enZapata)
     {
         double lado = cadena.Average(t => linea.Normal(t.Viga.Centro ?? t.Viga.Desde));
         // n = (−Uy, Ux): A(p) = origen y Normal(p) = lado.
         double x = origen * linea.Ux - lado * linea.Uy, y = origen * linea.Uy + lado * linea.Ux;
         return new UbicacionPortico(linea.Ux, linea.Uy, x, y, cadena.Min(t => t.Viga.ZAbajo), cadena.Max(t => t.Viga.ZArriba),
-            primero.Ancho, primero.Alto, vigas);
+            primero.Ancho, primero.Alto, vigas, enZapata.Count > 0 ? enZapata : null);
+    }
+
+    /// <summary>
+    /// Los trechos de la viga que están dentro de una zapata (6-nov): la zapata la cruza en planta y se solapa con ella en
+    /// alto. Se miden desde el eje A, como el resto del pórtico, y se recortan a la viga.
+    /// </summary>
+    private static List<TrechoEnZapata> EnZapata(Linea linea, IReadOnlyList<ZapataLeida>? zapatas, double desde, double hasta, double origen)
+    {
+        var trechos = new List<TrechoEnZapata>();
+        foreach (ZapataLeida z in zapatas ?? [])
+        {
+            if (!linea.SeSolapaEnAlto(z.ZAbajo, z.ZArriba) || linea.Cruza(z.Huella) is not var (a, b, _, _))
+                continue;
+            double d = Math.Max(a, desde), h = Math.Min(b, hasta);
+            if (h > d)
+                trechos.Add(new TrechoEnZapata(Math.Round(d - origen), Math.Round(h - origen)));
+        }
+        return trechos.OrderBy(t => t.Desde).ToList();
     }
 
     /// <summary>

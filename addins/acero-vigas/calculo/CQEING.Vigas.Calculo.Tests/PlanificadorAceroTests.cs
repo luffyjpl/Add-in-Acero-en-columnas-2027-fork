@@ -29,6 +29,21 @@ public class PlanificadorAceroTests
         (capa == Posicion.Superior ? c.Estribos.Seccion.Superior : c.Estribos.Seccion.Inferior).Filas.SelectMany(f => f).ToList();
 
     [Fact]
+    public void DondeLaVigaEstaDentroDeUnaZapata_NoVanEstribos()
+    {
+        // 6-nov: los estribos de las vigas de cimentación se metían en las zapatas.
+        static IEnumerable<double> Posiciones(PlanAcero plan) =>
+            plan.Estribos.SelectMany(g => Enumerable.Range(0, g.Corrida.Cantidad).Select(i => g.Corrida.Primero + i * g.Corrida.Separacion));
+        PorticoLeido enZapata = Portico() with { Ubicacion = Portico().Ubicacion! with { EnZapata = [new TrechoEnZapata(1000, 2500)] } };
+
+        List<double> sin = Posiciones(Planificar()).ToList(), con = Posiciones(Planificar(p: enZapata)).ToList();
+
+        Assert.Contains(sin, x => x is > 1000 and < 2500);
+        Assert.DoesNotContain(con, x => x is >= 1000 and <= 2500);
+        Assert.True(con.Count < sin.Count);
+    }
+
+    [Fact]
     public void UnaPiezaPorBarraFisica()
     {
         PorticoCalculado c = Calcular();
