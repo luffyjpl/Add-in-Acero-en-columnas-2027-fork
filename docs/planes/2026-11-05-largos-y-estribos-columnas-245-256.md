@@ -117,6 +117,11 @@ Resultados:
    - No se vuelve a "una etiqueta por conjunto de Revit": eso es lo que #227 (hallazgo 29) cambió, porque en modelos con cada estribo suelto llenaba la vista de `1 #3`.
    - El arreglo: al empezar una zona con dos estribos, si el que sigue no continúa esa separación pero sí arranca una zona pareja con el de después, el primero queda solo.
    - Solo afecta a columnas: `ZonasEstribos.Agrupar` lo usa únicamente `despiece/Revit/Columnas/GeneradorColumna.cs` (verificado con grep el 05-nov); el despiece de vigas etiqueta por conjunto y no pasa por aquí.
+11. **El estribo suelto se queda como en vigas** (2026-11-05, Luciano: "dejémoslo como está"). Se miraron otras formas de agruparlo:
+   - sumarlo a la central en el despiece (`14 #3 @0.14`), aunque el último espacio real sea más corto;
+   - repartir lo que falta en los últimos espacios: no sirve, porque en la mitad de los casos casi toda la central queda a 0.13, que es el error de #256;
+   - llenar lo que sobra con estribos de confinamiento y llevar el resto a las puntas (hasta 8 cm del borde).
+   Vigas (`main` al 05-nov) tiene el mismo comportamiento: un conjunto aparte en Revit, `1 #3` en su despiece y la cuenta sumada a la central en el tablero. Se deja igual para que los dos add-ins hagan lo mismo; si se cambia, que sea para vigas y columnas a la vez, con Santiago.
 4. **Pruebas automáticas, después** (2026-11-05, Luciano: "por ahora no hagas los test, pero déjalo anotado"): queda en el issue #270 (proyecto xUnit sin Revit para `Modelo/`). En este trabajo se comprueba compilando y en Revit.
 5. **Cada zona lleva sus propios estribos** (2026-11-05, Claude): `RepartoEstribos.Zona` tiene `Alturas`. Los rangos `ZDesde`/`ZHasta` siguen siendo los configurados (L1 en cada punta), para que la etiqueta "L1" de la vista previa no cambie. La vista previa (`ArmadorVistaColumnas`) toma los estribos de cada zona directo de ahí. `ClasificadorPrevia3D` ubica cada estribo leído en la zona del estribo del reparto más cercano, porque con el sobrante las zonas ya no cortan justo en L1. Antes usaba el rango con 3 cm de holgura.
 6. ~~**#256: todos los espacios iguales; el sobrante va al borde de arriba, chico**~~ *(descartada, decisión 9)* (2026-11-05, Luciano). Santiago le dijo a Juan que no importa que el último estribo quede a más de 5 cm del borde, con tal de que todos queden con la misma separación. Ese cambio **todavía no está en vigas**: en `main`, `DistribuidorEstribos.Repartir` deja el último espacio más corto. Queda así:
@@ -184,5 +189,5 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin armado
   - Compila con 2026 y 2027 sin advertencias, `dotnet test` en verde, y está desplegado en 2027 desde `C:\Proyecto\addins-245`.
 - [x] Issue de la decisión 8: #271.
 - [x] Decisión 6b implementada (`RepartoEstribos.Cerrar`) y después quitada al volver a la regla de vigas (decisión 9).
-- [ ] Probado en Revit (paso 5).
+- [x] Probado en Revit 2027 (paso 5, 05-nov): Luciano hizo los pasos 1 a 6 de «Cómo probarlo» y todo salió bien. Sin capturas.
 - [x] Decisión 10 implementada (paso 4c, 05-nov): `ZonasEstribos.Agrupar` con `EmpiezaOtra` y dos pruebas nuevas en `ZonasEstribosTests`. La prueba del suelto falla con el agrupador anterior y pasa con el nuevo. Simulación de la columna de 3.03: `9 #3 @0.06 · 13 #3 @0.14 · 1 #3 · 9 #3 @0.06`. Los otros tres casos de la tabla de la decisión 9 no cambian. `dotnet test CQEING-Addins.sln` en verde (despiece: 110 pruebas). El despiece compila con 2026 y 2027 sin advertencias y está desplegado en 2027 desde `C:\Proyecto\addins-245`.
