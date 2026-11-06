@@ -140,6 +140,44 @@ dentro de una `SubTransaction` que se deshizo: al terminar, la zapata quedó con
   - Las demás tienen arcos, ángulos de 45°, 56° o 63°, o más de 3 tramos.
   Al revisar, apareció una barra más en la zapata 780919: la 817623 (#4 CIM, forma 00). Es una cuarta barra sobrante de
   la falla de H14 (va seguida de 817620 a 817622) y no se había visto. Se borró y la zapata volvió a 0 barras.
+- **H17. Parpadeo al pasar el mouse por un punto de choque** (2026-11-05, Luciano, en Revit). El texto del choque
+  (`#textoChoque`) aparece debajo de la leyenda y ocupa una línea. La vista 3D (`#vista`, `flex:1`) se achica, el SVG
+  se vuelve a escalar y el punto se corre de debajo del mouse. Entonces el texto se oculta, la vista crece, el punto
+  vuelve bajo el mouse, y así sigue en bucle.
+- **H18. La sección 2D sale al abrir, vacía** (2026-11-05, Luciano). `#emergente` no tiene `hidden` en el HTML y
+  `dibujar2d()` solo vacía el contenido cuando no hay zapata activa. Al abrir no hay ninguna elegida, así que se ve una
+  caja blanca con «Sección A-A».
+- **H19. No se vio el tablero minimizarse** (2026-11-05, Luciano). El código de `Apartar()` es igual al de vigas, pero
+  Luciano probó en **Revit 2026**. La DLL de `bin\Debug\2026` era de las 17:04 y el apartado y Reglas se compilaron
+  después. El despliegue de las 17:53 fue solo para 2027 (los journals de 2027 están vacíos: nunca se abrió). O sea,
+  Revit 2026 cargó la versión anterior.
+- **H20. La corrección de H18 no alcanzaba** (2026-11-05, Luciano, captura en Revit 2026). `recibirDatos` elige
+  sola la primera zapata al abrir (`elegir([d.zapatas[0].id])`), así que siempre hay una zapata activa y la 2D salía
+  igual. Además, «Vista 2D» es un `.btn` y no se veía si estaba activo: el estilo `aria-pressed` es solo de `.grupo`.
+- **H21. Barra cerrada en el corte con la API nativa** (2026-11-05, MCP sobre `prueba-zapatas.rvt`, zapata 780973,
+  1.80 × 1.80 × 0.35, en una `SubTransaction` deshecha; la zapata quedó con sus 4 barras).
+  - Formas de estilo `StirrupTie` del modelo: **T1** (4 tramos, 135°/135°), T2 (90°/90°), T6 a T8 y las «Forma de
+    armadura N» que crea el add-in de columnas (4 tramos, 135°/135°). El catálogo de zapatas solo lee las `Standard`.
+  - Ganchos `StirrupTie` de 135°: «Estribo/Tirante - 135°.» (155340) y «Sísmico de estribo/tirante - 135°.»
+    (155361).
+  - Se pasó un rectángulo cerrado en el plano XZ (y = 8000), en el eje de una #5 CIM con 75 mm de recubrimiento:
+    x 2682.95 a 4317.05 y z −917.05 a −732.95. Empieza en la esquina de arriba a la izquierda, con normal +Y y el
+    gancho 155340 en las dos puntas.
+    - `CreateFromCurvesAndShape` con T1 funciona: forma T1, largo 3840 mm.
+    - `CreateFromCurves(StirrupTie, useExistingShapeIfPossible)` también funciona, pero elige «Forma de armadura 1»
+      (de columnas), no T1.
+    - Con orientación `Left`/`Left`, los dos ganchos de 135° quedan **adentro**, en la esquina donde empieza: bbox x
+      2675 a 4325 y z −925 a −725, o sea 75 mm de recubrimiento en todo el contorno. Con `Right`/`Right` salen del
+      concreto (bbox z hasta −601). Hay que medir y dar vuelta como en `OrientarGanchos`; no se puede suponer.
+    - Los dobleces usan el diámetro de estribo de la barra (`StirrupTieBendDiameter`, 63.5 mm para el #5), no el
+      estándar (95.3 mm). Esquinas: arco de 62.3 mm. Cola del gancho: 79.4 mm.
+- **H22. Zapatas no pinta el acero por diámetro en Revit** (2026-11-05, Luciano).
+  - Vigas, al generar, aplica en la vista activa (y en su 3D) un filtro de vista por diámetro, «CQEING Acero #n», con
+    el color de `ColoresDiametro` y el contorno casi negro (`acero-vigas/Revit/FiltrosColor.cs`, llamado desde
+    `GeneradorAcero.cs:147-151`). Columnas hace lo mismo con sus filtros «CQEING #n» (`ColoresEnVistas.cs`).
+  - Zapatas solo pinta en el tablero (decisión 32). En Revit las barras quedan con el color de la vista.
+  - `FiltrosColor` de vigas usa `TiposAcero`, `CreadorBarras` y `DiametrosDisponibles` (de vigas), así que no se
+    puede enlazar tal cual.
 
 ### Referencia: cómo lo hace vigas (revisado el 05-nov, a pedido de Luciano)
 
@@ -220,6 +258,8 @@ Luciano pidió tomar vigas, que ya está terminado, como modelo del flujo. Lo qu
     - Zapatas calcula, genera y arma el catálogo con las reglas cargadas, no con `Reglas.Generales`.
 38a. **La pantalla de Reglas muestra también las dos imágenes** (2026-11-05, Luciano), debajo de la tabla, como
     referencia de qué son A, B, D y E. Se copian a `Tablero/web/img/`.
+    **Revertida el 2026-11-05 (Luciano, después de probarla en Revit):** se quitan las imágenes de la pantalla y la
+    carpeta `Tablero/web/img/`. La pantalla queda con los campos, la tabla y la nota, igual que vigas.
 39. **Separar la pantalla de reglas en vigas y enlazarla** (2026-11-05, Claude, como la decisión 31):
     - `VistaReglas`, `ReglaVista` y las conversiones pasan sin cambios a `acero-vigas/.../Tablero/PantallaReglas.cs`
       (`PantallaReglas.De` y `PantallaReglas.ReglasDe`).
@@ -233,6 +273,34 @@ Luciano pidió tomar vigas, que ya está terminado, como modelo del flujo. Lo qu
     - Commit y push de la rama `zapatas/pruebas-revit` a `origin` (fork `luffyjpl`), y PR a la rama `acero-zapatas` de
       `upstream`, como el PR #267.
     - El merge espera la revisión visual de Luciano del botón Reglas y del apartado.
+42. **Correcciones tras la prueba en Revit** (2026-11-05, Luciano):
+    - **H17:** el texto del choque se muestra encima de la vista 3D, abajo a la izquierda (posición absoluta dentro de
+      `#vista`), y deja de cambiar el tamaño de la vista. También se oculta al sacar el mouse del punto.
+    - **H18:** la sección 2D solo se ve si hay una zapata elegida y el botón «Vista 2D» está activo. Arranca oculta.
+      Corregido por H20: `ver2d` arranca en `false`, así que la 2D se abre solo al pulsar «Vista 2D» y se cierra con
+      × o con el mismo botón. Cuando está activo, el botón se ve azul.
+    - **H19:** se despliega también para Revit 2026, que es el que usa Luciano. El código no cambia; se vuelve a
+      probar.
+43. **Forma rectangular cerrada en el corte** (2026-11-05, Luciano; aprobada con las respuestas de abajo):
+    - Cada barra de esa dirección da la vuelta completa en el corte: abajo, sube por los costados, pasa arriba y
+      cierra con 135°. Reemplaza a la parrilla inferior **y** a la superior de esa dirección.
+    - Se elige en «Forma» de la parrilla inferior, con una ficha nueva «Cerrada», que muestra las formas `StirrupTie`
+      de 4 tramos con 135°/135° (T1 y las «Forma de armadura N»). Por geometría, como la decisión 37.
+    - Con «Cerrada» en una dirección, el gancho de esa dirección queda fijo en 135° de estribo. La parrilla superior
+      de esa dirección se oculta en el tablero, porque la cierra la misma barra.
+    - Se crea con `CreateFromCurvesAndShape` y la forma elegida (H21). Los ganchos se miden y se dan vuelta hasta que
+      queden adentro.
+    - Capas: con X e Y cerradas, X va afuera (abajo y arriba contra el recubrimiento) e Y adentro de X, como hoy con
+      la U.
+    - **Respuestas de Luciano (05-nov):** (a) cierra **arriba**, en la esquina superior del inicio (menor X o menor
+      Y), así que abajo la barra queda corrida; (b) vale el doblez de estribo de Revit (63.5 mm para el #5).
+44. **Colores por diámetro en Revit, los mismos de vigas** (2026-11-05, Luciano; por H22):
+    - Lo que crea y aplica los filtros pasa sin cambios de comportamiento a
+      `acero-vigas/Revit/FiltrosColorDiametro.cs`, que recibe los números de barra con su diámetro en pies.
+      `FiltrosColor.Aplicar` de vigas solo traduce sus tipos y lo llama.
+    - Zapatas lo enlaza (como las decisiones 31 y 39) y lo llama al final de `GeneradorZapatas.Generar`, dentro de la
+      misma transacción, en la vista activa. Usa los mismos filtros «CQEING Acero #n», así que no hay filtros
+      duplicados, y los mismos colores (#4 azul, #5 rojo, etc.).
 
 ## Plan paso a paso
 
@@ -282,6 +350,22 @@ Luciano pidió tomar vigas, que ya está terminado, como modelo del flujo. Lo qu
 13. **Apartar el tablero** (decisión 40) — archivos: `Tablero/VentanaTablero.cs` y `Tablero/PuenteTablero.cs` — se
     prueba en Revit a mano (letra M de la guía).
 14. **Entrega** (decisión 41) — pruebas, prueba automática en Revit, commit, push y PR; el merge, con el OK de Luciano.
+15. **Correcciones tras la prueba en Revit** (decisión 42) — archivos: `Tablero/web/index.html` y `zapatas.js`. Se
+    prueba en el navegador: el tamaño de `#svg3d` no cambia con el texto del choque, y la sección 2D no se ve hasta
+    elegir una zapata. Después se despliega en 2026 y 2027 (con `Get-Process -Name Revit` vacío), y Luciano lo
+    revisa en Revit.
+16. **Forma cerrada: cálculo** (decisión 43) — archivos: `ProtocoloZapatas.cs` (`ClaseForma.Cerrada`), `Modelo.cs`,
+    `MotorParrillas.cs` y `TrazosZapata.cs` (el trazo del lazo con sus dos 135°, para la vista y los choques). Se
+    prueba con pruebas nuevas: cantidades, el lazo con 75 mm de recubrimiento en todo el contorno y X afuera de Y.
+17. **Forma cerrada: Revit** (decisión 43) — archivos: `Revit/TiposZapata.cs` (lee las `StirrupTie` de 4 tramos con
+    135°) y `Revit/GeneradorZapatas.cs` (crea el lazo y orienta los ganchos). Se prueba con un caso nuevo en
+    `PruebaAutomatica.cs` y midiendo con el MCP, como H21.
+18. **Forma cerrada: tablero** (decisión 43) — archivos: `Tablero/web/zapatas.js` e `index.html`: la ficha «Cerrada»,
+    el gancho fijo y la superior oculta en esa dirección. Se prueba en el navegador y en Revit.
+19. **Colores en Revit** (decisión 44) — archivos: `acero-vigas/Revit/FiltrosColorDiametro.cs` (nuevo),
+    `acero-vigas/Revit/FiltrosColor.cs`, `acero-zapatas/CQEING.Zapatas.csproj` y `Revit/GeneradorZapatas.cs`. Se
+    prueba: las pruebas de vigas siguen en verde, los dos add-ins compilan para 2026 y 2027, y en Revit, después de
+    aplicar, la vista activa tiene los filtros «CQEING Acero #4/#5» con su color (medido con el MCP).
 
 ## Cómo probarlo
 
@@ -393,8 +477,8 @@ dentro de Revit, el error completo queda en `%APPDATA%\CQEING\zapatas\errores.lo
 **L. Botón Reglas (decisiones 38 y 38a)**
 - Hacer: pulsar «Reglas» arriba a la derecha.
 - Debe verse:
-  - «Reglas generales» bloqueada, con los valores del cuadro (#5: 90° 0.278, 180° 0.238, estribo 0.189) y debajo
-    las dos imágenes.
+  - «Reglas generales» bloqueada, con los valores del cuadro (#5: 90° 0.278, 180° 0.238, estribo 0.189). Sin
+    imágenes (decisión 38a revertida).
   - Desbloquear, cambiar el gancho de 90° del #5 a 0.300 y pulsar «Guardar y bloquear»: aparece el aviso de reglas
     guardadas y la vista previa recalcula (la pata del cuadro pasa a 300 mm).
   - Abrir el tablero de vigas: el #5 a 90° también dice 0.300.
@@ -550,5 +634,58 @@ Con eso se agrega un Hallazgo al plan y se corrige siguiendo la regla del repo: 
       - 4 commits en `zapatas/pruebas-revit` (de `597d383` a `688abbc`), con push a `origin`. Ya había un PR abierto
         para esa rama, el #268 a `acero-zapatas` (utilidadcqeing-prog). Se le actualizaron el título y la descripción
         en vez de abrir otro. El merge espera el OK de Luciano tras la revisión visual.
-- [ ] Probado en Revit a mano (guía A a M), incluidos Reglas y el apartado del tablero.
+- [x] Paso 15 (05-nov), por H17 a H19:
+      - `#textoChoque` pasó a estar dentro de `#vista`, con posición absoluta y `pointer-events:none`, y se oculta con
+        `pointerout`.
+      - `#emergente` arranca con `hidden`. `estado.ver2d` (por defecto activo) junto con la zapata activa deciden si
+        se ve, en `dibujar2d()`. «Vista 2D» y × cambian `ver2d`.
+      - En el navegador: el alto de `#svg3d` no cambia al mostrar el texto. Al abrir, sin zapata, la 2D no se ve; con
+        una zapata activa se ve; × la oculta y «Vista 2D» la vuelve a mostrar.
+      - Desplegado en Revit 2026 y 2027 (zapatas y vigas, Debug, 18:07), con `Get-Process -Name Revit` vacío antes.
+- [x] Paso 15, corrección por H20 (05-nov): `ver2d: false` al abrir y `.btn[aria-pressed=true]` en azul.
+- [x] Decisión 38a revertida (05-nov): `index.html` ya no tiene el título «Cuadros de referencia», las dos `<img>` ni
+      el estilo `.reglas-img`. Se borró `Tablero/web/img/` (y su copia en `bin\Debug\2026\web\img` y `bin\Debug\2027\web\img`).
+- [x] Pruebas D1 a D4 en Revit 2026 (05-nov), medidas con el MCP sobre `prueba-zapatas.rvt`:
+      - D1 (780973): U en X e Y, 12 y 12, recubrimientos de 75 mm y sin choques. La primera vez la X salió en L
+        porque la forma 17A había quedado elegida de una prueba anterior; no era un fallo.
+      - D2 (780733): la inferior con patas y la superior con 180°, sin choques. Los dos primeros intentos salieron al
+        revés porque el 180° estaba elegido en la fila de la inferior (según la configuración guardada del tablero).
+        El selector de la superior se probó en el navegador y funciona bien.
+      - D3 (780784): la L (17A) en X, con la pata solo al inicio. Sin choques.
+      - D4 (780919): 135° en X abajo. Hay 4 pares de choques de 6.4 mm en las esquinas de la parrilla superior (colas
+        de 180° de X contra las de Y). Falta que Luciano confirme que el tablero los marcó.
+- [x] Pasos 16 a 18, código (05-nov), decisión 43 (barra cerrada):
+      - `Terminacion.Cerrada`, `ConjuntoBarras.ZArriba` y `ConfigParrillas.DobladosEstribo`. El motor no hace la
+        superior de esa dirección y pide altura para dos capas.
+      - `TrazosZapata.PerfilCerrada` reproduce la barra de H21: las puntas de las colas a menos de 0.5 mm de lo medido
+        en Revit.
+      - `ClaseForma.Cerrada`, y en `BarraCatalogo` los campos `DobladoEstribo` y `ColaEstribo`.
+      - En Revit: `TiposZapata.Cerrada` (la forma de estribo de 4 tramos con 135°/135° de nombre más corto, la T1) y
+        `TiposZapata.GanchoEstribo`. `GeneradorZapatas.CrearCerrada` mide las colas y da vuelta la que queda afuera.
+      - `GetDefaultHookAngle` está obsoleto en 2026 y no existe en 2027. Se usa `GetTerminationsData().HookAngleAtStart`
+        y `HookAngleAtEnd`, como indica la advertencia de Revit.
+      - Tablero: ficha «T1 · cerrada, 135° arriba» solo en la parrilla inferior, gancho «135° · cerrada», la superior
+        de esa dirección dice «La cierra la inferior» y queda bloqueada, y la fila «Pata» muestra «alto».
+      - Pruebas: 7 nuevas en `BarraCerradaTests.cs`, 84 de zapatas en verde. Compila para 2026 y 2027 sin advertencias.
+        Casos 20 y 21 en `PruebaAutomatica.cs`, sin correr todavía.
+      - Desplegado en 2026 y 2027 (Debug).
+      - Falta comprobar en Revit `ColaEstribo` (`GetHookTangentLength − D/2 − d` con el doblez de estribo). El MCP se
+        desconectó antes de medirlo.
+- [x] Paso 19, código (05-nov), decisión 44 (colores en Revit):
+      - `acero-vigas/Revit/FiltrosColorDiametro.cs` (nuevo) tiene el código de `FiltrosColor` de vigas movido sin
+        cambios. Recibe pares (número, diámetro en pies). `FiltrosColor.Aplicar` de vigas solo traduce y lo llama.
+      - `CQEING.Zapatas.csproj` lo enlaza con `<Compile Include="..\acero-vigas\Revit\FiltrosColorDiametro.cs" .../>`.
+        `GeneradorZapatas.Generar` lo llama al final, dentro de la misma transacción, sobre la vista activa, con los
+        números de X y de Y. Los avisos que devuelve van a la lista de fallas.
+      - Compila vigas y zapatas para 2026 y 2027. Las 1085 pruebas de vigas y las 84 de zapatas dan verde.
+      - Desplegados zapatas y vigas en 2026 y 2027 (Debug), con Revit cerrado. Falta aplicar acero en una
+        zapata y comprobar con el MCP los filtros «CQEING Acero #n» de la vista y sus colores.
+- [x] Entrega (05-nov, a pedido de Luciano: «sube todo y pushea pr commit mergea y pásale release a Juan»):
+      - Commits de los pasos 15 a 19 en `zapatas/pruebas-revit`, con push a `origin`. El PR #268 se mergeó a
+        `acero-zapatas` (utilidadcqeing-prog).
+      - Release `acero-zapatas-v0.2.0`: etiqueta anotada sobre el merge, subida a `upstream`. El workflow «Publicar
+        add-in» arma los ZIP de 2026 y 2027 para que Juan la instale desde el gestor.
+      - Se entregó antes de ver los colores en Revit con el MCP y antes de la guía A a M (pendientes de abajo).
+- [ ] Probado en Revit a mano (guía A a M), incluidos Reglas, el apartado del tablero (en 2026) y el paso 15.
+- [ ] D5 y la barra cerrada en Revit, medidas con el MCP.
 - [ ] Preguntar a Juan qué quiso decir con «aquí debería ser por letras».
