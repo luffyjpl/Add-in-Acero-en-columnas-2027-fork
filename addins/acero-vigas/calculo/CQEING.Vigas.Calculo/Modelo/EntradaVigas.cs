@@ -6,6 +6,7 @@ namespace CQEING.Vigas.Calculo.Modelo;
 /// <param name="Cambios">Cambios manuales del usuario; se aplican sobre la solución automática.</param>
 /// <param name="Bastones">Lo que se eligió en el paso 2 del tablero; null = los valores por defecto (#89).</param>
 /// <param name="EstriboEnVoladizo">Diámetro del estribo de la punta de un voladizo, en mm (ver <see cref="Vigas.GeometriaPortico"/>).</param>
+/// <param name="Piel">Acero de piel (06-nov): <c>Cantidad</c> es por lado (n alturas, 2n barras); null o 0 = sin piel.</param>
 public sealed record EntradaVigas(
     Portico Portico,
     TipoViga Tipo,
@@ -16,4 +17,5 @@ public sealed record EntradaVigas(
     int RecubrimientoPuntas = 50,
     CambiosManuales? Cambios = null,
     ArmadoBastones? Bastones = null,
-    int EstriboEnVoladizo = 0);
+    int EstriboEnVoladizo = 0,
+    GrupoBarras? Piel = null);

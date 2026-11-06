@@ -15,7 +15,7 @@ internal sealed record CapaCalculada(
     ParametrosCapa Parametros,
     CapaResuelta Resuelta)
 {
-    public string Prefijo => Capa == Posicion.Superior ? "S" : "I";
+    public string Prefijo => Capa switch { Posicion.Superior => "S", Posicion.Inferior => "I", _ => "P" };
 
     public double KgPorMetro => Grupos.Sum(g => g.Cantidad * Entrada.Reglas.PorDiametro[g.Diametro].KgPorMetro);
 

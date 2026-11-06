@@ -22,6 +22,8 @@ public enum Posicion
 {
     Superior,
     Inferior,
+    /// <summary>Acero de piel (06-nov): barras de las caras laterales, una por lado en cada altura.</summary>
+    Piel,
 }
 
 /// <summary>Dónde traslapa la capa de la cara dentro de cada luz.</summary>

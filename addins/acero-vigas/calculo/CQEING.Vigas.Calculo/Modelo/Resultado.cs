@@ -154,7 +154,8 @@ public sealed record ResultadoVigas(
     Cara CaraUsada,
     Cara CaraMasEconomica,
     IReadOnlyList<Aviso> Avisos,
-    IReadOnlyList<Baston> Bastones)
+    IReadOnlyList<Baston> Bastones,
+    SolucionCapa? Piel = null)
 {
     public IEnumerable<Barra> Barras => Capas.SelectMany(c => c.Barras);
     public IEnumerable<Traslapo> Traslapos => Capas.SelectMany(c => c.Traslapos);
@@ -163,5 +164,5 @@ public sealed record ResultadoVigas(
     /// <summary>Tramos con traslapo (de las dos capas en uso), donde el corte 1-1 no se puede ubicar (#91).</summary>
     public IReadOnlyList<(int Desde, int Hasta)> ZonasTraslapo => Capas.SelectMany(c => c.ZonasTraslapo).ToList();
 
-    private IEnumerable<SolucionCapa> Capas => new[] { Superior, Inferior }.OfType<SolucionCapa>();
+    private IEnumerable<SolucionCapa> Capas => new[] { Superior, Inferior, Piel }.OfType<SolucionCapa>();
 }
