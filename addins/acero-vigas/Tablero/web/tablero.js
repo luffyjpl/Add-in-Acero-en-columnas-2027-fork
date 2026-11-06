@@ -29,6 +29,8 @@
     tipo: undefined, vigueta: undefined, side: undefined, sup: [{ n: 3, d: '#5' }], inf: [{ n: 3, d: '#5' }],
     rec: '4', recUp: '', recDown: '', recSide: '', sepMode: 'pegada', sepCm: '1', maxCapas: '3',
     bastDef: '2.00', bastHook: false, bastLen: {}, bastSupN: '1', bastSupD: '', bastInfN: '1', bastInfD: '',
+    // piel (06-nov): barras en los lados, la misma cantidad a cada lado; 0 = sin piel
+    pielN: '0', pielD: '#4',
     // adicionales (#85, hallazgo E8): [{ tipo: 'Cerrado' | 'Abierto', barras: [{ cara, fila, numero, nombre }] }]
     est: { estD: '#3', estG: '135°', conf: '0.80', s1: '0.10', s2: '0.20', adicionales: [], forma: 'S' }, estMarc: null, tramosSel: [],
     // corte 1-1 (#91): cutX vacío = la vista tipo que elige C#
@@ -87,6 +89,8 @@
         cara: s.side ? (s.side === 'izq' ? 'Inicio' : 'Final') : null,
         bastones: { superior: baston(s.bastSupN, s.bastSupD, s.sup), inferior: baston(s.bastInfN, s.bastInfD, s.inf),
           largo: mm(n(s.bastDef)), conGancho: s.bastHook, largos, puntas: s.bastPuntas, eliminados: (s.bastElim || []).slice() },
+        // siempre se manda, también con 0: así C# dice cuántas caben con el diámetro elegido
+        piel: { cantidad: Math.max(0, Math.round(n(s.pielN))), diametro: diametro(s.pielD) },
         estribos: estribos(s.est),
         tramosMarcados: s.tramosSel.slice(),
         estribosMarcados: s.tramosSel.length && s.estMarc ? estribos(s.estMarc) : null,
@@ -136,7 +140,7 @@
       ${sec.proy.map((d) => html`
         <div role="img" aria-label=${d.label} style="position: absolute; left: ${d.x}; top: ${d.y}; width: ${d.s}; height: ${d.s}; border: 1.5px dashed #5E6670; border-radius: 50%; box-sizing: border-box"></div>`)}
       ${sec.dots.map((d) => html`
-        <button type="button" aria-label=${d.label} onClick=${d.pick} style="position: absolute; left: ${d.x}; top: ${d.y}; width: ${d.s}; height: ${d.s}; padding: 0; border: 0; border-radius: 50%; background: ${d.c}; outline: ${d.ring}; outline-offset: 2px; cursor: ${d.cur}"></button>`)}
+        <button type="button" aria-label=${d.label} title=${d.label} onClick=${d.pick} style="position: absolute; left: ${d.x}; top: ${d.y}; width: ${d.s}; height: ${d.s}; padding: 0; border: 0; border-radius: 50%; background: ${d.c}; outline: ${d.ring}; outline-offset: 2px; cursor: ${d.cur}"></button>`)}
     </div>`;
 
   // La ventana del corte que sale encima del alzado al tomar la línea 1-1 (decisión 10): se mueve por su barra, sin
@@ -502,7 +506,7 @@
       // capas (#88): el reparto en filas sale del motor
       const maxCapas = Math.max(1, Math.round(num(s.maxCapas, 3)));
       // las bolitas de cada fila, con el color del diámetro de las barras del corte en esa fila (#100)
-      const coloresFila = (arriba, i) => (P ? P.seccion.barras : []).filter((b) => !b.baston && b.arriba === arriba && b.fila === i)
+      const coloresFila = (arriba, i) => (P ? P.seccion.barras : []).filter((b) => !b.baston && !b.piel && b.arriba === arriba && b.fila === i)
         .sort((p, q) => p.x - q.x).map((b) => b.color || '#3F4A57');
       const layerInfo = (rows, cara, arriba) => {
         const total = rows.reduce((a, r) => a + r.n, 0);
@@ -553,8 +557,13 @@
       ];
       // al eje de la barra: el alto menos la y de la primera barra de abajo, que viene del motor
       const secBars = P ? P.seccion.barras : [];
-      const b1 = secBars.find((b) => !b.arriba && b.fila === 0);
+      const b1 = secBars.find((b) => !b.arriba && !b.piel && b.fila === 0);
       const alEje = b1 ? f2(Math.round((P.seccion.altoCm - b1.y) * 1000) / 1000).replace(/0$/, '') : '';
+
+      // piel (06-nov): cuántas caben por lado con el diámetro elegido y si el estribo la permite (C#: PielVista)
+      const pielV = P ? P.piel : null;
+      const pielCaben = pielV ? pielV.cabenPorLado : 0, pielPermitida = !pielV || pielV.permitida !== false;
+      const pielCant = Math.max(0, Math.round(num(s.pielN, 0)));
 
       // barras, traslapos y bastones del motor
       const bars = P ? P.barras : [];
@@ -604,7 +613,7 @@
           this.say(o.texto);
         };
         sb = {
-          id: SB.id, where: SB.capa === 'arriba' ? 'Arriba' : 'Abajo', qty: SB.cantidad, len: f2(sbLen),
+          id: SB.id, where: SB.capa === 'piel' ? 'Piel' : SB.capa === 'arriba' ? 'Arriba' : 'Abajo', qty: SB.cantidad, len: f2(sbLen),
           tag: SB.manual ? 'Manual' : 'Automático', tagCol: SB.manual ? '#9A5B00' : '#1E7A46',
           downVal: f2(bajar ? bajar.valor : sbLen - M), upVal: f2(subir ? subir.valor : sbLen + M),
           downOff: !(bajar && bajar.sePuede), downWhy: bajar ? bajar.texto : '', downCol: bajar && bajar.sePuede ? '#16191D' : '#9AA3AD',
@@ -676,7 +685,7 @@
       // lista
       const rowsList = bars.map((b) => {
         const L = lapsAll.find((x) => x.barraIzquierda === b.id);
-        return { id: b.id, kind: 'Corrida ' + b.capa, qty: b.cantidad, len: f2(b.largo) + ' m', lap: L ? 'traslapo ' + f2(lapLen(L)) + ' con ' + L.barraDerecha : (b.llegaAlVoladizo ? 'llega al voladizo' : '—'),
+        return { id: b.id, kind: b.capa === 'piel' ? 'Piel' : 'Corrida ' + b.capa, qty: b.cantidad, len: f2(b.largo) + ' m', lap: L ? 'traslapo ' + f2(lapLen(L)) + ' con ' + L.barraDerecha : (b.llegaAlVoladizo ? 'llega al voladizo' : '—'),
           kg: b.kg.toFixed(1) + ' kg', bg: kind === 'bar' && b.id === selEl.id ? '#E8F0FA' : '#FFFFFF', pick: () => selectBar(b.id) };
       }).concat(BAST.map((b) => ({ id: b.id, kind: 'Bastón', qty: b.cantidad, len: f2(b.largo) + ' m', lap: b.donde, kg: b.kg.toFixed(1) + ' kg',
         bg: kind === 'bast' && b.id === selEl.id ? '#E8F0FA' : '#FFFFFF', pick: () => selectBar(b.id) })));
@@ -698,7 +707,7 @@
       const pk = s.pick;
       const limite = pk ? (pk.tipo === 'Cerrado' ? 2 : 1) : 0;
       const punto = (b) => ({ cara: b.arriba ? 'Superior' : 'Inferior', fila: b.fila + 1, nombre: b.nombre,
-        numero: 1 + secBars.filter((x) => !x.baston && x.arriba === b.arriba && x.fila === b.fila && x.x < b.x).length });
+        numero: 1 + secBars.filter((x) => !x.baston && !x.piel && x.arriba === b.arriba && x.fila === b.fila && x.x < b.x).length });
       const igual = (a, b) => a.cara === b.cara && a.fila === b.fila && a.numero === b.numero;
       const elegirBarra = (b) => {
         const p = punto(b);
@@ -716,11 +725,11 @@
       const seccionA = (K) => ({
         wpx: secc.anchoCm * K + 'px', hpx: secc.altoCm * K + 'px',
         dots: secBars.map((b) => {
-          const elegible = !!pk && !b.baston;
+          const elegible = !!pk && !b.baston && !b.piel;
           const elegida = elegible && pk.barras.some((x) => igual(x, punto(b)));
           return { x: (b.x - b.d / 2) * K + 'px', y: (b.y - b.d / 2) * K + 'px', s: b.d * K + 'px',
             c: b.color || '#3F4A57', ring: elegida ? '2px solid #0F7B6C' : 'none', cur: elegible ? 'pointer' : 'default',
-            label: (b.baston ? '' : 'Barra ') + b.nombre, pick: elegible ? () => elegirBarra(b) : () => {} };
+            label: (b.baston || b.piel ? '' : 'Barra ') + b.nombre, pick: elegible ? () => elegirBarra(b) : () => {} };
         }),
         // lo que se ve detrás, hasta la profundidad: círculos vacíos con borde punteado
         proy: (C ? C.proyeccion : []).map((b) => ({ x: (b.x - b.d / 2) * K + 'px', y: (b.y - b.d / 2) * K + 'px', s: b.d * K + 'px', label: b.nombre })),
@@ -810,6 +819,12 @@
         barSel: kind === 'bar' || kind === 'bast' ? selEl.id : '', lapSel: kind === 'lap' ? selEl.id : '', lapsManual: lapsAll.filter((l) => l.manual).map((l) => l.id).join(','),
         isSelBar: kind === 'bar' && !!SB, isSelLap: kind === 'lap' && !!SL, isSelBast: kind === 'bast' && !!SBa, sb, sl, st: stv, draft: s.draft, bastElim, restoreAllBast,
         bastDef: s.bastDef, bastSupN: s.bastSupN, bastInfN: s.bastInfN, bastSupD: bastD(s.bastSupD, s.sup), bastInfD: bastD(s.bastInfD, s.inf),
+        pielN: s.pielN, pielD: s.pielD, pielCaben, pielColor: colorDe(s.pielD), pielPermitida,
+        pielNota: pielPermitida ? 'Las mismas a los dos lados, repartidas a igual distancia entre arriba y abajo.' : 'No lleva piel con estribo abierto',
+        pielMenosOff: pielCant <= 0, pielMasOff: !pielPermitida || pielCant >= pielCaben,
+        pielMenos: () => this.cambiar({ pielN: String(Math.max(0, pielCant - 1)) }),
+        pielMas: () => this.cambiar({ pielN: String(Math.min(pielCaben, pielCant + 1)) }),
+        setPielD: (e) => this.cambiar({ pielD: e.target.value }),
         rulesWarn: s.rulesWarn,
         // abierta, la lista de barras toma todo el alto que sobra en la columna (Juan, 19-oct: "que la tabla llegue al límite")
         listOpen: s.listOpen, listLabel: s.listOpen ? 'Ocultar' : 'Ver lista', rows: rowsList.concat(estRows),
@@ -905,11 +920,11 @@
         // #85: el resumen de "Generar en Revit", una línea por cosa; se queda hasta cerrarlo
         resumen: s.resumen ? { titulo: s.resumen[0], lineas: s.resumen.slice(1) } : null, closeResumen: () => this.setState({ resumen: null }),
         pickEl: (id) => (id ? selectBar(id) : this.setState({ sel: NADA })), pickLap: (id) => { const L = lapsAll.find((x) => x.id === id); if (L) selectLap(L); },
-        // gancho de una punta del borde (#84): "S.inicio"… en las corridas, "BS1.inicio"… en los bastones
+        // gancho de una punta del borde (#84): "S.inicio"… en las corridas, "P.inicio"… en la piel, "BS1.inicio"… en los bastones
         onHook: (clave, valor, texto) => {
           this.cambiar({ cambios: conCambio('ganchos', clave, valor) });
           const [quien, punta] = clave.split('.');
-          const de = quien.length > 1 ? quien : 'las barras de ' + (quien === 'S' ? 'arriba' : 'abajo');
+          const de = quien === 'P' ? 'la piel' : quien.length > 1 ? quien : 'las barras de ' + (quien === 'S' ? 'arriba' : 'abajo');
           this.say((valor === 'Sin' ? 'Sin gancho' : 'Gancho de ' + texto) + ' en la punta ' + (punta === 'inicio' ? 'izquierda' : 'derecha') + ' de ' + de);
         },
         // arrastre (#84): los saltos de los 3 puntos y, en el voladizo, la confirmación dentro de la página (decisión 7)
@@ -1430,6 +1445,26 @@
                 <span style="font-size: 12px; color: ${ly.msgCol}; line-height: 1.45">${ly.msg}</span>
                 <button type="button" onClick=${ly.add} style="align-self: flex-start; padding: 0; border: 0; background: transparent; font: inherit; color: #1F5FAF; cursor: pointer">+ Otro diámetro</button>
               </div>`)}
+
+            <div style="display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; align-items: baseline; justify-content: space-between">
+                <span style="font-weight: 600">Barras en los lados</span>
+                <span style="font-size: 12px; color: #5E6670">caben ${v.pielCaben} por lado</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <div style="display: flex; align-items: center; border: 1px solid #C9CFD6; border-radius: 6px; height: 32px">
+                  <button type="button" aria-label="Quitar barra de piel" disabled=${v.pielMenosOff} onClick=${v.pielMenos} style="width: 30px; height: 30px; border: 0; background: transparent; font: inherit; cursor: ${v.pielMenosOff ? 'default' : 'pointer'}; opacity: ${v.pielMenosOff ? 0.4 : 1}">−</button>
+                  <span style="width: 28px; text-align: center; font-family: 'IBM Plex Mono', monospace">${v.pielN}</span>
+                  <button type="button" aria-label="Añadir barra de piel" disabled=${v.pielMasOff} onClick=${v.pielMas} style="width: 30px; height: 30px; border: 0; background: transparent; font: inherit; cursor: ${v.pielMasOff ? 'default' : 'pointer'}; opacity: ${v.pielMasOff ? 0.4 : 1}">+</button>
+                </div>
+                <span style="color: #5E6670">por lado</span>
+                <span aria-hidden="true" style="width: 10px; height: 10px; flex-shrink: 0; border-radius: 50%; background: ${v.pielColor}"></span>
+                <select aria-label="Diámetro de la piel" value=${v.pielD} onChange=${v.setPielD} style="flex: 1; height: 32px; border: 1px solid #C9CFD6; border-radius: 6px; font: inherit; background: #FFFFFF; color: #16191D; padding: 0 6px">
+                  ${opcionesDiametro(v.disponibles, 3, 8, v.pielD, true)}
+                </select>
+              </div>
+              <span style="font-size: 12px; color: #5E6670; line-height: 1.45">${v.pielNota}</span>
+            </div>
 
             <div style="display: flex; flex-direction: column; gap: 6px">
               <div style="display: flex; align-items: center; gap: 8px">
