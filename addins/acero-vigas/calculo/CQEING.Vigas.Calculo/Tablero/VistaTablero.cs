@@ -214,20 +214,6 @@ public sealed record VistaPortico(
     bool DetectadaVigueta = false,
     PielVista? Piel = null);
 
-/// <summary>
-/// La pantalla Reglas, con los textos de sus campos (m y kg/m, como <c>RULES0</c> de la maqueta).
-/// <paramref name="Problema"/> dice por qué se usan las de base, si pasó. <paramref name="RedondeoGanchoCm"/>: "0", "5" o
-/// "10"; null (una página que no lo manda) deja el de las reglas guardadas.
-/// </summary>
-public sealed record VistaReglas(IReadOnlyList<ReglaVista> PorDiametro, string Multiplo, string DistanciaLibreCm, bool Varilla12, string? Problema,
-    string? RedondeoGanchoCm = null);
-
-/// <summary>
-/// Una fila de la tabla de reglas: traslapo, gancho de 90°, gancho de 180° (<paramref name="G180"/>, el de los estribos
-/// de 180°: tarea 6 del plan de 22-oct), estribo de 135° y peso por metro.
-/// </summary>
-public sealed record ReglaVista(string D, string T, string G, string G180, string E, string K);
-
 // La edición (#84): la página pide ver un cambio antes de aplicarlo y C# contesta con lo que pasaría.
 
 public enum AccionEdicion { Barra, Traslapo, Baston, Arrastre }

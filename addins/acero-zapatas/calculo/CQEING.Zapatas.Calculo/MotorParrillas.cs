@@ -5,7 +5,7 @@ namespace CQEING.Zapatas.Calculo;
 /// <summary>
 /// Calcula las parrillas de una zapata, sin Revit (#251). Todo en mm y en los ejes de la zapata. Reglas de los planes de
 /// #247 y #246: la principal va hacia afuera en cada parrilla (decisión 10), la superior corre media separación (11 y 21),
-/// las patas llegan al recubrimiento opuesto (12 y 16) y las barras corridas no entran en la franja de patas (17).
+/// las patas llegan al recubrimiento opuesto (12 y 16) y las barras corridas no entran en la franja de patas (17 y 26).
 /// </summary>
 public static class MotorParrillas
 {
@@ -46,7 +46,8 @@ public static class MotorParrillas
         if (errores.Count == 0)
         {
             double d = reglas.PorDiametro[c.X.Numero].Diametro + reglas.PorDiametro[c.Y.Numero].Diametro;
-            double necesario = c.IncluirSuperior ? 2 * d : d;
+            // La barra cerrada también ocupa arriba (decisión 43 del plan de 2026-11-05).
+            double necesario = c.IncluirSuperior || c.HayCerrada ? 2 * d : d;
             if (disponible < necesario)
                 errores.Add($"La altura no alcanza: quedan {disponible:0} mm entre recubrimientos y las capas necesitan {necesario:0} mm.");
         }
@@ -57,30 +58,45 @@ public static class MotorParrillas
         var conjuntos = new List<ConjuntoBarras>();
         var avisos = new List<string>();
         Direccion otra = principal == Direccion.X ? Direccion.Y : Direccion.X;
+        // Los choques ya no se avisan con texto (decisión 27 del plan de #246): se marcan como puntos (TrazosZapata.Choques).
         foreach (Parrilla parrilla in c.IncluirSuperior ? new[] { Parrilla.Inferior, Parrilla.Superior } : new[] { Parrilla.Inferior })
         {
-            conjuntos.AddRange(Capa(parrilla, principal, 1, 0));
-            conjuntos.AddRange(Capa(parrilla, otra, 2, reglas.PorDiametro[Config(principal).Numero].Diametro));
+            // La dirección con barra cerrada ya tiene su tramo de arriba: no lleva parrilla superior aparte (decisión 43).
+            if (parrilla == Parrilla.Inferior || !Cerrada(principal))
+                conjuntos.AddRange(Capa(parrilla, principal, 1, 0));
+            if (parrilla == Parrilla.Inferior || !Cerrada(otra))
+                conjuntos.AddRange(Capa(parrilla, otra, 2, reglas.PorDiametro[Config(principal).Numero].Diametro));
         }
         var resumen = new ResumenAcero(conjuntos.Sum(b => b.Cantidad), conjuntos.Sum(b => b.Cantidad * b.LongitudCorte), Math.Round(conjuntos.Sum(b => b.Kilos), 1));
         return new ResultadoZapata(conjuntos, resumen, principal, avisos, []);
 
         ConfigDireccion Config(Direccion d) => d == Direccion.X ? c.X : c.Y;
 
+        bool Cerrada(Direccion d) => Config(d).Terminacion == Terminacion.Cerrada;
+
         IEnumerable<ConjuntoBarras> Capa(Parrilla parrilla, Direccion direccion, int capa, double debajo)
         {
             ConfigDireccion config = Config(direccion);
+            Extremos extremos = config.En(parrilla);
             ReglaDiametro regla = reglas.PorDiametro[config.Numero];
             double diametro = regla.Diametro;
             // La cara de la barra pegada a su recubrimiento, medida desde ese lado.
             double cara = (parrilla == Parrilla.Inferior ? rec.Inferior : rec.Superior) + debajo;
             double z0 = parrilla == Parrilla.Inferior ? cara + diametro / 2 : z.Altura - cara - diametro / 2;
-            double pata = config.Terminacion == Terminacion.Pata90 ? disponible - debajo : 0;
-            if (config.Terminacion == Terminacion.Pata90 && pata < ReglasZapata.DiametrosMinimosPata * diametro)
+            // La cerrada sube hasta el recubrimiento de arriba; en la capa 2 pasa por debajo de la capa 1 si esta tiene
+            // tramo arriba (cerrada o parrilla superior), como la parrilla superior de hoy.
+            bool cerrada = extremos.Terminacion == Terminacion.Cerrada;
+            double? zArriba = cerrada ? z.Altura - rec.Superior - (capa == 2 && (Cerrada(principal) || c.IncluirSuperior) ? debajo : 0) - diametro / 2 : null;
+            // La forma decide cuántas patas lleva una barra de 90°; sin ninguna es una barra recta (decisión 37).
+            int patas = CuantasPatas(extremos);
+            Terminacion terminacion = extremos.Terminacion == Terminacion.Pata90 && patas == 0 ? Terminacion.Recta : extremos.Terminacion;
+            Patas dondePatas = terminacion switch { Terminacion.Recta => Patas.Ninguna, Terminacion.Pata90 => extremos.Patas, _ => Patas.Ambas };
+            double pata = cerrada ? zArriba!.Value - z0 + diametro : patas > 0 ? LargoDePata(parrilla, direccion, regla, disponible - debajo) : 0;
+            if (patas > 0 && pata < ReglasZapata.DiametrosMinimosPata * diametro)
                 Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: la pata de {pata:0} mm queda por debajo de 12 diámetros ({ReglasZapata.DiametrosMinimosPata * diametro:0} mm). Debe revisarlo el diseñador.");
-            int largoGancho = ReglasZapata.LargoGancho(reglas, config.Numero, config.Terminacion);
+            int largoGancho = ReglasZapata.LargoGancho(reglas, config.Numero, terminacion);
 
-            List<double> posiciones = Posiciones(direccion, config, parrilla);
+            List<double> posiciones = Posiciones(direccion, config, parrilla, capa);
             // Una línea paralela a X para las barras en X; para las de Y, el contorno se gira con los ejes intercambiados.
             IReadOnlyList<Punto> figura = direccion == Direccion.X ? dentro : dentro.Select(p => new Punto(p.Y, p.X)).ToList();
             var barras = new List<(double Posicion, double Desde, double Hasta)>();
@@ -102,11 +118,53 @@ public static class MotorParrillas
                 .Select(g =>
                 {
                     double largo = g[0].Hasta - g[0].Desde;
-                    double neto = largo + 2 * pata + 2 * largoGancho;
+                    // La cerrada: abajo, arriba y los dos costados por fuera, más los dos ganchos de 135°.
+                    double neto = cerrada ? 2 * largo + 2 * pata + 2 * largoGancho : largo + patas * pata + 2 * largoGancho;
                     double corte = ReglasZapata.LongitudCorte(neto);
                     return new ConjuntoBarras(parrilla, direccion, capa, config.Numero, diametro, z0, g[0].Desde, g[0].Hasta, g.Select(b => b.Posicion).ToList(),
-                        config.Terminacion, pata, neto, corte, g.Count * corte / 1000 * regla.KgPorMetro);
+                        terminacion, pata, neto, corte, g.Count * corte / 1000 * regla.KgPorMetro, dondePatas,
+                        terminacion is Terminacion.Gancho135 or Terminacion.Gancho180 or Terminacion.Cerrada ? extremos.Cola : null, zArriba);
                 });
+        }
+
+        // El largo de la pata de 90° (decisión 29): el B del cuadro, que no se sale del recubrimiento opuesto, o hasta él.
+        double LargoDePata(Parrilla parrilla, Direccion direccion, ReglaDiametro regla, double hastaRecubrimiento)
+        {
+            int delCuadro = Reglas.LargoGancho(regla, TipoGancho.De90);
+            if (c.LargoPata == LargoPata.Recubrimiento)
+            {
+                if (hastaRecubrimiento < delCuadro - Tolerancia)
+                    Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: la pata hasta el recubrimiento ({hastaRecubrimiento:0} mm) es más corta que la del cuadro ({delCuadro} mm): no cumple el largo del cuadro.");
+                return hastaRecubrimiento;
+            }
+            if (delCuadro <= hastaRecubrimiento + Tolerancia)
+                return delCuadro;
+            Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: la pata del cuadro ({delCuadro} mm) no cabe en la altura; se cortó en el recubrimiento, en {hastaRecubrimiento:0} mm.");
+            return hastaRecubrimiento;
+        }
+
+        // Cuánto deja libre la otra dirección en una punta. La capa pegada al recubrimiento pasa por fuera de los dobleces de
+        // la otra, que salen hacia adentro; la de encima tiene que entrar en la curva de la capa vecina: su eje queda en
+        // recubrimiento + d de la pata + D / 2 (decisión 26). Sin pata ni gancho en esa punta, nada (decisión 37).
+        double Franja(int numero, Extremos cruzada, int capa, double d, bool alFinal)
+        {
+            if (cruzada.Terminacion is Terminacion.Recta or Terminacion.Pata90 && CuantasPatas(cruzada) == 0)
+                return 0;
+            if (alFinal && cruzada.Terminacion == Terminacion.Pata90 && cruzada.Patas == Patas.Inicio)
+                return 0;
+            ReglaDiametro regla = reglas.PorDiametro[numero];
+            if (capa == 1)
+                return regla.Diametro;
+            TipoGancho tipo = cruzada.Terminacion switch
+            {
+                Terminacion.Gancho135 => TipoGancho.De135,
+                Terminacion.Gancho180 => TipoGancho.De180,
+                _ => TipoGancho.De90,
+            };
+            double doblado = cruzada.Terminacion == Terminacion.Cerrada
+                ? DobladoEstribo(c, regla, numero)
+                : c.Doblados?.GetValueOrDefault(numero) is > 0 and double delTipo ? delTipo : Reglas.DobladoGancho(regla, tipo);
+            return regla.Diametro + doblado / 2 - d / 2;
         }
 
         void Avisar(string texto)
@@ -116,13 +174,15 @@ public static class MotorParrillas
         }
 
         // Las coordenadas transversales: entre las franjas de patas de la otra dirección, sin pasarse de la separación pedida.
-        List<double> Posiciones(Direccion direccion, ConfigDireccion config, Parrilla parrilla)
+        List<double> Posiciones(Direccion direccion, ConfigDireccion config, Parrilla parrilla, int capa)
         {
             ConfigDireccion cruzada = Config(direccion == Direccion.X ? Direccion.Y : Direccion.X);
-            double franja = cruzada.Terminacion == Terminacion.Recta ? 0 : reglas.PorDiametro[cruzada.Numero].Diametro;
             double d = reglas.PorDiametro[config.Numero].Diametro;
             IEnumerable<double> coordenadas = dentro.Select(p => direccion == Direccion.X ? p.Y : p.X);
-            double inicio = coordenadas.Min() + franja + d / 2, fin = coordenadas.Max() - franja - d / 2;
+            // Arriba, la cerrada de la otra dirección sigue siendo la misma barra (decisión 43).
+            Extremos deLaOtra = cruzada.Terminacion == Terminacion.Cerrada ? cruzada.En(Parrilla.Inferior) : cruzada.En(parrilla);
+            double inicio = coordenadas.Min() + Franja(cruzada.Numero, deLaOtra, capa, d, false) + d / 2;
+            double fin = coordenadas.Max() - Franja(cruzada.Numero, deLaOtra, capa, d, true) - d / 2;
             if (fin < inicio)
                 return [];
             double util = fin - inicio;
@@ -159,6 +219,17 @@ public static class MotorParrillas
         if (grupo.Count > 0)
             yield return grupo;
     }
+
+    /// <summary>
+    /// El diámetro de doblado de estribo, con el que Revit dobla la barra cerrada (H21): el del tipo de barra del proyecto
+    /// o, sin él, el del estribo del cuadro (4 d si no lo trae).
+    /// </summary>
+    public static double DobladoEstribo(ConfigParrillas c, ReglaDiametro regla, int numero) =>
+        c.DobladosEstribo?.GetValueOrDefault(numero) is > 0 and double delTipo ? delTipo : regla.Estribo135.D ?? 4 * regla.Diametro;
+
+    /// <summary>Las patas de 90° de una barra: 2 en U, 1 en L y ninguna en una recta o con otro gancho.</summary>
+    private static int CuantasPatas(Extremos e) =>
+        e.Terminacion != Terminacion.Pata90 ? 0 : e.Patas switch { Patas.Ambas => 2, Patas.Inicio => 1, _ => 0 };
 
     private static string Nombre(Parrilla p) => p == Parrilla.Inferior ? "inferior" : "superior";
 }

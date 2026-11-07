@@ -52,7 +52,7 @@ public sealed class ComandoTablero : IExternalCommand
             return Result.Failed;
         }
         // El ExternalEvent del puente se crea aquí, con la API válida: no se puede crear desde la ventana.
-        _ = new PuenteTablero(ventana, doc);
+        _ = new PuenteTablero(ventana, uiapp);
         ventana.Closed += (_, _) => abierta = null;
         abierta = ventana;
         ventana.Show();

@@ -82,6 +82,35 @@ Continúan la numeración del plan de #247.
 25. **Solo el acero del add-in se reemplaza** (2026-11-04, Claude, según #254): al volver a generar se borra lo que lleva
     la marca, previa confirmación. Lo hecho a mano no se toca, y el tablero avisa cuántas barras tiene esa zapata.
 
+26. **La franja de patas incluye el doblez** (2026-11-04, Claude, por la prueba automática; corrige la decisión 17): en la
+    capa de arriba de cada parrilla, la barra de borde va dentro de la curva del doblez de la capa vecina:
+    `recubrimiento + d de la pata + D de doblado / 2`. Con solo el grosor de la pata, en la `v0.1.0` el arco cruza esa barra
+    (eje a eje 0.75 mm con #5). `D` es el del tipo de barra del proyecto, no el del cuadro: en el #3 son 63.5 y 57 mm.
+
+### Hallazgos de la prueba automática (2026-11-04, Revit 2026.5.10)
+
+Sobre una copia de `Prueba 080720sfsd26`. **Pasaron:** cantidad y punto de cada barra (0 mm de diferencia), patas hacia
+adentro, volver a generar sin duplicar, barras a mano intactas, zapatas iguales (3 y 5) en una llamada, recubrimientos
+60/70/50 sin cambiar el tipo `CIM`, forma 17 usada, y todo deshecho al final. **Falló:** el choque de la decisión 26. El
+fallo de «dentro del recubrimiento» era de la prueba, que restaba medio diámetro en la punta de la barra. Las losas no se
+probaron porque su tipo mide 150 mm.
+
+Con la decisión 26 aplicada, tercera corrida (137 pasan, 5 fallan), con losas de prueba de 500 mm que se deshacen:
+
+- **Sin choques:** cuadrada, rectangular y **combinada rectangular de 4.00 × 1.20 con 2 columnas**, y barras rectas. También
+  pasan en esas formas el punto del plan, los recubrimientos y las patas.
+- **Siguen chocando, sin resolver:**
+  - **Forma en L:** 14 pares, hasta −8.9 mm. La franja de patas solo cubre los bordes extremos: en la esquina entrante, las
+    patas de las barras que terminan ahí cruzan las de la otra dirección.
+  - **Trapecio:** 18 pares, hasta −14.8 mm, y 2 barras muy cortas no se pudieron comparar con el plan (hasta 147 mm).
+  - **Ganchos de 135° y 180° en h 350:** 4 pares (−2.1 mm) y 8 pares (−14.3 mm), entre la barra del borde y el gancho de la
+    otra dirección. Falta medir la geometría real de esos ganchos.
+- **Decisión 27** (2026-11-04, Claude): hasta resolverlos, el tablero avisa en esos casos y no los bloquea, porque el
+  modelador puede corregirlos a mano. `v0.1.0` tiene además el choque de la decisión 26, así que este arreglo necesita una
+  versión nueva para llegar a quienes la instalaron.
+
+No probado en esta corrida: la interfaz del tablero, una combinada real del proyecto, y Revit 2027.
+
 ## Plan paso a paso
 
 1. **#249, reglas** — archivos: `calculo/CQEING.Zapatas.Calculo.csproj`, `ReglasZapata.cs` — cómo se prueba: mismos largos
@@ -98,6 +127,11 @@ Continúan la numeración del plan de #247.
 9. **Release para Juan** (2026-11-04, usuario, a pedido de Juan) — unir el PR #267 con el build en verde y publicar
    `acero-zapatas-v0.1.0`, para que Juan lo instale desde el gestor. Se adelanta a la prueba con Santiago de #255, que
    sigue pendiente: lo que salga se corrige con una versión nueva.
+
+10. **Prueba automática en Revit** (2026-11-04, usuario pidió hacer las pruebas faltantes) — archivos:
+    `Revit/PruebaAutomatica.cs`, solo en Debug — con la variable `CQEING_ZAPATAS_PRUEBA` apuntando a una copia del modelo,
+    Revit la abre, genera, mide cada barra y lo deshace todo; informe en `%AppData%\CQEING\zapatas\prueba.txt`. No prueba la
+    interfaz. Los arreglos van por PR a la rama `acero-zapatas` de upstream, no a `main`.
 
 ## Cómo probarlo
 
