@@ -878,20 +878,35 @@ internal static class GeneradorPrevia
                     cortadas.Add((b, a + dir * (aLoLargo - pa)));
             }
         }
-        void Etiquetar(List<(Rebar Barra, XYZ Punto)> grupo, double dz)
+        // Una sola etiqueta por grupo y diámetro, con una flecha a cada barra: «10 #5» en vez de diez «1 #5» (06-nov). Las
+        // pieles van aparte, a la izquierda de la sección; el estribo ocupa la derecha.
+        void Etiquetar(List<(Rebar Barra, XYZ Punto)> grupo, Func<int, int, XYZ> donde, HorizontalTextAlignment alineado, TextNoteLeaderTypes flecha)
         {
-            List<(Rebar Barra, XYZ Punto)> orden = grupo.OrderBy(c => c.Punto.DotProduct(derecha)).ToList();
-            for (int i = 0; i < orden.Count; i++)
+            var porDiametro = grupo.GroupBy(c => NombreBarra(doc, c.Barra)).OrderBy(g => g.Key).ToList();
+            for (int i = 0; i < porDiametro.Count; i++)
             {
-                XYZ p = corte + XYZ.BasisZ * dz + derecha * ((i - (orden.Count - 1) / 2.0) * 0.28 * M * Letra.Factor - 0.08 * M * Letra.Factor);
-                (Rebar barra, XYZ punto) = orden[i];
-                TextNote nota = TextNote.Create(doc, vista.Id, p, "1 " + NombreBarra(doc, barra), tipos.Nota(HorizontalTextAlignment.Left));
-                nota.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_L).End = punto;
-                Pintar(vista, nota.Id, barra, null);
+                TextNote nota = TextNote.Create(doc, vista.Id, donde(i, porDiametro.Count), $"{porDiametro[i].Count()} {porDiametro[i].Key}", tipos.Nota(alineado));
+                foreach ((Rebar _, XYZ punto) in porDiametro[i])
+                    nota.AddLeader(flecha).End = punto;
+                Pintar(vista, nota.Id, porDiametro[i].First().Barra, null);
             }
         }
-        Etiquetar(cortadas.Where(c => c.Punto.Z > medio.Z).ToList(), alto / 2 + 0.38 * M * Letra.Factor);
-        Etiquetar(cortadas.Where(c => c.Punto.Z <= medio.Z).ToList(), -alto / 2 - 0.2 * M * Letra.Factor);
+        double paso = 0.28 * M * Letra.Factor;
+        XYZ EnFila(double dz, int i, int n) => corte + XYZ.BasisZ * dz + derecha * ((i - (n - 1) / 2.0) * paso - 0.08 * M * Letra.Factor);
+        var principales = cortadas.Where(c => !MarcaVigas.EsPiel(c.Barra)).ToList();
+        Etiquetar(principales.Where(c => c.Punto.Z > medio.Z).ToList(), (i, n) => EnFila(alto / 2 + 0.38 * M * Letra.Factor, i, n),
+            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
+        Etiquetar(principales.Where(c => c.Punto.Z <= medio.Z).ToList(), (i, n) => EnFila(-alto / 2 - 0.2 * M * Letra.Factor, i, n),
+            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
+        // Las pieles, por fuera de la cota del alto y de su cadena (TextoAltoSeccion): ahí se encimaba «10 #4» (06-nov). El
+        // recorte se abre a la izquierda para que quepan.
+        var pieles = cortadas.Where(c => MarcaVigas.EsPiel(c.Barra)).ToList();
+        Etiquetar(pieles,
+            (i, n) => corte - derecha * (ancho / 2 + TextoAltoSeccion + 0.12 * M * Letra.Factor) + XYZ.BasisZ * ((n - 1) / 2.0 - i) * 0.12 * M * Letra.Factor,
+            HorizontalTextAlignment.Right, TextNoteLeaderTypes.TNLT_STRAIGHT_R);
+        double izquierda = ancho / 2 + (pieles.Count > 0 ? 0.85 : 0.55) * M * Letra.Factor;
+        if (pieles.Count > 0)
+            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor);
 
         // El estribo aparte, solo con sus medidas. Con este tipo de detalle sale parado, como en la sección. El cerrado es
         // el de más curvas: la grapa de la misma zona también cruza el corte.
@@ -905,7 +920,7 @@ internal static class GeneradorPrevia
             Pintar(vista, d.Id, estribo, 3);
             EtiquetarGancho(doc, vista, estribo, centroDetalle, medio.Z, tipos);
             double abajo = ResumirEstribos(doc, vista, barras.Where(b => !EsLongitudinal(b, dir)).ToList(), estribo, d, centroDetalle, tipos);
-            Recortar(vista, corte, ancho / 2 + 0.55 * M * Letra.Factor, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
+            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
         }
         Acotar(doc, vista, viga, estribo, corte, derecha, medio.Z, tipos);
         return vista;
