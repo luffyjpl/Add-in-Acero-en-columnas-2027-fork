@@ -17,9 +17,14 @@ public static class Geometria
     }
 
     /// <summary>
-    /// El ángulo de los ejes de la zapata, en radianes entre −45° y 45°: el del rectángulo más pequeño que envuelve el
-    /// contorno, con X el lado más cercano a la X del proyecto (decisión 20).
+    /// El ángulo de los ejes de la zapata, en radianes entre −45° y 45° (decisión 20): el de la primera columna que
+    /// apoya en ella, así un rombo bajo una columna recta lleva las barras en X e Y del proyecto. Sin columnas, el del
+    /// rectángulo más pequeño que envuelve el contorno, con X el lado más cercano a la X del proyecto.
     /// </summary>
+    public static double AnguloEjes(IReadOnlyList<Punto> c, IReadOnlyList<double> angulosColumnas) =>
+        angulosColumnas.Count > 0 ? Normalizar(angulosColumnas[0]) : AnguloEjes(c);
+
+    /// <summary>El ángulo del rectángulo más pequeño que envuelve el contorno, entre −45° y 45°.</summary>
     public static double AnguloEjes(IReadOnlyList<Punto> c)
     {
         double mejor = 0, menor = double.MaxValue;

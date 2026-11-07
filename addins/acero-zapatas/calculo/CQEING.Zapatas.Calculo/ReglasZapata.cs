@@ -19,6 +19,17 @@ public static class ReglasZapata
         _ => 0,
     };
 
+    /// <summary>
+    /// El largo más corto, de cara a cara de recubrimiento, en que caben los doblados de los dos extremos: dos radios
+    /// por el eje de la barra más el diámetro. Más corta, Revit crea una barra sin geometría. Una barra recta no tiene mínimo.
+    /// </summary>
+    public static double LargoMinimo(ReglaDiametro r, Terminacion t) => t switch
+    {
+        Terminacion.Recta => 0,
+        Terminacion.Gancho180 => Reglas.DobladoGancho(r, TipoGancho.De180) + 2 * r.Diametro,
+        _ => Reglas.DobladoGancho(r, TipoGancho.De90) + 2 * r.Diametro,
+    };
+
     public static double LongitudCorte(double largoNeto) => Math.Ceiling(Math.Round(largoNeto, 3) / RedondeoCorte) * RedondeoCorte;
 
     /// <summary>

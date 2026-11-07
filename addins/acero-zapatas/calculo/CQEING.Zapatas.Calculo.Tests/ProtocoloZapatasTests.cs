@@ -53,5 +53,34 @@ public class ProtocoloZapatasTests
         Assert.Equal("Cuadrada", zapata.GetProperty("forma").GetString());
         Assert.Equal(4, zapata.GetProperty("barrasTotales").GetInt32());
         Assert.Equal(1800, zapata.GetProperty("enModelo")[1].GetProperty("x").GetDouble());
+        Assert.False(zapata.GetProperty("terminada").GetBoolean());
     }
+
+    [Fact]
+    public void Los_datos_dicen_que_zapatas_estan_terminadas_y_su_angulo()
+    {
+        var z = new ZapataLeida("10", "Z-1", "A-1", "N1", Math.PI / 4, -1000, 350, [new(0, 0), new(1800, 0), new(1800, 1800), new(0, 1800)], [], 75, 75, 75);
+
+        string json = ProtocoloZapatas.Datos("Modelo", [z], [["10"]], new CatalogoZapatas([], [], []), new Dictionary<string, (int, int)>(), new HashSet<string> { "10" });
+
+        using JsonDocument d = JsonDocument.Parse(json);
+        JsonElement zapata = d.RootElement.GetProperty("zapatas")[0];
+        Assert.True(zapata.GetProperty("terminada").GetBoolean());
+        Assert.Equal(Math.PI / 4, zapata.GetProperty("angulo").GetDouble(), 6);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void La_palomita_marca_o_desmarca_las_zapatas(bool terminada)
+    {
+        var m = Assert.IsType<MarcarTerminadas>(ProtocoloZapatas.Leer($$"""{"tipo":"marcarTerminada","ids":["1","2"],"terminada":{{(terminada ? "true" : "false")}}}"""));
+
+        Assert.Equal(["1", "2"], m.Ids);
+        Assert.Equal(terminada, m.Terminada);
+    }
+
+    [Fact]
+    public void La_palomita_sin_valor_no_se_entiende() =>
+        Assert.IsType<DesconocidoZapatas>(ProtocoloZapatas.Leer("""{"tipo":"marcarTerminada","ids":["1"]}"""));
 }

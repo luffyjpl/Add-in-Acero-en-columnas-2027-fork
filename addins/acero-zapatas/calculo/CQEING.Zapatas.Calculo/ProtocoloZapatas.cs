@@ -21,6 +21,9 @@ public sealed record AplicarZapatas(IReadOnlyList<string> Ids, ConfigParrillas C
 
 public sealed record CerrarZapatas : MensajeZapatas;
 
+/// <summary>La palomita de terminada, como la de los pórticos de vigas: pone o quita la marca en esas zapatas.</summary>
+public sealed record MarcarTerminadas(IReadOnlyList<string> Ids, bool Terminada) : MensajeZapatas;
+
 public sealed record DesconocidoZapatas : MensajeZapatas;
 
 /// <summary>Una forma del proyecto para el catálogo, con sus curvas como polilíneas [x, y] en mm.</summary>
@@ -68,6 +71,7 @@ public static class ProtocoloZapatas
             "mostrar" when ids.Count > 0 => new MostrarEnRevit(ids),
             "aplicar" when ids.Count > 0 && Config(e) is { } c => new AplicarZapatas(ids, c, e.FormaX, e.FormaY, e.GanchoX, e.GanchoY),
             "cerrar" => new CerrarZapatas(),
+            "marcarTerminada" when ids.Count > 0 && e.Terminada is bool t => new MarcarTerminadas(ids, t),
             _ => new DesconocidoZapatas(),
         };
     }
@@ -78,8 +82,9 @@ public static class ProtocoloZapatas
         e.IncluirSuperior ?? true);
 
     /// <param name="existentes">Por zapata, cuántas barras tiene y cuántas son del add-in.</param>
+    /// <param name="terminadas">Las zapatas con la marca de terminada (salen en verde en la planta).</param>
     public static string Datos(string modelo, IReadOnlyList<ZapataLeida> zapatas, IReadOnlyList<IReadOnlyList<string>> grupos, CatalogoZapatas catalogo,
-        IReadOnlyDictionary<string, (int Total, int Propias)> existentes) =>
+        IReadOnlyDictionary<string, (int Total, int Propias)> existentes, IReadOnlySet<string>? terminadas = null) =>
         Escribir(new
         {
             tipo = "datos",
@@ -93,10 +98,10 @@ public static class ProtocoloZapatas
                 (double ancho, double alto) = Geometria.Caja(z.Contorno);
                 return new
                 {
-                    z.Id, z.Nombre, z.Eje, z.Nivel, z.ZBase, z.Altura, z.Tipo, z.Forma, z.Contorno, Ancho = ancho, Largo = alto, z.Columnas,
+                    z.Id, z.Nombre, z.Eje, z.Nivel, z.Angulo, z.ZBase, z.Altura, z.Tipo, z.Forma, z.Contorno, Ancho = ancho, Largo = alto, z.Columnas,
                     z.RecubrimientoInferior, z.RecubrimientoLateral, z.RecubrimientoSuperior,
                     EnModelo = Geometria.Girar(z.Contorno, z.Angulo),
-                    BarrasTotales = e.Total, BarrasPropias = e.Propias,
+                    BarrasTotales = e.Total, BarrasPropias = e.Propias, Terminada = terminadas?.Contains(z.Id) == true,
                 };
             }),
         });
@@ -120,6 +125,7 @@ public static class ProtocoloZapatas
         public double? Lateral { get; set; }
         public double? Superior { get; set; }
         public bool? IncluirSuperior { get; set; }
+        public bool? Terminada { get; set; }
         public string? FormaX { get; set; }
         public string? FormaY { get; set; }
         public string? GanchoX { get; set; }

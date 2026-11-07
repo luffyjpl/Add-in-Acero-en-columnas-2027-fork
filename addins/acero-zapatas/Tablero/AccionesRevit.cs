@@ -40,7 +40,7 @@ internal sealed class AccionesRevit : IExternalEventHandler, IDisposable
             catch (Exception e)
             {
                 Registrar(e);
-                Fallo?.Invoke(e.Message);
+                Fallo?.Invoke(Mensaje(e));
             }
         }
     }
@@ -48,6 +48,15 @@ internal sealed class AccionesRevit : IExternalEventHandler, IDisposable
     /// <summary><c>%AppData%\CQEING\zapatas\errores.log</c>: el error completo, para saber dónde falló.</summary>
     public static string RutaErrores { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CQEING", "zapatas", "errores.log");
+
+    /// <summary>
+    /// Los errores de Revit traen un texto que sirve al usuario; los del add-in («Object reference…») no: se dice qué
+    /// pasó con el modelo y dónde quedó el detalle.
+    /// </summary>
+    private static string Mensaje(Exception e) =>
+        e is Autodesk.Revit.Exceptions.ApplicationException or InvalidOperationException
+            ? e.Message
+            : $"falla interna del add-in; el modelo quedó como estaba. El detalle quedó en {RutaErrores}.";
 
     private static void Registrar(Exception e)
     {

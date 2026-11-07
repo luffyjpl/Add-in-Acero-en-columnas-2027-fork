@@ -127,17 +127,24 @@ function dibujarPlanta() {
   const xs = puntos.map(p => p.x), ys = puntos.map(p => p.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   const borde = Math.max(x1 - x0, y1 - y0, 1000) * 0.06;
-  const vista = `${x0 - borde} ${-y1 - borde} ${x1 - x0 + 2 * borde} ${y1 - y0 + 2 * borde}`;
+  planta.base = { x: x0 - borde, y: -y1 - borde, w: x1 - x0 + 2 * borde, h: y1 - y0 + 2 * borde };
+  const v = planta.vista ?? planta.base;
+  const vista = `${v.x} ${v.y} ${v.w} ${v.h}`;
   const texto = Math.max(x1 - x0, y1 - y0, 1000) * 0.028;
   const figuras = estado.zapatas.map(z => {
     const on = estado.elegidas.includes(z.id), act = z.id === estado.activa;
+    // Las terminadas salen en verde, como los pórticos de vigas; la elegida va encima.
+    const color = on ? { fondo: '#D3E2F4', borde: '#1F5FAD', texto: '#174A87' }
+      : z.terminada ? { fondo: '#CDEBD5', borde: '#3B8A57', texto: '#25603A' }
+        : { fondo: '#E2E5E9', borde: '#5B6672', texto: '#3E4751' };
     const pts = z.enModelo.map(p => `${p.x},${-p.y}`).join(' ');
     const cx = z.enModelo.reduce((s, p) => s + p.x, 0) / z.enModelo.length, cy = z.enModelo.reduce((s, p) => s + p.y, 0) / z.enModelo.length;
-    return `<g data-id="${esc(z.id)}" style="cursor:pointer"><polygon points="${pts}" fill="${on ? '#D3E2F4' : '#E2E5E9'}" stroke="${on ? '#1F5FAD' : '#5B6672'}" stroke-width="${act ? 3 : 1.4}" vector-effect="non-scaling-stroke"><title>${esc(z.nombre)}</title></polygon>
-      <text x="${cx}" y="${-cy}" font-size="${texto}" text-anchor="middle" dominant-baseline="middle" fill="${on ? '#174A87' : '#3E4751'}" style="pointer-events:none">${esc(z.nombre)}</text></g>`;
+    return `<g data-id="${esc(z.id)}" style="cursor:pointer"><polygon points="${pts}" fill="${color.fondo}" stroke="${color.borde}" stroke-width="${act ? 3 : 1.4}" vector-effect="non-scaling-stroke"><title>${esc(z.nombre)}${z.terminada ? ' · terminada' : ''}</title></polygon>
+      <text x="${cx}" y="${-cy}" font-size="${texto}" text-anchor="middle" dominant-baseline="middle" fill="${color.texto}" style="pointer-events:none">${esc(z.nombre)}</text></g>`;
   }).join('');
   $('planta').innerHTML = `<svg viewBox="${vista}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Planta de cimentación">${figuras}</svg>`;
   $('planta').querySelectorAll('g[data-id]').forEach(g => g.addEventListener('click', e => {
+    if (planta.arrastrada) return;
     const id = g.dataset.id;
     if (e.ctrlKey) {
       const lista = estado.elegidas.includes(id) ? estado.elegidas.filter(x => x !== id) : [...estado.elegidas, id];
@@ -154,7 +161,80 @@ function dibujarPlanta() {
   $('cota').textContent = z ? `${(z.zBase / 1000).toFixed(2)} m` : '';
 }
 
+// Zoom con la rueda (hacia el cursor), arrastre para moverse y doble clic para ver todo. Se cambia solo el viewBox,
+// sin redibujar; el arrastre empieza pasados unos píxeles, para que un clic siga eligiendo la zapata.
+const planta = { base: null, vista: null, arrastre: null, arrastrada: false };
+const plantaEl = $('planta');
+
+function vistaPlanta(v) {
+  planta.vista = v;
+  plantaEl.querySelector('svg')?.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
+}
+
+function puntoPlanta(e) {
+  const svg = plantaEl.querySelector('svg'), ctm = svg?.getScreenCTM();
+  if (!ctm) return null;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y, escala: 1 / ctm.a };
+}
+
+plantaEl.addEventListener('wheel', e => {
+  const p = puntoPlanta(e), v = planta.vista ?? planta.base;
+  if (!p || !v) return;
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1 / 1.15 : 1.15;
+  const w = Math.min(Math.max(v.w * f, planta.base.w / 40), planta.base.w * 4);
+  const k = w / v.w;
+  vistaPlanta({ x: p.x - (p.x - v.x) * k, y: p.y - (p.y - v.y) * k, w, h: v.h * k });
+}, { passive: false });
+
+plantaEl.addEventListener('pointerdown', e => {
+  const p = puntoPlanta(e);
+  if (!p || e.button !== 0) return;
+  planta.arrastre = { id: e.pointerId, cx: e.clientX, cy: e.clientY, escala: p.escala, v: { ...(planta.vista ?? planta.base) } };
+  planta.arrastrada = false;
+});
+plantaEl.addEventListener('pointermove', e => {
+  const a = planta.arrastre;
+  if (!a || a.id !== e.pointerId) return;
+  const dx = e.clientX - a.cx, dy = e.clientY - a.cy;
+  if (!planta.arrastrada && Math.hypot(dx, dy) < 4) return;
+  if (!planta.arrastrada) {
+    planta.arrastrada = true;
+    plantaEl.setPointerCapture(e.pointerId);
+    plantaEl.style.cursor = 'grabbing';
+  }
+  vistaPlanta({ ...a.v, x: a.v.x - dx * a.escala, y: a.v.y - dy * a.escala });
+});
+const soltarPlanta = () => {
+  planta.arrastre = null;
+  plantaEl.style.cursor = '';
+  // El clic que sigue al arrastre llega después del pointerup: se ignora y luego se libera.
+  setTimeout(() => { planta.arrastrada = false; }, 0);
+};
+plantaEl.addEventListener('pointerup', soltarPlanta);
+plantaEl.addEventListener('pointercancel', soltarPlanta);
+plantaEl.addEventListener('dblclick', () => { if (planta.base) vistaPlanta({ ...planta.base }); });
+
+// La palomita de terminada (como la del pórtico en vigas): vale para todas las elegidas.
+function dibujarTerminada() {
+  const elegidas = estado.elegidas.map(zapata).filter(Boolean);
+  const b = $('bTerminada');
+  b.hidden = !elegidas.length;
+  const todas = elegidas.length > 0 && elegidas.every(z => z.terminada);
+  b.setAttribute('aria-pressed', todas);
+  b.title = todas ? 'Quitar la marca de terminada' : 'Marcar como terminada';
+  $('txtTerminada').textContent = todas ? (elegidas.length === 1 ? 'Terminada' : 'Terminadas') : '';
+}
+
+$('bTerminada').addEventListener('click', () => {
+  const elegidas = estado.elegidas.map(zapata).filter(Boolean);
+  if (!elegidas.length) return;
+  enviar({ tipo: 'marcarTerminada', ids: elegidas.map(z => z.id), terminada: !elegidas.every(z => z.terminada) });
+});
+
 function dibujarDetalles() {
+  dibujarTerminada();
   const z = activa();
   if (!z) {
     $('detalles').innerHTML = '';
@@ -330,13 +410,17 @@ function dibujar3d() {
   const escala = Math.min(w, h) / (2.3 * radio) * estado.cam.zoom;
   const { yaw, pitch } = estado.cam;
   const [sy, cyw, sp, cp] = [Math.sin(yaw), Math.cos(yaw), Math.sin(pitch), Math.cos(pitch)];
+  // Contorno y barras vienen en los ejes de la zapata: se giran a los del modelo para verla como en Revit.
+  const [sa, ca] = [Math.sin(z.angulo || 0), Math.cos(z.angulo || 0)];
+  // Cámara delante (−Y) y por encima: X a la derecha y, desde arriba, Y hacia arriba como en la planta de Revit.
   const P = (x, y, a) => {
-    const dx = x - cx, dy = y - cy, dz = a - z.altura / 2;
+    const lx = x - cx, ly = y - cy, dz = a - z.altura / 2;
+    const dx = lx * ca - ly * sa, dy = lx * sa + ly * ca;
     const rx = dx * cyw - dy * sy, ry = dx * sy + dy * cyw;
-    return { x: w / 2 + rx * escala, y: h / 2 + (ry * sp - dz * cp) * escala, d: ry * cp + dz * sp };
+    return { x: w / 2 + rx * escala, y: h / 2 - (ry * sp + dz * cp) * escala, d: dz * sp - ry * cp };
   };
   const tr = pts => pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const opacidad = { solido: 1, transparente: 0.32, alambre: 0 }[estado.modo];
+  const opacidad = { transparente: 0.32, alambre: 0 }[estado.modo];
   let html = '';
   const cara = (pts, color, profundidad) => ({ d: profundidad, s: `<polygon points="${tr(pts)}" fill="${color}" fill-opacity="${opacidad}" stroke="#3E4751" stroke-width="1.2" stroke-linejoin="round"/>` });
   const caras = [];
@@ -406,7 +490,6 @@ $('modos').addEventListener('click', e => {
   dibujar3d();
 });
 $('bArriba').addEventListener('click', () => { Object.assign(estado.cam, { yaw: 0, pitch: Math.PI / 2, zoom: 1 }); dibujar3d(); });
-$('bIso').addEventListener('click', () => { Object.assign(estado.cam, { yaw: -0.75, pitch: 0.62, zoom: 1 }); dibujar3d(); });
 
 // ---- Sección 2D
 
@@ -464,6 +547,27 @@ $('b2d').addEventListener('click', () => {
   $('emergente').hidden = !ver;
   $('b2d').setAttribute('aria-pressed', ver);
 });
+
+// La sección 2D se mueve arrastrando su cabecera, sin salirse de la vista 3D.
+let arrastre2d = null;
+const cabecera2d = $('emergente').querySelector('header');
+cabecera2d.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.target.closest('button')) return;
+  const em = $('emergente');
+  arrastre2d = { id: e.pointerId, x: e.clientX - em.offsetLeft, y: e.clientY - em.offsetTop };
+  cabecera2d.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+cabecera2d.addEventListener('pointermove', e => {
+  if (!arrastre2d || arrastre2d.id !== e.pointerId) return;
+  const em = $('emergente'), v = $('vista');
+  const x = Math.max(0, Math.min(e.clientX - arrastre2d.x, v.clientWidth - em.offsetWidth));
+  const y = Math.max(0, Math.min(e.clientY - arrastre2d.y, v.clientHeight - em.offsetHeight));
+  Object.assign(em.style, { left: `${x}px`, top: `${y}px`, right: 'auto' });
+});
+const soltar2d = () => { arrastre2d = null; };
+cabecera2d.addEventListener('pointerup', soltar2d);
+cabecera2d.addEventListener('pointercancel', soltar2d);
 
 // ---- Acciones
 

@@ -1,6 +1,5 @@
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using Autodesk.Revit.UI.Selection;
 using CQEING.Vigas.Calculo.Modelo;
 using CQEING.Zapatas.Calculo;
 using CQEING.Zapatas.Revit;
@@ -19,6 +18,7 @@ internal sealed class PuenteTablero
     private readonly Reglas reglas = Reglas.Generales;
     private List<ZapataLeida> zapatas = [];
     private CatalogoZapatas catalogo = new([], [], []);
+    private BarraSeleccion? barra;
 
     public PuenteTablero(VentanaTablero ventana, Document doc)
     {
@@ -69,7 +69,24 @@ internal sealed class PuenteTablero
             case AplicarZapatas a:
                 Aplicar(app, a);
                 break;
+            case MarcarTerminadas m:
+                Marcar(m);
+                break;
         }
+    }
+
+    /// <summary>La palomita del tablero: pone o quita la marca en las zapatas, en una sola operación de Revit.</summary>
+    private void Marcar(MarcarTerminadas m)
+    {
+        using (var t = new Transaction(doc, m.Terminada ? "Marcar zapatas terminadas" : "Desmarcar zapatas terminadas"))
+        {
+            t.Start();
+            foreach (string id in m.Ids)
+                if (doc.GetElement(Id(id)) is { } zapata)
+                    MarcaTerminada.Marcar(zapata, m.Terminada);
+            t.Commit();
+        }
+        Leer();
     }
 
     private void Leer()
@@ -77,7 +94,8 @@ internal sealed class PuenteTablero
         zapatas = LectorZapatas.Leer(doc);
         catalogo = TiposZapata.Catalogo(doc, reglas);
         var existentes = zapatas.ToDictionary(z => z.Id, z => doc.GetElement(Id(z.Id)) is { } e ? MarcaZapata.Contar(e) : (0, 0));
-        ventana.Enviar(ProtocoloZapatas.Datos(doc.Title, zapatas, Grupos(zapatas), catalogo, existentes));
+        HashSet<string> terminadas = zapatas.Where(z => MarcaTerminada.Tiene(doc.GetElement(Id(z.Id)))).Select(z => z.Id).ToHashSet();
+        ventana.Enviar(ProtocoloZapatas.Datos(doc.Title, zapatas, Grupos(zapatas), catalogo, existentes, terminadas));
         if (zapatas.Count == 0)
             ventana.Enviar(ProtocoloZapatas.Aviso("El modelo no tiene zapatas que puedan llevar acero (categoría Cimentación estructural)."));
     }
@@ -112,25 +130,80 @@ internal sealed class PuenteTablero
         _ => null,
     };
 
+    /// <summary>
+    /// "Seleccionar en Revit", como en vigas: el tablero se aparta y la barra del add-in queda arriba del dibujo mientras
+    /// el usuario elige con la selección normal de Revit. No se usa <c>PickObjects</c>: dejaba a Revit esperando con el
+    /// tablero encima, y las demás acciones (elegir en la planta, generar) quedaban en cola sin correr.
+    /// </summary>
     private void Seleccionar(UIApplication app)
     {
-        UIDocument ui = app.ActiveUIDocument;
-        HashSet<string> conocidas = zapatas.Select(z => z.Id).ToHashSet();
-        List<string> ids = ui.Selection.GetElementIds().Select(i => i.ToString()).Where(conocidas.Contains).ToList();
-        if (ids.Count == 0)
+        if (barra is not null)
         {
-            ventana.Enviar(ProtocoloZapatas.Aviso("Elija las zapatas en Revit y pulse Terminar en la barra de opciones."));
-            ids = ui.Selection.PickObjects(ObjectType.Element, new SoloZapatas(conocidas), "Elija las zapatas").Select(r => r.ElementId.ToString()).ToList();
+            barra.Activate();
+            return;
         }
-        ventana.Enviar(ProtocoloZapatas.Seleccion(ids));
-        ventana.Volver();
+        ventana.Apartar();
+        Rectangle area = app.DrawingAreaExtents;
+        var nueva = new BarraSeleccion(app.MainWindowHandle, (area.Left, area.Top, area.Right, area.Bottom));
+        nueva.Todas += () => acciones.Encolar(x =>
+        {
+            List<ElementId> todas = zapatas.Select(z => Id(z.Id)).Where(i => doc.GetElement(i) is not null).ToList();
+            x.ActiveUIDocument?.Selection.SetElementIds(todas);
+        });
+        nueva.Terminar += () => acciones.Encolar(x =>
+        {
+            List<string> ids = ZapatasElegidas(x.ActiveUIDocument?.Selection.GetElementIds().Select(i => i.ToString()) ?? []);
+            barra?.Close();
+            ventana.Enviar(ProtocoloZapatas.Seleccion(ids));
+        });
+        nueva.Cancelar += () => barra?.Close();
+        // Se cierre como se cierre (Terminar, Cancelar, Esc o el tablero), se deja de escuchar y el tablero vuelve.
+        nueva.Closed += (_, _) =>
+        {
+            if (barra != nueva)
+                return;
+            barra = null;
+            app.SelectionChanged -= AlCambiarSeleccion;
+            ventana.Volver();
+        };
+        ventana.Closed += (_, _) =>
+        {
+            if (barra == nueva)
+                nueva.Close();
+        };
+        barra = nueva;
+        app.SelectionChanged += AlCambiarSeleccion;
+        nueva.Mostrar(ZapatasElegidas(app.ActiveUIDocument?.Selection.GetElementIds().Select(i => i.ToString()) ?? []).Count);
+        nueva.Show();
     }
 
+    /// <summary>Lo que se elige en Revit con la barra abierta: solo se cuenta. Nunca deja escapar una excepción hacia Revit.</summary>
+    private void AlCambiarSeleccion(object? sender, Autodesk.Revit.UI.Events.SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (e.GetDocument().Equals(doc))
+                barra?.Mostrar(ZapatasElegidas(e.GetSelectedElements().Select(i => i.ToString())).Count);
+        }
+        catch
+        {
+            // Revit llama este evento desde su lado nativo: un error aquí podría tumbarlo.
+        }
+    }
+
+    private List<string> ZapatasElegidas(IEnumerable<string> ids)
+    {
+        HashSet<string> conocidas = zapatas.Select(z => z.Id).ToHashSet();
+        return ids.Where(conocidas.Contains).ToList();
+    }
+
+    /// <summary>"Mostrar en Revit": el tablero se aparta para que se vea; vuelve con el botón del add-in en la cinta.</summary>
     private void Mostrar(UIApplication app, IReadOnlyList<string> ids)
     {
         List<ElementId> elementos = ids.Select(Id).Where(i => doc.GetElement(i) is not null).ToList();
         if (elementos.Count == 0)
             return;
+        ventana.Apartar();
         app.ActiveUIDocument.Selection.SetElementIds(elementos);
         app.ActiveUIDocument.ShowElements(elementos);
     }
@@ -161,11 +234,4 @@ internal sealed class PuenteTablero
     private List<ZapataLeida> Elegidas(IReadOnlyList<string> ids) => ids.Select(i => zapatas.FirstOrDefault(z => z.Id == i)).OfType<ZapataLeida>().ToList();
 
     private static ElementId Id(string id) => long.TryParse(id, out long n) ? new ElementId(n) : ElementId.InvalidElementId;
-
-    private sealed class SoloZapatas(HashSet<string> ids) : ISelectionFilter
-    {
-        public bool AllowElement(Element elem) => ids.Contains(elem.Id.ToString());
-
-        public bool AllowReference(Reference reference, XYZ position) => true;
-    }
 }
