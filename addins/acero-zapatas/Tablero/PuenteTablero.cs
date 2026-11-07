@@ -37,6 +37,9 @@ internal sealed class PuenteTablero
         doc = uiapp.ActiveUIDocument?.Document;
         ventana.MensajeRecibido += Recibir;
         acciones.Fallo += texto => ventana.Enviar(ProtocoloZapatas.Aviso($"No se pudo hacer en Revit: {texto}"));
+        // Como vigas: los eventos de Revit se suscriben aquí, en el comando, y se sueltan al cerrar el tablero. Nunca desde
+        // la barra de selección: su Cancelar corre fuera de la API y Revit se cerraba al quitar el evento ahí.
+        uiapp.SelectionChanged += AlCambiarSeleccion;
         uiapp.ViewActivated += AlActivarVista;
         uiapp.Application.DocumentClosing += AlCerrarDocumento;
         ventana.Closed += (_, _) => Soltar();
@@ -241,7 +244,6 @@ internal sealed class PuenteTablero
             if (barra != nueva)
                 return;
             barra = null;
-            app.SelectionChanged -= AlCambiarSeleccion;
             ventana.Volver();
         };
         ventana.Closed += (_, _) =>
@@ -250,7 +252,6 @@ internal sealed class PuenteTablero
                 nueva.Close();
         };
         barra = nueva;
-        app.SelectionChanged += AlCambiarSeleccion;
         nueva.Mostrar(ZapatasElegidas(app.ActiveUIDocument?.Selection.GetElementIds().Select(i => i.ToString()) ?? []).Count);
         nueva.Show();
     }
@@ -351,8 +352,10 @@ internal sealed class PuenteTablero
 
     private void Soltar()
     {
+        barra?.Close();
         try
         {
+            uiapp.SelectionChanged -= AlCambiarSeleccion;
             uiapp.ViewActivated -= AlActivarVista;
             uiapp.Application.DocumentClosing -= AlCerrarDocumento;
         }
