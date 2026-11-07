@@ -184,12 +184,13 @@ public static class ArreglosChoque
             : o with { Estribos = cambio(o.Estribos) };
 
         // Como aplicarSalto en la página: un traslapo corrido va a los movidos; un bastón, a sus puntas, y la punta que
-        // se movió pierde el gancho elegido.
+        // se movió pierde el gancho elegido; estirarlo (no correrlo entero) borra su largo escrito.
         OpcionesTablero ConSaltos(IReadOnlyList<CambioArrastre> saltos)
         {
             var movidos = new Dictionary<string, TraslapoMovido>(o.Cambios?.Movidos ?? new Dictionary<string, TraslapoMovido>());
             var ganchos = new Dictionary<string, TipoGancho>(o.Cambios?.Ganchos ?? new Dictionary<string, TipoGancho>());
             var puntas = new Dictionary<string, PuntasBaston>(o.Bastones.Puntas ?? new Dictionary<string, PuntasBaston>());
+            var largos = new Dictionary<string, int>(o.Bastones.Largos ?? new Dictionary<string, int>());
             foreach (CambioArrastre s in saltos)
             {
                 if (s.Tipo == "movido")
@@ -202,12 +203,14 @@ public static class ArreglosChoque
                     ganchos.Remove(s.Id + ".inicio");
                 if (b is null || b.Hasta != s.Hasta)
                     ganchos.Remove(s.Id + ".fin");
+                if (b is null || s.Hasta - s.Desde != b.Hasta - b.Desde)
+                    largos.Remove(s.Id);
                 puntas[s.Id] = new PuntasBaston(s.Desde, s.Hasta);
             }
             return o with
             {
                 Cambios = (o.Cambios ?? new CambiosManuales()) with { Movidos = movidos, Ganchos = ganchos },
-                Bastones = o.Bastones with { Puntas = puntas },
+                Bastones = o.Bastones with { Puntas = puntas, Largos = largos },
             };
         }
     }

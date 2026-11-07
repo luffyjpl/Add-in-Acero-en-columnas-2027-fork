@@ -105,8 +105,10 @@ internal static class CalculadorBastones
         desde = Math.Max(desde, g.InicioBarras);
         hasta = Math.Min(hasta, g.FinBarras);
         // el largo escrito en un bastón del borde es el total, gancho incluido (Juan, 06-nov: se cortaba en el borde y
-        // quedaba de otro largo): la punta del borde queda en el límite y la otra sale del largo escrito
-        bool escritoEnBorde = escrito > 0 && puntas is null && bordeInicio != bordeFin
+        // quedaba de otro largo): la punta del borde queda en el límite y la otra sale del largo escrito. Vale también
+        // arrastrado al borde (Juan, 07-nov: con gancho, el largo se perdía y al reescribirlo volvía al centro); estirar
+        // una punta borra el escrito en la página, así que unas puntas con escrito solo vienen de correrlo entero
+        bool escritoEnBorde = escrito > 0 && bordeInicio != bordeFin
             && escrito.Value - ganchoInicio - ganchoFin > 0;
         if (escritoEnBorde)
         {
