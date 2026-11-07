@@ -364,17 +364,21 @@ internal static class GeneradorPrevia
         bool EsBaston(Sacada s) => MarcaVigas.EsBaston(s.Barra) || (MarcaVigas.Serie(s.Barra) is null && Curvas(s.Barra, false).Count == 1
             && ClasificadorBastones.EsBaston(Mayor(s.Barra).GetEndPoint(0).Z, alturas, ToleranciaBaston));
         List<Sacada> deArriba = sacadas.Where(EstaArriba).ToList(), deAbajo = sacadas.Except(deArriba).ToList();
-        // Los bastones en medio, entre la viga y las corridas (Juan, 31-oct); después una fila por diámetro, la más gruesa primero.
+        // La piel pegada a la viga (Luciano, 06-nov, #301); después los bastones, entre la viga y las corridas (Juan, 31-oct);
+        // después una fila por diámetro, la más gruesa primero; al final, lo que quede.
+        bool EsPiel(Sacada s) => MarcaVigas.EsPiel(s.Barra);
         double Lineas(List<Sacada> lado, string serie, double desde, bool haciaArriba)
         {
-            double z = Acomodar(doc, vista, lado.Where(EsBaston).ToList(), desde, haciaArriba, tipos);
+            double z = Acomodar(doc, vista, lado.Where(EsPiel).ToList(), desde, haciaArriba, tipos);
+            z = Acomodar(doc, vista, lado.Where(EsBaston).ToList(), z, haciaArriba, tipos);
             foreach (IGrouping<int, Sacada> diametro in lado.Where(s => MarcaVigas.Serie(s.Barra) == serie)
                 .GroupBy(s => LectorDespiece.Numero(doc.GetElement(s.Barra.GetTypeId()).Name)).OrderByDescending(g => g.Key))
                 z = AcomodarLinea(doc, vista, diametro.ToList(), derecha, z, haciaArriba, tipos);
-            return Acomodar(doc, vista, lado.Where(s => MarcaVigas.Serie(s.Barra) != serie && !EsBaston(s)).ToList(), z, haciaArriba, tipos);
+            return Acomodar(doc, vista, lado.Where(s => MarcaVigas.Serie(s.Barra) != serie && !EsBaston(s) && !EsPiel(s)).ToList(), z, haciaArriba, tipos);
         }
         var sueltas = new List<(Rebar Barra, TextNote Nota)>();
-        int filasEstribos = EtiquetarEstribos(doc, vista, barras, derecha, enPlano, max.Z + asomo, tipos, sueltas);
+        // Pegadas a la viga, no sobre el asomo de las columnas: con él quedaban 0.20 m más arriba (#302).
+        int filasEstribos = EtiquetarEstribos(doc, vista, barras, derecha, enPlano, max.Z, tipos, sueltas);
         double tope = Lineas(deArriba, "S", max.Z + asomo + SeparacionViga + FilaEstribos * Math.Max(filasEstribos - 1, 0), true);
         double fondo = Lineas(deAbajo, "I", min.Z - asomo - SeparacionViga, false);
 
@@ -874,20 +878,35 @@ internal static class GeneradorPrevia
                     cortadas.Add((b, a + dir * (aLoLargo - pa)));
             }
         }
-        void Etiquetar(List<(Rebar Barra, XYZ Punto)> grupo, double dz)
+        // Una sola etiqueta por grupo y diámetro, con una flecha a cada barra: «10 #5» en vez de diez «1 #5» (06-nov). Las
+        // pieles van aparte, a la izquierda de la sección; el estribo ocupa la derecha.
+        void Etiquetar(List<(Rebar Barra, XYZ Punto)> grupo, Func<int, int, XYZ> donde, HorizontalTextAlignment alineado, TextNoteLeaderTypes flecha)
         {
-            List<(Rebar Barra, XYZ Punto)> orden = grupo.OrderBy(c => c.Punto.DotProduct(derecha)).ToList();
-            for (int i = 0; i < orden.Count; i++)
+            var porDiametro = grupo.GroupBy(c => NombreBarra(doc, c.Barra)).OrderBy(g => g.Key).ToList();
+            for (int i = 0; i < porDiametro.Count; i++)
             {
-                XYZ p = corte + XYZ.BasisZ * dz + derecha * ((i - (orden.Count - 1) / 2.0) * 0.28 * M * Letra.Factor - 0.08 * M * Letra.Factor);
-                (Rebar barra, XYZ punto) = orden[i];
-                TextNote nota = TextNote.Create(doc, vista.Id, p, "1 " + NombreBarra(doc, barra), tipos.Nota(HorizontalTextAlignment.Left));
-                nota.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_L).End = punto;
-                Pintar(vista, nota.Id, barra, null);
+                TextNote nota = TextNote.Create(doc, vista.Id, donde(i, porDiametro.Count), $"{porDiametro[i].Count()} {porDiametro[i].Key}", tipos.Nota(alineado));
+                foreach ((Rebar _, XYZ punto) in porDiametro[i])
+                    nota.AddLeader(flecha).End = punto;
+                Pintar(vista, nota.Id, porDiametro[i].First().Barra, null);
             }
         }
-        Etiquetar(cortadas.Where(c => c.Punto.Z > medio.Z).ToList(), alto / 2 + 0.38 * M * Letra.Factor);
-        Etiquetar(cortadas.Where(c => c.Punto.Z <= medio.Z).ToList(), -alto / 2 - 0.2 * M * Letra.Factor);
+        double paso = 0.28 * M * Letra.Factor;
+        XYZ EnFila(double dz, int i, int n) => corte + XYZ.BasisZ * dz + derecha * ((i - (n - 1) / 2.0) * paso - 0.08 * M * Letra.Factor);
+        var principales = cortadas.Where(c => !MarcaVigas.EsPiel(c.Barra)).ToList();
+        Etiquetar(principales.Where(c => c.Punto.Z > medio.Z).ToList(), (i, n) => EnFila(alto / 2 + 0.38 * M * Letra.Factor, i, n),
+            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
+        Etiquetar(principales.Where(c => c.Punto.Z <= medio.Z).ToList(), (i, n) => EnFila(-alto / 2 - 0.2 * M * Letra.Factor, i, n),
+            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
+        // Las pieles, por fuera de la cota del alto y de su cadena (TextoAltoSeccion): ahí se encimaba «10 #4» (06-nov). El
+        // recorte se abre a la izquierda para que quepan.
+        var pieles = cortadas.Where(c => MarcaVigas.EsPiel(c.Barra)).ToList();
+        Etiquetar(pieles,
+            (i, n) => corte - derecha * (ancho / 2 + TextoAltoSeccion + 0.12 * M * Letra.Factor) + XYZ.BasisZ * ((n - 1) / 2.0 - i) * 0.12 * M * Letra.Factor,
+            HorizontalTextAlignment.Right, TextNoteLeaderTypes.TNLT_STRAIGHT_R);
+        double izquierda = ancho / 2 + (pieles.Count > 0 ? 0.85 : 0.55) * M * Letra.Factor;
+        if (pieles.Count > 0)
+            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor);
 
         // El estribo aparte, solo con sus medidas. Con este tipo de detalle sale parado, como en la sección. El cerrado es
         // el de más curvas: la grapa de la misma zona también cruza el corte.
@@ -901,7 +920,7 @@ internal static class GeneradorPrevia
             Pintar(vista, d.Id, estribo, 3);
             EtiquetarGancho(doc, vista, estribo, centroDetalle, medio.Z, tipos);
             double abajo = ResumirEstribos(doc, vista, barras.Where(b => !EsLongitudinal(b, dir)).ToList(), estribo, d, centroDetalle, tipos);
-            Recortar(vista, corte, ancho / 2 + 0.55 * M * Letra.Factor, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
+            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
         }
         Acotar(doc, vista, viga, estribo, corte, derecha, medio.Z, tipos);
         return vista;
@@ -1012,8 +1031,12 @@ internal static class GeneradorPrevia
         List<PlanarFace> Lados() => Caras(doc.GetElement(viga.Vigas[0]), vista).Where(c => Math.Abs(c.FaceNormal.DotProduct(derecha)) > 0.99).OrderBy(c => c.Origin.DotProduct(derecha)).ToList();
         List<PlanarFace> Tapas() => Caras(doc.GetElement(viga.Vigas[0]), vista).Where(c => Math.Abs(c.FaceNormal.Z) > 0.99).OrderBy(c => c.Origin.Z).ToList();
         List<PlanarFace> lados = Lados(), tapas = Tapas();
+        Registro.Paso("sección: caras horizontales " + string.Join(", ", tapas.Select(c => $"{c.Origin.Z * 0.3048:0.000}{(c.Reference is null ? " sin referencia" : "")}")));
         if (lados.Count < 2 || tapas.Count < 2)
+        {
+            Registro.Paso($"sección: sin cotas, {lados.Count} caras a los lados y {tapas.Count} horizontales");
             return;
+        }
         PlanarFace izquierda = lados[0], dere = lados[^1], abajo = tapas[0], arriba = tapas[^1];
         // Sobre el plano del corte: el origen de una cara puede estar a metros de él, y ahí Revit no crea la cota (30-oct).
         XYZ enCorte = corte + derecha * (izquierda.Origin - corte).DotProduct(derecha);
@@ -1021,21 +1044,56 @@ internal static class GeneradorPrevia
         double ancho = (dere.Origin - izquierda.Origin).DotProduct(derecha), alto = arriba.Origin.Z - abajo.Origin.Z;
         double cara = izquierda.Origin.DotProduct(derecha), zAbajo = abajo.Origin.Z, zArriba = arriba.Origin.Z;
 
-        void Cota(Reference a, Reference b, XYZ desde, XYZ hacia)
+        // Cada intento en su SubTransaction: si Revit no acepta la cota se deshace solo eso, y la vista previa sigue (#300).
+        bool Intentar(string nombre, string como, Func<IEnumerable<Reference>> referencias, XYZ desde, XYZ hacia)
         {
-            var referencias = new ReferenceArray();
-            referencias.Append(a);
-            referencias.Append(b);
-            Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(desde, hacia), referencias);
-            if (tipos.Cota is { } tipo)
-                cota.DimensionType = tipo;
+            using var intento = new SubTransaction(doc);
+            intento.Start();
+            try
+            {
+                var lista = new ReferenceArray();
+                foreach (Reference r in referencias())
+                    lista.Append(r ?? throw new InvalidOperationException("la cara no trae referencia"));
+                Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(desde, hacia), lista);
+                if (tipos.Cota is { } tipo)
+                    cota.DimensionType = tipo;
+                doc.Regenerate();
+                intento.Commit();
+                Registro.Paso($"sección: cota {nombre} {como}");
+                return true;
+            }
+            catch (Exception e)
+            {
+                intento.RollBack();
+                Registro.Paso($"sección: cota {nombre} {como} no se pudo: {e.Message}");
+                return false;
+            }
+        }
+        // Con la losa encima, la cara de arriba es la de la losa y no trae referencia (Invalid number of references, #300):
+        // se acota contra planos de referencia en blanco puestos en esas mismas posiciones, como en CotarColumnas.
+        IEnumerable<Reference> Planos(XYZ desde, XYZ hacia)
+        {
+            XYZ tramo = (hacia - desde).CrossProduct(vista.ViewDirection).Normalize() * 0.05 * M;
+            var blanco = new OverrideGraphicSettings();
+            blanco.SetProjectionLineColor(new Color(255, 255, 255));
+            List<Reference> planos = new[] { desde, hacia }.Select(p =>
+            {
+                ReferencePlane plano = doc.Create.NewReferencePlane(p - tramo, p + tramo, vista.ViewDirection, vista);
+                vista.SetElementOverrides(plano.Id, blanco);
+                return plano.GetReference();
+            }).ToList();
             doc.Regenerate();
+            return planos;
+        }
+        void Cota(string nombre, Func<IEnumerable<Reference>> caras, XYZ desde, XYZ hacia)
+        {
+            if (!Intentar(nombre, "con las caras de la viga", caras, desde, hacia) && !Intentar(nombre, "con planos de referencia", () => Planos(desde, hacia), desde, hacia))
+                Registro.Paso($"sección: la cota {nombre} queda sin crear");
         }
         XYZ bajo = esquina - XYZ.BasisZ * CotaAnchoSeccion;
-        Cota(izquierda.Reference, dere.Reference, bajo, bajo + derecha * ancho);
+        Cota("del ancho", () => { List<PlanarFace> l = Lados(); return [l[0].Reference, l[^1].Reference]; }, bajo, bajo + derecha * ancho);
         XYZ alLado = esquina - derecha * CotaAltoSeccion;
-        tapas = Tapas();
-        Cota(tapas[0].Reference, tapas[^1].Reference, alLado, alLado + XYZ.BasisZ * alto);
+        Cota("del alto", () => { List<PlanarFace> t = Tapas(); return [t[0].Reference, t[^1].Reference]; }, alLado, alLado + XYZ.BasisZ * alto);
 
         if (estribo is null)
             return;
