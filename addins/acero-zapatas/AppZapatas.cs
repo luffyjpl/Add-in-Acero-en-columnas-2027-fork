@@ -29,6 +29,7 @@ public class AppZapatas : IExternalApplication
             "CQEING.Zapatas.Revit.ComandoDiagnosticoZapata",
             "Solo en desarrollo: mide cómo se comporta Revit con las zapatas y deshace todo.",
             "iconoCQ"));
+        Revit.PruebaAutomatica.Registrar(app);
 #endif
 
         return Result.Succeeded;

@@ -10,6 +10,13 @@
   <ItemGroup>
     <!-- Enlazada, no copiada: zapatas y vigas sacan los ganchos de la misma clase (#249). -->
     <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Modelo\Reglas.cs" Link="Modelo\Reglas.cs" />
+    <!-- Choques y colores como vigas (decisiones 31 y 32 del plan de 2026-11-05). -->
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Generacion\Trazo.cs" Link="Generacion\Trazo.cs" />
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Generacion\DetectorChoques.cs" Link="Generacion\DetectorChoques.cs" />
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Modelo\ColoresDiametro.cs" Link="Modelo\ColoresDiametro.cs" />
+    <!-- Reglas compartidas con vigas: el mismo archivo y la misma pantalla (decisiones 38 y 39 del plan de 2026-11-05). -->
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Modelo\AlmacenReglas.cs" Link="Modelo\AlmacenReglas.cs" />
+    <Compile Include="..\..\..\acero-vigas\calculo\CQEING.Vigas.Calculo\Tablero\PantallaReglas.cs" Link="Tablero\PantallaReglas.cs" />
   </ItemGroup>
 
 </Project>

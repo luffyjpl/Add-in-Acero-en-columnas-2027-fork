@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Los filtros de color por diámetro de vigas, compartidos para que todos los add-ins pinten igual (decisión 44 del plan de 2026-11-05). -->
+    <Compile Include="..\acero-vigas\Revit\FiltrosColorDiametro.cs" Link="Revit\FiltrosColorDiametro.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Solo para compilar: Revit ya trae WebView2 (Core, Wpf y WebView2Loader); no se copian a la salida. -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="$(WebView2Version)" ExcludeAssets="runtime;native;build;buildTransitive" PrivateAssets="all" />
   </ItemGroup>

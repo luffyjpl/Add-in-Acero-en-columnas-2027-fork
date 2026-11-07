@@ -8,9 +8,23 @@ const m = (mm, dec = 2) => (mm / 1000).toFixed(dec);
 
 const estado = {
   modelo: '', zapatas: [], grupos: [], catalogo: { barras: [], formas: [], ganchos: [] }, porDefecto: 75,
-  elegidas: [], activa: null, res: null, modo: 'transparente', cam: { yaw: -0.75, pitch: 0.62, zoom: 1 },
-  cfg: { x: { numero: 5, separacion: 150, terminacion: 'Pata90', forma: null, gancho: null }, y: { numero: 5, separacion: 150, terminacion: 'Pata90', forma: null, gancho: null }, inferior: 75, lateral: 75, superior: 75, incluirSuperior: true },
+  elegidas: [], activa: null, res: null, ver2d: false, modo: 'transparente', cam: { yaw: -0.75, pitch: 0.62, zoom: 1 },
+  cfg: null, verChoques: true,
 };
+
+// Por dirección: la parrilla inferior y, en «sup», la superior, cada una con su forma y su gancho (decisión 30 del plan de
+// 2026-11-05). largoPata: «Cuadro» o «Recubrimiento» (decisión 29).
+const extremos = () => ({ terminacion: 'Pata90', forma: null, gancho: null });
+const direccion = () => ({ numero: 5, separacion: 150, ...extremos(), sup: extremos() });
+const cfgInicial = () => ({ x: direccion(), y: direccion(), inferior: 75, lateral: 75, superior: 75, incluirSuperior: true, largoPata: 'Cuadro' });
+estado.cfg = cfgInicial();
+
+/** Lo guardado con una versión anterior de la página no trae la superior ni el largo de la pata: se completa. */
+function completar(guardada) {
+  const base = cfgInicial();
+  const dir = (b, g) => ({ ...b, ...g, sup: { ...b.sup, ...(g?.sup ?? {}) } });
+  return { ...base, ...guardada, x: dir(base.x, guardada.x), y: dir(base.y, guardada.y) };
+}
 
 function enviar(mensaje) {
   if (window.chrome?.webview) window.chrome.webview.postMessage(mensaje);
@@ -40,17 +54,21 @@ window.chrome?.webview?.addEventListener('message', e => {
   else if (d.tipo === 'resultado') recibirResultado(d);
   else if (d.tipo === 'seleccion') elegir(d.ids);
   else if (d.tipo === 'aviso') aviso(d.texto, d.bien ? 'bien' : d.texto.startsWith('No ') ? 'mal' : '');
+  else if (d.tipo === 'choques') preguntarChoques(d.cantidad);
 });
 
 function recibirDatos(d) {
+  // Otro modelo (decisión 33): lo elegido y el resultado eran del anterior.
+  if (d.modelo !== estado.modelo) Object.assign(estado, { elegidas: [], activa: null, res: null });
   const anteriores = estado.elegidas;
   estado.modelo = d.modelo;
   estado.zapatas = d.zapatas;
   estado.grupos = d.grupos;
   estado.catalogo = d.catalogo;
   estado.porDefecto = d.recubrimientoPorDefecto;
+  recibirReglas(d.reglas);
   const guardada = leerGuardado(claveProyecto());
-  if (guardada?.x && guardada?.y && anteriores.length === 0) estado.cfg = { ...estado.cfg, ...guardada };
+  if (guardada?.x && guardada?.y && anteriores.length === 0) estado.cfg = completar(guardada);
   llenarSelects();
   const siguen = anteriores.filter(zapata);
   if (siguen.length) elegir(siguen);
@@ -83,10 +101,16 @@ function elegir(ids) {
   dibujarTodo();
 }
 
+// La configuración y lo elegido en el catálogo, lo mismo para calcular y para aplicar. La forma y el gancho de la superior
+// van como '' cuando son los automáticos: null querría decir «los de la inferior» (TiposElegidos en C#).
 function configMensaje() {
   const c = estado.cfg;
-  const dir = d => ({ numero: d.numero, separacion: d.separacion, terminacion: d.terminacion });
-  return { x: dir(c.x), y: dir(c.y), inferior: c.inferior, lateral: c.lateral, superior: c.superior, incluirSuperior: c.incluirSuperior };
+  const dir = d => ({ numero: d.numero, separacion: d.separacion, terminacion: d.terminacion, superior: { terminacion: d.sup.terminacion } });
+  return {
+    x: dir(c.x), y: dir(c.y), inferior: c.inferior, lateral: c.lateral, superior: c.superior, incluirSuperior: c.incluirSuperior, largoPata: c.largoPata,
+    formaX: c.x.forma, formaY: c.y.forma, ganchoX: c.x.gancho, ganchoY: c.y.gancho,
+    formaSuperiorX: c.x.sup.forma ?? '', formaSuperiorY: c.y.sup.forma ?? '', ganchoSuperiorX: c.x.sup.gancho ?? '', ganchoSuperiorY: c.y.sup.gancho ?? '',
+  };
 }
 
 function calcular() {
@@ -139,8 +163,10 @@ function dibujarPlanta() {
         : { fondo: '#E2E5E9', borde: '#5B6672', texto: '#3E4751' };
     const pts = z.enModelo.map(p => `${p.x},${-p.y}`).join(' ');
     const cx = z.enModelo.reduce((s, p) => s + p.x, 0) / z.enModelo.length, cy = z.enModelo.reduce((s, p) => s + p.y, 0) / z.enModelo.length;
-    return `<g data-id="${esc(z.id)}" style="cursor:pointer"><polygon points="${pts}" fill="${color.fondo}" stroke="${color.borde}" stroke-width="${act ? 3 : 1.4}" vector-effect="non-scaling-stroke"><title>${esc(z.nombre)}${z.terminada ? ' · terminada' : ''}</title></polygon>
-      <text x="${cx}" y="${-cy}" font-size="${texto}" text-anchor="middle" dominant-baseline="middle" fill="${color.texto}" style="pointer-events:none">${esc(z.nombre)}</text></g>`;
+    // Con el eje, como en la lista de arriba: «Z-12 · Eje 9-A» (Juan, 05-nov).
+    const nombre = `${z.nombre}${z.eje ? ` · Eje ${z.eje}` : ''}`;
+    return `<g data-id="${esc(z.id)}" style="cursor:pointer"><polygon points="${pts}" fill="${color.fondo}" stroke="${color.borde}" stroke-width="${act ? 3 : 1.4}" vector-effect="non-scaling-stroke"><title>${esc(nombre)}${z.terminada ? ' · terminada' : ''}</title></polygon>
+      <text x="${cx}" y="${-cy}" font-size="${texto}" text-anchor="middle" dominant-baseline="middle" fill="${color.texto}" style="pointer-events:none">${esc(nombre)}</text></g>`;
   }).join('');
   $('planta').innerHTML = `<svg viewBox="${vista}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Planta de cimentación">${figuras}</svg>`;
   $('planta').querySelectorAll('g[data-id]').forEach(g => g.addEventListener('click', e => {
@@ -255,7 +281,8 @@ function nombreForma(d) {
 
 function nombreGancho(d) {
   if (d.terminacion === 'Recta') return 'Sin gancho';
-  if (d.terminacion === 'Pata90') return '90° · pata ajustada';
+  if (d.terminacion === 'Cerrada') return '135° · cerrada';
+  if (d.terminacion === 'Pata90') return '90° · pata';
   return `${d.terminacion === 'Gancho135' ? '135°' : '180°'} · ${estado.catalogo.ganchos.find(g => g.id === d.gancho)?.nombre ?? ''}`;
 }
 
@@ -275,10 +302,22 @@ function dibujarRefuerzo() {
   $('forY').textContent = nombreForma(c.y);
   $('ganX').textContent = nombreGancho(c.x);
   $('ganY').textContent = nombreGancho(c.y);
+  // Con la barra cerrada, arriba la cierra la misma barra: no hay superior aparte en esa dirección (decisión 43).
+  for (const [eje, d] of [['X', c.x], ['Y', c.y]]) {
+    const cerrada = d.terminacion === 'Cerrada';
+    $(`forS${eje}`).textContent = cerrada ? 'La cierra la inferior' : nombreForma(d.sup);
+    $(`ganS${eje}`).textContent = cerrada ? 'La cierra la inferior' : nombreGancho(d.sup);
+    $(`forS${eje}`).disabled = cerrada;
+    $(`ganS${eje}`).disabled = cerrada;
+  }
+  $('tablaSup').hidden = !c.incluirSuperior;
+  $('largoPata').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.largo === c.largoPata));
   for (const eje of ['X', 'Y']) {
     const inferiores = (r?.conjuntos ?? []).filter(b => b.parrilla === 'Inferior' && b.direccion === eje);
     $(`can${eje}`).textContent = inferiores.length ? inferiores.reduce((s, b) => s + b.posiciones.length, 0) : '–';
-    $(`pat${eje}`).textContent = inferiores.length && inferiores[0].pata ? m(inferiores[0].pata) : '–';
+    // En la cerrada no hay pata: se muestra su alto exterior.
+    $(`pat${eje}`).textContent = !inferiores.length || !inferiores[0].pata ? '–'
+      : inferiores[0].terminacion === 'Cerrada' ? `alto ${m(inferiores[0].pata)}` : m(inferiores[0].pata);
   }
   const hay = r && !r.errores.length;
   const largos = hay ? [...new Set(r.conjuntos.map(b => b.longitudCorte))].sort((a, b) => a - b) : [];
@@ -319,6 +358,12 @@ $('recG').addEventListener('change', () => {
 $('recI').addEventListener('change', () => { estado.cfg.inferior = numeroMm('recI', estado.cfg.inferior); cambio(); });
 $('recL').addEventListener('change', () => { estado.cfg.lateral = numeroMm('recL', estado.cfg.lateral); cambio(); });
 $('recS').addEventListener('change', () => { estado.cfg.superior = numeroMm('recS', estado.cfg.superior); cambio(); });
+$('largoPata').addEventListener('click', e => {
+  const largo = e.target.dataset?.largo;
+  if (!largo) return;
+  estado.cfg.largoPata = largo;
+  cambio();
+});
 $('bOpciones').addEventListener('click', () => { $('mOpciones').hidden = false; });
 document.querySelectorAll('[data-cierra]').forEach(b => b.addEventListener('click', () => { b.closest('.modal').hidden = true; }));
 
@@ -342,28 +387,42 @@ function dibujoGancho(grados) {
   return `<svg viewBox="0 0 90 54" aria-hidden="true">${trazo}</svg>`;
 }
 
-function abrirCatalogo(tipo, eje) {
-  catalogoAbierto = { tipo, eje };
-  $('todas').checked = false;
+// Las formas que se ofrecen (decisión 37 del plan de 2026-11-05): con la pata de 90°, recta, L o U, y la forma decide las
+// patas; con 135°, 180° o sin gancho, solo las rectas, porque el gancho va en las dos puntas.
+// La cerrada (decisión 43) da la vuelta en el corte y cierra arriba con 135°: solo en la parrilla inferior, con cualquier gancho
+// elegido antes, porque al elegirla la barra pasa a ser cerrada.
+const CLASES = { Recta: 'recta, sin patas', L: 'L, pata al inicio', U: 'U, dos patas', Cerrada: 'cerrada, 135° arriba' };
+const formasPara = (d, parrilla) => estado.catalogo.formas.filter(f => f.clase === 'Cerrada'
+  ? parrilla !== 'sup'
+  : d.terminacion === 'Pata90' || d.terminacion === 'Cerrada' || f.clase === 'Recta');
+const esCerrada = id => estado.catalogo.formas.find(f => f.id === id)?.clase === 'Cerrada';
+
+function abrirCatalogo(tipo, eje, parrilla) {
+  catalogoAbierto = { tipo, eje, parrilla };
   dibujarCatalogo();
   $('mCatalogo').hidden = false;
 }
 
 function dibujarCatalogo() {
-  const { tipo, eje } = catalogoAbierto;
-  const d = estado.cfg[eje];
-  const barra = estado.catalogo.barras.find(b => b.numero === d.numero);
-  $('filtroCat').hidden = tipo !== 'forma';
+  const { tipo, eje, parrilla } = catalogoAbierto;
+  const d = parrilla === 'sup' ? estado.cfg[eje].sup : estado.cfg[eje];
+  const numero = estado.cfg[eje].numero;
+  const barra = estado.catalogo.barras.find(b => b.numero === numero);
+  const donde = `Parrilla ${parrilla === 'sup' ? 'superior' : 'inferior'} · Dirección ${eje.toUpperCase()}`;
   let fichas;
   if (tipo === 'forma') {
-    $('tCat').textContent = `Forma de barra · Dirección ${eje.toUpperCase()}`;
-    const lista = estado.catalogo.formas.filter(f => $('todas').checked || f.parrilla);
+    $('tCat').textContent = `Forma de barra · ${donde}`;
+    $('notaCat').textContent = (d.terminacion === 'Pata90' || d.terminacion === 'Cerrada'
+      ? 'Con la pata de 90°, la forma decide dónde va la pata: recta sin patas, L con una pata al inicio o U con dos.'
+      : 'Con ganchos de 135° o 180°, o sin gancho, la barra es recta: solo se muestran las formas rectas.')
+      + (parrilla !== 'sup' ? ' La cerrada da la vuelta completa (abajo, costados y arriba), cierra arriba con 135° y reemplaza a la parrilla superior de esta dirección.' : '');
     fichas = [`<button class="ficha" data-valor="" aria-pressed="${!d.forma}">${dibujoGancho(90)}<span>Automática</span><small>la que Revit reconozca</small></button>`,
-      ...lista.map(f => `<button class="ficha ${f.parrilla ? '' : 'tenue'}" data-valor="${esc(f.id)}" aria-pressed="${d.forma === f.id}">${dibujoForma(f)}<span>${esc(f.nombre)}</span></button>`)];
+      ...formasPara(d, parrilla).map(f => `<button class="ficha" data-valor="${esc(f.id)}" aria-pressed="${d.forma === f.id}">${dibujoForma(f)}<span>${esc(f.nombre)}</span><small>${CLASES[f.clase]}</small></button>`)];
   } else {
-    $('tCat').textContent = `Gancho · Dirección ${eje.toUpperCase()} · barra #${d.numero}`;
+    $('tCat').textContent = `Gancho · ${donde} · barra #${numero}`;
+    $('notaCat').textContent = '';
     const del = g => (!barra ? '' : `Cuadro: ${m({ 90: barra.gancho90, 135: barra.gancho135, 180: barra.gancho180 }[g], 3)} m`);
-    fichas = [`<button class="ficha" data-valor="pata" aria-pressed="${d.terminacion === 'Pata90'}">${dibujoGancho(90)}<span>90° · pata ajustada</span><small>hasta el recubrimiento opuesto</small><small>${del(90)}</small></button>`,
+    fichas = [`<button class="ficha" data-valor="pata" aria-pressed="${d.terminacion === 'Pata90'}">${dibujoGancho(90)}<span>90° · pata</span><small>largo: botón «Largo de la pata»</small><small>${del(90)}</small></button>`,
       `<button class="ficha" data-valor="recta" aria-pressed="${d.terminacion === 'Recta'}">${dibujoGancho(0)}<span>Sin gancho</span></button>`,
       ...estado.catalogo.ganchos.filter(g => g.grados === 135 || g.grados === 180).map(g => `<button class="ficha" data-valor="${esc(g.id)}" aria-pressed="${d.gancho === g.id}">${dibujoGancho(g.grados)}<span>${esc(g.nombre)}</span><small>${g.grados}° · ${g.extension.toFixed(1)} d</small><small>${del(g.grados)}</small></button>`)];
   }
@@ -372,6 +431,9 @@ function dibujarCatalogo() {
     const v = b.dataset.valor;
     if (tipo === 'forma') {
       d.forma = v || null;
+      // Elegir la cerrada cambia la terminación; elegir otra forma la vuelve a la pata de 90°.
+      if (esCerrada(d.forma)) Object.assign(d, { terminacion: 'Cerrada', gancho: null });
+      else if (d.terminacion === 'Cerrada') d.terminacion = 'Pata90';
     } else if (v === 'pata') {
       Object.assign(d, { terminacion: 'Pata90', gancho: null });
     } else if (v === 'recta') {
@@ -380,20 +442,28 @@ function dibujarCatalogo() {
       const g = estado.catalogo.ganchos.find(x => x.id === v);
       Object.assign(d, { terminacion: g.grados === 135 ? 'Gancho135' : 'Gancho180', gancho: v });
     }
+    // Una L o una U no sirve sin la pata de 90°: vuelve a la automática.
+    if (d.forma && (!formasPara(d, parrilla).some(f => f.id === d.forma) || esCerrada(d.forma) !== (d.terminacion === 'Cerrada'))) d.forma = null;
     $('mCatalogo').hidden = true;
     cambio();
   }));
 }
 
-$('todas').addEventListener('change', dibujarCatalogo);
-$('forX').addEventListener('click', () => abrirCatalogo('forma', 'x'));
-$('forY').addEventListener('click', () => abrirCatalogo('forma', 'y'));
-$('ganX').addEventListener('click', () => abrirCatalogo('gancho', 'x'));
-$('ganY').addEventListener('click', () => abrirCatalogo('gancho', 'y'));
+for (const [boton, tipo, eje, parrilla] of [['forX', 'forma', 'x', 'inf'], ['forY', 'forma', 'y', 'inf'], ['ganX', 'gancho', 'x', 'inf'], ['ganY', 'gancho', 'y', 'inf'],
+  ['forSX', 'forma', 'x', 'sup'], ['forSY', 'forma', 'y', 'sup'], ['ganSX', 'gancho', 'x', 'sup'], ['ganSY', 'gancho', 'y', 'sup']])
+  $(boton).addEventListener('click', () => abrirCatalogo(tipo, eje, parrilla));
 
 // ---- Vista 3D
 
-const colorBarra = b => (b.parrilla === 'Inferior' ? (b.direccion === 'X' ? '#C2410C' : '#2B6CB0') : (b.direccion === 'X' ? '#E07A44' : '#5B9BD5'));
+// Las barras y los choques vienen hechos de C# (V1 a V4 del plan de 2026-11-05): cada trazo trae sus puntos [x, y, z] en
+// los ejes de la zapata y el color de su diámetro (#154). Aquí solo se proyectan.
+const resultadoBueno = () => (estado.res && !estado.res.errores.length ? estado.res : null);
+const conjuntoDe = t => estado.res.conjuntos[+t.pieza.split('.')[0]];
+const colores = () => new Map((resultadoBueno()?.trazos ?? []).map(t => [t.numero, t.color]));
+
+function dibujarLeyenda() {
+  $('diametros').innerHTML = [...colores()].sort((a, b) => a[0] - b[0]).map(([n, c]) => `<span><i style="background:${esc(c)}"></i>#${n}</span>`).join('');
+}
 
 function dibujar3d() {
   const svg = $('svg3d'), z = activa();
@@ -436,15 +506,9 @@ function dibujar3d() {
   // Las caras traseras van antes del acero y las delanteras después, para que el modo sólido tape el acero.
   const mitad = Math.ceil(caras.length / 2);
   html += caras.slice(0, mitad).map(c => c.s).join('');
-  for (const b of estado.res?.errores?.length ? [] : estado.res?.conjuntos ?? []) {
-    const signo = b.parrilla === 'Inferior' ? 1 : -1;
-    const punta = b.z + signo * Math.max(b.pata - b.diametro / 2, 0);
-    for (const t of b.posiciones) {
-      const Q = (l, a) => (b.direccion === 'X' ? P(l, t, a) : P(t, l, a));
-      const pts = b.pata ? [Q(b.desde, punta), Q(b.desde, b.z), Q(b.hasta, b.z), Q(b.hasta, punta)] : [Q(b.desde, b.z), Q(b.hasta, b.z)];
-      html += `<polyline points="${tr(pts)}" fill="none" stroke="${colorBarra(b)}" stroke-width="1.8" stroke-linejoin="round"/>`;
-    }
-  }
+  const r = resultadoBueno();
+  for (const t of r?.trazos ?? [])
+    html += `<polyline points="${tr(t.puntos.map(p => P(p[0], p[1], p[2])))}" fill="none" stroke="${esc(t.color)}" stroke-width="1.8" stroke-linejoin="round"/>`;
   html += caras.slice(mitad).map(c => c.s).join('');
   html += `<polygon points="${tr(tapa)}" fill="#D5D9DE" fill-opacity="${opacidad}" stroke="#3E4751" stroke-width="1.2" stroke-linejoin="round"/>`;
   for (const c of z.columnas) {
@@ -457,8 +521,30 @@ function dibujar3d() {
     });
     html += `<polygon points="${tr(base.map(a => P(a[0], a[1], z.altura + alturaCol)))}" fill="#E2E5E9" fill-opacity="${op}" stroke="#3E4751"/>`;
   }
+  // Los choques encima de todo, como los puntos rojos del alzado de vigas; al pasar el mouse, su texto abajo (V2).
+  if (estado.verChoques)
+    (r?.choques ?? []).forEach((c, i) => {
+      const p = P(c.punto[0], c.punto[1], c.punto[2]);
+      html += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="5" fill="#E53935" stroke="#7A0E0E" stroke-width="1.2" data-choque="${i}" style="cursor:help"><title>${esc(c.texto)}</title></circle>`;
+    });
   svg.innerHTML = html;
+  dibujarLeyenda();
 }
+
+$('svg3d').addEventListener('pointerout', e => {
+  if (e.target.dataset?.choque !== undefined) $('textoChoque').hidden = true;
+});
+$('svg3d').addEventListener('pointerover', e => {
+  const i = e.target.dataset?.choque;
+  const c = i === undefined ? null : resultadoBueno()?.choques?.[+i];
+  $('textoChoque').hidden = !c;
+  $('textoChoque').textContent = c ? c.texto : '';
+});
+$('capaChoques').addEventListener('change', () => {
+  estado.verChoques = $('capaChoques').checked;
+  $('textoChoque').hidden = true;
+  dibujar3d();
+});
 
 let arrastre = null;
 const vistaEl = $('vista');
@@ -495,6 +581,9 @@ $('bArriba').addEventListener('click', () => { Object.assign(estado.cam, { yaw: 
 
 function dibujar2d() {
   const z = activa(), r = estado.res;
+  // Solo con una zapata elegida y el botón «Vista 2D» pulsado: al abrir ya hay una elegida, así que arranca cerrada (H18, H20).
+  $('emergente').hidden = !(z && estado.ver2d);
+  $('b2d').setAttribute('aria-pressed', estado.ver2d);
   if (!z) {
     $('sec2d').innerHTML = '';
     return;
@@ -508,22 +597,22 @@ function dibujar2d() {
   const base = H - margen;
   const Y = a => base - a * esc2;
   let s = `<rect x="${X(x0)}" y="${Y(z.altura)}" width="${(x1 - x0) * esc2}" height="${z.altura * esc2}" fill="#E2E5E9" stroke="#3E4751" stroke-width="1.3"/>`;
-  const conjuntos = r && !r.errores.length ? r.conjuntos : [];
+  const bueno = resultadoBueno(), conjuntos = bueno ? bueno.conjuntos : [], color = colores();
   let etiqueta = '';
-  for (const b of conjuntos) {
-    if (b.direccion === 'X') {
-      // Se dibuja la barra más cercana al corte.
-      const t = b.posiciones.reduce((u, v) => (Math.abs(v - yc) < Math.abs(u - yc) ? v : u), b.posiciones[0]);
-      if (Math.abs(t - yc) > (b.separacion || 1e9)) continue;
-      const signo = b.parrilla === 'Inferior' ? 1 : -1, punta = b.z + signo * Math.max(b.pata - b.diametro / 2, 0);
-      const pts = b.pata ? [[b.desde, punta], [b.desde, b.z], [b.hasta, b.z], [b.hasta, punta]] : [[b.desde, b.z], [b.hasta, b.z]];
-      s += `<polyline points="${pts.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ')}" fill="none" stroke="${colorBarra(b)}" stroke-width="2" stroke-linejoin="round"/>`;
-      if (b.parrilla === 'Inferior' && !etiqueta) etiqueta = `#${b.numero} @ ${m(b.separacion)}`;
-    } else {
-      for (const t of b.posiciones)
-        s += `<circle cx="${X(t).toFixed(1)}" cy="${Y(b.z).toFixed(1)}" r="1.9" fill="${colorBarra(b)}"/>`;
-    }
-  }
+  // Las barras en X, con el trazo de C# de la barra más cercana al corte (su forma y su gancho reales).
+  conjuntos.forEach((b, k) => {
+    if (b.direccion !== 'X') return;
+    const i = b.posiciones.reduce((u, v, j) => (Math.abs(v - yc) < Math.abs(b.posiciones[u] - yc) ? j : u), 0);
+    if (Math.abs(b.posiciones[i] - yc) > (b.separacion || 1e9)) return;
+    const t = bueno.trazos.find(x => x.pieza === `${k}.${i}`);
+    if (!t) return;
+    s += `<polyline points="${t.puntos.map(p => `${X(p[0]).toFixed(1)},${Y(p[2]).toFixed(1)}`).join(' ')}" fill="none" stroke="${esc(t.color)}" stroke-width="2" stroke-linejoin="round"/>`;
+    if (b.parrilla === 'Inferior' && !etiqueta) etiqueta = `#${b.numero} @ ${m(b.separacion)}`;
+  });
+  // Las barras en Y se ven cortadas, como puntos.
+  for (const b of conjuntos.filter(c => c.direccion === 'Y'))
+    for (const t of b.posiciones)
+      s += `<circle cx="${X(t).toFixed(1)}" cy="${Y(b.z).toFixed(1)}" r="1.9" fill="${esc(color.get(b.numero) ?? '#5E6670')}"/>`;
   for (const c of z.columnas) {
     if (Math.abs(c.centro.y - yc) > c.alto / 2) continue;
     const a = c.centro.x - c.ancho / 2;
@@ -533,7 +622,7 @@ function dibujar2d() {
     <line x1="${X(x1) + 12}" y1="${Y(0)}" x2="${X(x1) + 12}" y2="${Y(z.altura)}"/><line x1="${X(x1) + 7}" y1="${Y(0)}" x2="${X(x1) + 17}" y2="${Y(0)}"/><line x1="${X(x1) + 7}" y1="${Y(z.altura)}" x2="${X(x1) + 17}" y2="${Y(z.altura)}"/></g>
     <text x="${(X(x0) + X(x1)) / 2}" y="${base + 28}" text-anchor="middle" font-size="10" font-family="Consolas,monospace">${m(x1 - x0)} m</text>
     <text x="${X(x1) + 22}" y="${(Y(0) + Y(z.altura)) / 2 + 3}" font-size="10" font-family="Consolas,monospace">${m(z.altura)}</text>`;
-  if (etiqueta) s += `<text x="${X(x0) + 4}" y="${Y(z.altura) - 6}" font-size="10" fill="#C2410C" font-family="Consolas,monospace">${esc(etiqueta)}</text>`;
+  if (etiqueta) s += `<text x="${X(x0) + 4}" y="${Y(z.altura) - 6}" font-size="10" fill="#3E4751" font-family="Consolas,monospace">${esc(etiqueta)}</text>`;
   $('sec2d').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sección transversal de la zapata">${s}</svg>`;
   $('titulo2d').textContent = `Sección A-A · ${z.nombre} (2D)`;
   $('esc2d').textContent = `Escala 1:${Math.max(1, Math.round(1 / (esc2 * 0.2646)))}`;
@@ -541,11 +630,10 @@ function dibujar2d() {
   $('gan2d').textContent = pata ? `Gancho 90° · pata ${m(pata.pata)} m` : '';
 }
 
-$('c2d').addEventListener('click', () => { $('emergente').hidden = true; $('b2d').setAttribute('aria-pressed', false); });
+$('c2d').addEventListener('click', () => { estado.ver2d = false; dibujar2d(); });
 $('b2d').addEventListener('click', () => {
-  const ver = $('emergente').hidden;
-  $('emergente').hidden = !ver;
-  $('b2d').setAttribute('aria-pressed', ver);
+  estado.ver2d = !estado.ver2d;
+  dibujar2d();
 });
 
 // La sección 2D se mueve arrastrando su cabecera, sin salirse de la vista 3D.
@@ -588,11 +676,25 @@ $('bRecalcular').addEventListener('click', () => { calcular(); aviso('Recalculad
 $('bIguales').addEventListener('click', () => { if (estado.activa) elegir(grupoDe(estado.activa)); });
 $('bCerrar').addEventListener('click', () => enviar({ tipo: 'cerrar' }));
 
-function aplicarAhora() {
-  const c = estado.cfg;
-  enviar({ tipo: 'aplicar', ids: estado.elegidas, ...configMensaje(), formaX: c.x.forma, formaY: c.y.forma, ganchoX: c.x.gancho, ganchoY: c.y.gancho });
+function aplicarAhora(forzar = false) {
+  enviar({ tipo: 'aplicar', ids: estado.elegidas, ...configMensaje(), forzar });
   aviso('Generando en Revit…');
 }
+
+// Revit no generó porque hay choques (decisión 35, como vigas): «Revisar» cierra y deja ver los puntos rojos;
+// «Aplicar de todos modos» vuelve a mandar con forzar.
+function preguntarChoques(cantidad) {
+  $('toast').hidden = true;
+  $('txtChoques').innerHTML = `<p style="margin:0 0 8px">${cantidad === 1 ? 'Hay 1 lugar' : `Hay ${cantidad} lugares`} donde una barra se mete en otra. Se marcan con puntos rojos en la vista 3D; al pasar el mouse dice cuáles son.</p>`;
+  estado.verChoques = true;
+  $('capaChoques').checked = true;
+  dibujar3d();
+  $('mChoques').hidden = false;
+}
+$('bForzar').addEventListener('click', () => {
+  $('mChoques').hidden = true;
+  aplicarAhora(true);
+});
 
 $('bAplicar').addEventListener('click', () => {
   const lista = estado.elegidas.map(zapata).filter(Boolean);
@@ -610,6 +712,109 @@ $('bAplicar').addEventListener('click', () => {
 $('bConfirmar').addEventListener('click', () => {
   $('mConfirmar').hidden = true;
   aplicarAhora();
+});
+
+// ---- Reglas generales (decisiones 38 y 38a del plan de 2026-11-05): las de vigas, en su mismo archivo. Como la
+// pantalla de vigas: abre bloqueada, se desbloquea para editar, «Guardar y bloquear» manda guardarReglas, y si se sale
+// con cambios avisa. Los textos van como los manda C# (PantallaReglas): m, cm y kg/m.
+
+const reglasUi = { guardadas: null, borrador: null, bloqueadas: true, esperando: false };
+const copiaReglas = r => JSON.parse(JSON.stringify(r));
+const hayCambios = () => reglasUi.borrador && JSON.stringify(reglasUi.borrador) !== JSON.stringify(reglasUi.guardadas);
+
+function recibirReglas(r) {
+  if (!r) return;
+  reglasUi.guardadas = copiaReglas(r);
+  // Al llegar las recién guardadas (o al abrir), el borrador las toma y se bloquea.
+  if (reglasUi.esperando || reglasUi.bloqueadas || !reglasUi.borrador) {
+    reglasUi.borrador = copiaReglas(r);
+    reglasUi.bloqueadas = true;
+    reglasUi.esperando = false;
+  }
+  if (!$('mReglas').hidden) dibujarReglas();
+}
+
+function dibujarReglas() {
+  const b = reglasUi.borrador, off = reglasUi.bloqueadas;
+  if (!b) return;
+  $('candado').classList.toggle('abierto', !off);
+  $('txtCandado').textContent = off ? 'Bloqueadas. Valen para vigas y zapatas en este PC.' : 'Desbloqueadas: los cambios se guardan con «Guardar y bloquear».';
+  $('bCandado').textContent = off ? 'Desbloquear' : 'Bloquear sin guardar';
+  $('arcoCandado').setAttribute('d', off ? 'M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6' : 'M4.5 6V4.5a2.5 2.5 0 0 1 5 0');
+  $('problemaReglas').hidden = !b.problema;
+  $('problemaReglas').textContent = b.problema ?? '';
+  $('rMult').value = b.multiplo;
+  $('rGap').value = b.distanciaLibreCm;
+  for (const id of ['rMult', 'rGap']) $(id).disabled = off;
+  $('rVarilla').querySelectorAll('button').forEach(x => { x.disabled = off; x.setAttribute('aria-pressed', (x.dataset.v === '12') === b.varilla12); });
+  $('rRedondeo').querySelectorAll('button').forEach(x => { x.disabled = off; x.setAttribute('aria-pressed', x.dataset.v === (b.redondeoGanchoCm ?? '0')); });
+  const campos = [['t', 'Traslapo'], ['g', 'Gancho 90°'], ['g180', 'Gancho 180°'], ['e', 'Estribo 135°'], ['k', 'kg/m']];
+  $('rTabla').innerHTML = `<span></span>${campos.map(([, n]) => `<span class="cab">${n}</span>`).join('')}`
+    + b.porDiametro.map((f, i) => `<span>${esc(f.d)}</span>${campos.map(([c, n]) =>
+      `<input type="text" data-fila="${i}" data-campo="${c}" value="${esc(f[c])}" placeholder="—" aria-label="${esc(`${n} del ${f.d}`)}" ${off ? 'disabled' : ''}>`).join('')}`).join('');
+  $('rGuardar').disabled = off;
+}
+
+function abrirReglas() {
+  $('avisoReglas').hidden = true;
+  dibujarReglas();
+  $('mReglas').hidden = false;
+}
+
+function salirDeReglas() {
+  if (!reglasUi.bloqueadas && hayCambios()) {
+    $('avisoReglas').hidden = false;
+    return;
+  }
+  reglasUi.bloqueadas = true;
+  reglasUi.borrador = copiaReglas(reglasUi.guardadas);
+  $('mReglas').hidden = true;
+}
+
+function guardarReglas() {
+  reglasUi.esperando = true;
+  enviar({ tipo: 'guardarReglas', reglas: { ...reglasUi.borrador, problema: null } });
+  $('avisoReglas').hidden = true;
+  aviso('Guardando las reglas…');
+}
+
+function descartarReglas() {
+  reglasUi.borrador = copiaReglas(reglasUi.guardadas);
+  reglasUi.bloqueadas = true;
+  $('avisoReglas').hidden = true;
+  $('mReglas').hidden = true;
+}
+
+$('bReglas').addEventListener('click', abrirReglas);
+$('cReglas').addEventListener('click', salirDeReglas);
+$('rCerrar').addEventListener('click', salirDeReglas);
+$('rGuardar').addEventListener('click', guardarReglas);
+$('rAvisoGuardar').addEventListener('click', guardarReglas);
+$('rAvisoDescartar').addEventListener('click', descartarReglas);
+$('rAvisoSeguir').addEventListener('click', () => { $('avisoReglas').hidden = true; });
+$('bCandado').addEventListener('click', () => {
+  // Desbloquear para editar, o volver a bloquear dejando las guardadas (sin cerrar la pantalla).
+  if (!reglasUi.bloqueadas) reglasUi.borrador = copiaReglas(reglasUi.guardadas);
+  reglasUi.bloqueadas = !reglasUi.bloqueadas;
+  $('avisoReglas').hidden = true;
+  dibujarReglas();
+});
+$('rMult').addEventListener('input', () => { reglasUi.borrador.multiplo = $('rMult').value; });
+$('rGap').addEventListener('input', () => { reglasUi.borrador.distanciaLibreCm = $('rGap').value; });
+$('rVarilla').addEventListener('click', e => {
+  if (!e.target.dataset?.v || reglasUi.bloqueadas) return;
+  reglasUi.borrador.varilla12 = e.target.dataset.v === '12';
+  dibujarReglas();
+});
+$('rRedondeo').addEventListener('click', e => {
+  if (!e.target.dataset?.v || reglasUi.bloqueadas) return;
+  reglasUi.borrador.redondeoGanchoCm = e.target.dataset.v;
+  dibujarReglas();
+});
+$('rTabla').addEventListener('input', e => {
+  const { fila, campo } = e.target.dataset ?? {};
+  if (fila === undefined) return;
+  reglasUi.borrador.porDiametro[+fila][campo] = e.target.value;
 });
 
 dibujarTodo();

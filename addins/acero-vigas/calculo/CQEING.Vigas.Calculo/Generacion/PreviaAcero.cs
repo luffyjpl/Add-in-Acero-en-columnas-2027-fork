@@ -3,23 +3,6 @@ using CQEING.Vigas.Calculo.Porticos;
 
 namespace CQEING.Vigas.Calculo.Generacion;
 
-/// <summary>De qué es un <see cref="Trazo"/>: la grapa es el estribo abierto.</summary>
-public enum TipoTrazo
-{
-    Barra,
-    Baston,
-    Estribo,
-    Grapa,
-}
-
-/// <summary>
-/// Una barra de la vista previa 3D: su eje, en mm del modelo, con los dobleces ya partidos en tramos rectos.
-/// <paramref name="Numero"/> es el diámetro en octavos (para el color) y <paramref name="Diametro"/>, el real en mm.
-/// <paramref name="Pieza"/> es el id del tablero (<c>S1</c>, <c>BS1</c>, <c>E</c>, <c>E1</c>) y <paramref name="Tramo"/>,
-/// el del estribo (null en las piezas longitudinales): con ellos se dice qué toca a qué en los choques.
-/// </summary>
-public sealed record Trazo(IReadOnlyList<Punto3> Puntos, int Numero, double Diametro, string Pieza, TipoTrazo Tipo, string? Tramo = null);
-
 /// <summary>
 /// El diámetro de una barra del modelo y los de doblado de su gancho y de su estribo, en mm (de su tipo en Revit).
 /// </summary>

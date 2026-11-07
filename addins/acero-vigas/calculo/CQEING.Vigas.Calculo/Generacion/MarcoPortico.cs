@@ -2,9 +2,6 @@ using CQEING.Vigas.Calculo.Porticos;
 
 namespace CQEING.Vigas.Calculo.Generacion;
 
-/// <summary>Un punto del modelo, en mm.</summary>
-public readonly record struct Punto3(double X, double Y, double Z);
-
 /// <summary>
 /// Pasa del marco del pórtico a las coordenadas del modelo (#85). En el marco, x va a lo largo del pórtico en mm desde el
 /// eje A (como el motor); en el corte, X va desde la cara izquierda mirando hacia +x e Y desde la cara de abajo (como

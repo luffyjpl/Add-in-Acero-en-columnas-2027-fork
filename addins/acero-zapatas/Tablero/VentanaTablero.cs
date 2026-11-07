@@ -67,7 +67,10 @@ internal sealed class VentanaTablero : Window
 
     private WindowState estadoAntes = WindowState.Normal;
 
-    /// <summary>Minimiza el tablero para que se vea Revit (seleccionar o mostrar); <see cref="Volver"/> lo trae como estaba.</summary>
+    /// <summary>
+    /// Se minimiza para dejar ver Revit: la ventana pertenece a Revit y siempre queda encima («Mostrar en Revit»,
+    /// «Seleccionar en Revit»). <see cref="Volver"/> la deja como estaba. Como vigas (decisión 40 del plan de 2026-11-05).
+    /// </summary>
     public void Apartar()
     {
         if (cerrada || WindowState == WindowState.Minimized)
