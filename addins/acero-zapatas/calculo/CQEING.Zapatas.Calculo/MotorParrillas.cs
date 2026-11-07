@@ -86,6 +86,12 @@ public static class MotorParrillas
             var barras = new List<(double Posicion, double Desde, double Hasta)>();
             foreach (double posicion in posiciones)
                 barras.AddRange(Geometria.Cortes(figura, posicion).Select(t => (posicion, t.Desde, t.Hasta)));
+            // En las puntas de una zapata que no es rectangular el corte puede ser tan corto que no caben los dos doblados:
+            // Revit crearía una barra sin geometría. Esas barras no se ponen y se avisa.
+            double minimo = ReglasZapata.LargoMinimo(regla, config.Terminacion);
+            int cortas = barras.RemoveAll(b => b.Hasta - b.Desde < minimo);
+            if (cortas > 0)
+                Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: {cortas} {(cortas == 1 ? "barra no se puso" : "barras no se pusieron")} en las puntas: miden menos de {minimo:0} mm y no caben los doblados.");
             if (barras.Count == 0)
                 Avisar($"Parrilla {Nombre(parrilla)}, dirección {direccion}: no cabe ninguna barra.");
 

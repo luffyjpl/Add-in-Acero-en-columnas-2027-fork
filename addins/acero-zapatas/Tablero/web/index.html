@@ -26,8 +26,16 @@ select,input[type=number]{height:32px;padding:0 6px;border:1px solid var(--campo
 .panel{background:#fff;border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 .titulo{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
 .col{display:flex;flex-direction:column;gap:12px;min-height:0}
-#planta{padding:8px;background:#FAFBFC;flex:1;min-height:180px}
+#planta{padding:8px;background:#FAFBFC;flex:1;min-height:180px;overflow:hidden;touch-action:none;cursor:grab}
 #planta svg{width:100%;height:100%;display:block}
+.leyendaPlanta{display:flex;flex-wrap:wrap;gap:12px;padding:6px 12px 0;font-size:11px;color:var(--ink3)}
+.leyendaPlanta span{display:flex;align-items:center;gap:6px}
+.leyendaPlanta i{width:16px;height:8px;border:1px solid;box-sizing:border-box}
+.palomita{display:flex;align-items:center;gap:5px;height:22px;padding:0 4px;border:0;border-radius:11px;background:transparent;font:inherit;font-size:11px;font-weight:600;color:#3B8A57;cursor:pointer}
+.palomita .circulo{width:16px;height:16px;box-sizing:border-box;border-radius:50%;border:1.5px solid #B5BCC4;display:grid;place-items:center;transition:background 120ms ease-out,border-color 120ms ease-out}
+.palomita .circulo svg{visibility:hidden}
+.palomita[aria-pressed="true"] .circulo{background:#3B8A57;border-color:#3B8A57}
+.palomita[aria-pressed="true"] .circulo svg{visibility:visible}
 .nota{margin:0;padding:0 10px 8px;font-size:11px;color:var(--ink3);background:#FAFBFC}
 dl{margin:0;padding:4px 12px 10px;display:grid;grid-template-columns:auto 1fr;column-gap:8px;overflow:auto}
 dt,dd{padding:5px 0;border-bottom:1px solid #EEF0F3;margin:0}
@@ -40,7 +48,7 @@ dd{text-align:right;font-weight:500}
 .grupo button{height:30px;padding:0 10px;border:0;background:#fff;font-size:12px;font-weight:600}
 .grupo button[aria-pressed=true]{background:var(--azul);color:#fff}
 #emergente{position:absolute;top:12px;right:12px;width:340px;max-width:calc(100% - 24px);background:#fff;border:1px solid var(--campo);border-radius:8px;box-shadow:0 8px 24px rgba(31,41,51,.18);cursor:default}
-#emergente header{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 4px 12px;background:#EEF0F3;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;border-radius:8px 8px 0 0}
+#emergente header{display:flex;cursor:move;user-select:none;align-items:center;justify-content:space-between;padding:4px 4px 4px 12px;background:#EEF0F3;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;border-radius:8px 8px 0 0}
 #emergente svg{width:100%;display:block}
 #emergente footer{display:flex;justify-content:space-between;gap:8px;padding:4px 12px 8px;font-size:11px;color:var(--ink3)}
 .x{width:32px;height:26px;border:0;background:transparent;font-size:14px}
@@ -101,10 +109,17 @@ dd{text-align:right;font-weight:500}
     <section class="panel" style="flex:1">
       <div class="titulo"><h2>Vista en planta · Cimentación</h2><span class="mono" id="cota" style="font-size:11px;color:var(--ink3)"></span></div>
       <div id="planta"></div>
-      <p class="nota" id="notaPlanta">Clic elige una zapata. Ctrl + clic suma o quita.</p>
+      <div class="leyendaPlanta">
+        <span><i style="background:#D3E2F4;border-color:#1F5FAD"></i>Elegida</span>
+        <span><i style="background:#CDEBD5;border-color:#3B8A57"></i>Terminada</span>
+        <span><i style="background:#E2E5E9;border-color:#5B6672"></i>Sin terminar</span>
+      </div>
+      <p class="nota" id="notaPlanta">Clic elige una zapata. Ctrl + clic suma o quita. Rueda para zoom, arrastre para moverse, doble clic para ver todo.</p>
     </section>
     <section class="panel" style="max-height:48%">
-      <div class="titulo"><h2>Detalles de la zapata</h2></div>
+      <div class="titulo"><h2>Detalles de la zapata</h2>
+        <button type="button" id="bTerminada" class="palomita" aria-pressed="false" title="Marcar como terminada" hidden><span class="circulo"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 5.2l2.2 2.2L8.5 2.6" stroke="#FFFFFF" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span id="txtTerminada"></span></button>
+      </div>
       <dl id="detalles"></dl>
     </section>
   </div>
@@ -114,18 +129,16 @@ dd{text-align:right;font-weight:500}
       <h2 id="titulo3d">Vista 3D</h2>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
         <div class="grupo" id="modos">
-          <button data-modo="solido" aria-pressed="false">Sólido</button>
           <button data-modo="transparente" aria-pressed="true">Transparente</button>
           <button data-modo="alambre" aria-pressed="false">Alambre</button>
         </div>
         <button class="btn" style="height:30px;font-size:12px" id="bArriba">Vista superior</button>
-        <button class="btn" style="height:30px;font-size:12px" id="bIso">Vista 3D</button>
-        <button class="btn" style="height:30px;font-size:12px" id="b2d" aria-pressed="true">Vista 2D</button>
+        <button class="btn" style="height:30px;font-size:12px" id="b2d" aria-pressed="false">Vista 2D</button>
       </div>
     </div>
     <div id="vista">
       <svg id="svg3d" role="img" aria-label="Vista 3D de la zapata y su acero"></svg>
-      <div id="emergente">
+      <div id="emergente" hidden>
         <header><span id="titulo2d">Sección A-A</span><button class="x" id="c2d" aria-label="Cerrar vista 2D">×</button></header>
         <div id="sec2d"></div>
         <footer><span id="esc2d"></span><span id="gan2d"></span></footer>

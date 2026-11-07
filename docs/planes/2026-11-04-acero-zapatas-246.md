@@ -66,8 +66,11 @@ Continúan la numeración del plan de #247.
     de corte del resumen y al peso. La barra en Revit conserva su largo: si creciera la pata, se saldría del recubrimiento.
 19. **Reglas enlazadas, no copiadas** (2026-11-04, Claude): el cálculo enlaza `Modelo/Reglas.cs` de vigas, como hacen
     `crear-viguetas` y `despiece` con otros archivos.
-20. **Ejes de la zapata** (2026-11-04, Claude): salen del rectángulo más pequeño que envuelve el contorno, y X es el lado
-    más cercano a la X del proyecto. Así se respeta «X abajo» en las cuadradas, también si están giradas.
+20. **Ejes de la zapata** (2026-11-04, Claude; corregida el 2026-11-07 por el usuario): salen de la columna que apoya en
+    la zapata, con X el lado más cercano a la X del proyecto. Una zapata en rombo bajo una columna recta lleva las
+    barras en X e Y del proyecto, recortadas contra el rombo; antes salían paralelas a sus lados, como un cuadrado
+    girado. Sin columna, salen del rectángulo más pequeño que envuelve el contorno. La vista 3D del tablero dibuja la
+    zapata girada como en el modelo, y «Vista superior» la muestra como la planta de Revit (Y hacia arriba).
 21. **Parrilla superior** (2026-11-04, Claude, a partir de la decisión 11): cada barra va media separación real corrida.
     Son `n − 1` barras, para no salirse del recubrimiento. Queda marcada por defecto y se puede apagar.
 22. **Aviso de tabla** (2026-11-04, usuario): compara el tipo y el ángulo del gancho elegido, no el largo de la pata.

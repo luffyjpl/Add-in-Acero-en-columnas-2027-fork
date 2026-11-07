@@ -53,6 +53,8 @@ internal static class GeneradorZapatas
                     throw new InvalidOperationException($"{z.Nombre}: la zapata ya no está en el modelo.");
                 MarcaZapata.Borrar(doc, host);
                 PonerRecubrimientos(doc, host, config.Recubrimientos);
+                // Lo generado queda terminado, como en vigas; la palomita del tablero lo quita si hace falta.
+                MarcaTerminada.Marcar(host, true);
                 foreach (ConjuntoBarras c in r.Conjuntos)
                 {
                     bool enX = c.Direccion == Direccion.X;
@@ -60,8 +62,15 @@ internal static class GeneradorZapatas
                     RebarHookType? gancho = doc.GetElement(Id(enX ? eleccion.GanchoX : eleccion.GanchoY)) as RebarHookType;
                     Rebar barra = Crear(doc, host, z, c, config.Recubrimientos, barras[c.Numero], forma, gancho, fallas)
                         ?? throw new InvalidOperationException($"{z.Nombre}: Revit no pudo crear la parrilla {c.Parrilla} en {c.Direccion}.");
-                    MarcaZapata.Marcar(barra, $"{c.Parrilla} {c.Direccion} {c.Capa}");
                     doc.Regenerate();
+                    if (!TieneGeometria(barra))
+                    {
+                        // Revit la aceptó pero sin forma (doblados que no caben): no es acero real, se quita y se avisa.
+                        doc.Delete(barra.Id);
+                        fallas.Add($"{z.Nombre}: una barra {c.Parrilla} en {c.Direccion} de {c.Hasta - c.Desde:0} mm no se pudo doblar y no se puso.");
+                        continue;
+                    }
+                    MarcaZapata.Marcar(barra, $"{c.Parrilla} {c.Direccion} {c.Capa}");
                     Repartir(barra, z, c, fallas);
                     Revisar(barra, z, c, fallas);
                     Mostrar(barra, vista);
@@ -163,9 +172,9 @@ internal static class GeneradorZapatas
     private static void OrientarGanchos(Rebar r, ConjuntoBarras c)
     {
         IList<Curve> curvas = r.GetCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
-        if (curvas.Count < 2)
+        if (curvas.Count < 2 || curvas.OfType<Line>().MaxBy(l => l.Length) is not { } tramo)
             return;
-        double recta = curvas.OfType<Line>().MaxBy(l => l.Length)!.GetEndPoint(0).Z;
+        double recta = tramo.GetEndPoint(0).Z;
         bool hacia = c.Parrilla == Parrilla.Inferior;
         Voltear(0, curvas[0].GetEndPoint(0).Z);
         Voltear(1, curvas[^1].GetEndPoint(1).Z);
@@ -189,31 +198,43 @@ internal static class GeneradorZapatas
         RebarShapeDrivenAccessor acceso = r.GetShapeDrivenAccessor();
         acceso.SetLayoutAsFixedNumber(c.Cantidad, largo, true, true, true);
         r.Document.Regenerate();
-        if (Math.Abs(Posicion(r, z, c, c.Cantidad - 1) - c.Posiciones[^1]) > ToleranciaMm)
+        if (Posicion(r, z, c, c.Cantidad - 1) is double ultima && Math.Abs(ultima - c.Posiciones[^1]) > ToleranciaMm)
         {
             acceso.SetLayoutAsFixedNumber(c.Cantidad, largo, false, true, true);
             r.Document.Regenerate();
         }
-        double diferencia = Math.Abs(Posicion(r, z, c, c.Cantidad - 1) - c.Posiciones[^1]);
-        if (diferencia > ToleranciaMm)
+        if (Posicion(r, z, c, c.Cantidad - 1) is not double medida)
+            fallas.Add($"{z.Nombre}: no se pudo medir el reparto {c.Parrilla} en {c.Direccion}; revíselo en Revit.");
+        else if (Math.Abs(medida - c.Posiciones[^1]) is var diferencia && diferencia > ToleranciaMm)
             fallas.Add($"{z.Nombre}: el reparto {c.Parrilla} en {c.Direccion} quedó {diferencia:0.#} mm corrido.");
     }
 
     /// <summary>Avisa si Revit dejó la barra en otro punto del plan, o si el reparto no da la cantidad calculada.</summary>
     private static void Revisar(Rebar r, ZapataLeida z, ConjuntoBarras c, List<string> fallas)
     {
-        double diferencia = Math.Abs(Posicion(r, z, c, 0) - c.Posiciones[0]);
-        if (diferencia > ToleranciaMm)
+        if (Posicion(r, z, c, 0) is not double medida)
+            fallas.Add($"{z.Nombre}: no se pudo medir la primera barra {c.Parrilla} en {c.Direccion}; revísela en Revit.");
+        else if (Math.Abs(medida - c.Posiciones[0]) is var diferencia && diferencia > ToleranciaMm)
             fallas.Add($"{z.Nombre}: la primera barra {c.Parrilla} en {c.Direccion} quedó {diferencia:0.#} mm corrida del plan.");
         if (r.NumberOfBarPositions != c.Cantidad)
             fallas.Add($"{z.Nombre}: {c.Parrilla} en {c.Direccion}: Revit dejó {r.NumberOfBarPositions} barras y el plan pide {c.Cantidad}.");
     }
 
-    /// <summary>La coordenada transversal de una barra del conjunto, en mm y en los ejes de la zapata.</summary>
-    private static double Posicion(Rebar r, ZapataLeida z, ConjuntoBarras c, int indice)
+    private static bool TieneGeometria(Rebar r) =>
+        r.NumberOfBarPositions > 0 && r.GetCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0).Count > 0;
+
+    /// <summary>
+    /// La coordenada transversal de una barra del conjunto, en mm y en los ejes de la zapata; null si Revit no da su
+    /// geometría. La barra está en un plano vertical perpendicular a esa coordenada, así que sirve cualquier punto suyo.
+    /// </summary>
+    private static double? Posicion(Rebar r, ZapataLeida z, ConjuntoBarras c, int indice)
     {
-        Line recta = r.GetTransformedCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, indice).OfType<Line>().MaxBy(l => l.Length)!;
-        XYZ p = recta.GetEndPoint(0);
+        if (indice < 0 || indice >= r.NumberOfBarPositions)
+            return null;
+        IList<Curve> curvas = r.GetTransformedCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, indice);
+        if (curvas.Count == 0)
+            return null;
+        XYZ p = (curvas.OfType<Line>().MaxBy(l => l.Length) ?? curvas[0]).GetEndPoint(0);
         Punto local = Geometria.Girar([new Punto(LectorZapatas.Mm(p.X), LectorZapatas.Mm(p.Y))], -z.Angulo)[0];
         return c.Direccion == Direccion.X ? local.Y : local.X;
     }

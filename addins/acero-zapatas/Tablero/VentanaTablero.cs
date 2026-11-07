@@ -65,12 +65,23 @@ internal sealed class VentanaTablero : Window
     private static string CarpetaDatos { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CQEING", "zapatas", "WebView2");
 
+    private WindowState estadoAntes = WindowState.Normal;
+
+    /// <summary>Minimiza el tablero para que se vea Revit (seleccionar o mostrar); <see cref="Volver"/> lo trae como estaba.</summary>
+    public void Apartar()
+    {
+        if (cerrada || WindowState == WindowState.Minimized)
+            return;
+        estadoAntes = WindowState;
+        WindowState = WindowState.Minimized;
+    }
+
     public void Volver()
     {
         if (cerrada)
             return;
         if (WindowState == WindowState.Minimized)
-            WindowState = WindowState.Normal;
+            WindowState = estadoAntes;
         Activate();
     }
 

@@ -42,10 +42,12 @@ internal static class LectorZapatas
         List<XYZ> esquinas = Vertices(solido);
         double zBase = Mm(esquinas.Min(p => p.Z)), zTope = Mm(esquinas.Max(p => p.Z));
 
-        double angulo = Geometria.AnguloEjes(enModelo);
+        List<Element> columnas = ColumnasEncima(doc, enModelo, zTope);
+        double angulo = Geometria.AnguloEjes(enModelo, columnas.OfType<FamilyInstance>()
+            .Select(c => Math.Atan2(c.HandOrientation.Y, c.HandOrientation.X)).ToList());
         List<Punto> contorno = Geometria.Girar(enModelo, -angulo);
         return new ZapataLeida(e.Id.ToString(), Nombre(e), Eje(ejes, enModelo), Nivel(doc, e), angulo, zBase, zTope - zBase, contorno,
-            Columnas(doc, enModelo, angulo, zTope), Recubrimiento(doc, e, BuiltInParameter.CLEAR_COVER_BOTTOM),
+            columnas.Select(c => Columna(c, angulo)).ToList(), Recubrimiento(doc, e, BuiltInParameter.CLEAR_COVER_BOTTOM),
             Recubrimiento(doc, e, BuiltInParameter.CLEAR_COVER_OTHER), Recubrimiento(doc, e, BuiltInParameter.CLEAR_COVER_TOP));
     }
 
@@ -72,25 +74,33 @@ internal static class LectorZapatas
         return segundo.Name is null ? primero.Name : string.Join("-", new[] { primero.Name, segundo.Name }.OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase));
     }
 
-    private static List<ColumnaLeida> Columnas(Document doc, List<Punto> contorno, double angulo, double zTope)
+    /// <summary>Las columnas que arrancan sobre la zapata, con el centro dentro del contorno (en el modelo).</summary>
+    private static List<Element> ColumnasEncima(Document doc, List<Punto> contorno, double zTope)
     {
         double xMin = Pies(contorno.Min(p => p.X)), xMax = Pies(contorno.Max(p => p.X));
         double yMin = Pies(contorno.Min(p => p.Y)), yMax = Pies(contorno.Max(p => p.Y));
         var filtro = new BoundingBoxIntersectsFilter(new Outline(new XYZ(xMin, yMin, Pies(zTope - HolguraColumnaMm)), new XYZ(xMax, yMax, Pies(zTope + HolguraColumnaMm))));
-        var columnas = new List<ColumnaLeida>();
-        foreach (Element c in new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralColumns)
-                     .WhereElementIsNotElementType().WherePasses(filtro))
-        {
-            if (c.get_BoundingBox(null) is not { } caja || Mm(caja.Min.Z) > zTope + HolguraColumnaMm)
-                continue;
-            var centro = new Punto(Mm((caja.Min.X + caja.Max.X) / 2), Mm((caja.Min.Y + caja.Max.Y) / 2));
-            if (!Dentro(contorno, centro))
-                continue;
-            List<Punto> huella = Geometria.Girar([new(Mm(caja.Min.X), Mm(caja.Min.Y)), new(Mm(caja.Max.X), Mm(caja.Max.Y))], -angulo);
-            columnas.Add(new ColumnaLeida(c.Id.ToString(), Geometria.Girar([centro], -angulo)[0],
-                Math.Abs(huella[1].X - huella[0].X), Math.Abs(huella[1].Y - huella[0].Y)));
-        }
-        return columnas;
+        return new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralColumns)
+            .WhereElementIsNotElementType().WherePasses(filtro)
+            .Where(c => c.get_BoundingBox(null) is { } caja && Mm(caja.Min.Z) <= zTope + HolguraColumnaMm
+                        && Dentro(contorno, new Punto(Mm((caja.Min.X + caja.Max.X) / 2), Mm((caja.Min.Y + caja.Max.Y) / 2))))
+            .OrderBy(c => c.Id.Value).ToList();
+    }
+
+    /// <summary>
+    /// La columna en los ejes de la zapata. La huella sale de los vértices de su sólido girados a esos ejes, no de la
+    /// caja del modelo, que crece si la columna está girada.
+    /// </summary>
+    private static ColumnaLeida Columna(Element c, double angulo)
+    {
+        BoundingBoxXYZ caja = c.get_BoundingBox(null);
+        List<Punto> puntos = SolidoMayor(c) is { } solido
+            ? Vertices(solido).Select(p => new Punto(Mm(p.X), Mm(p.Y))).ToList()
+            : [new(Mm(caja.Min.X), Mm(caja.Min.Y)), new(Mm(caja.Max.X), Mm(caja.Max.Y))];
+        List<Punto> huella = Geometria.Girar(puntos, -angulo);
+        (double ancho, double alto) = Geometria.Caja(huella);
+        var centro = new Punto((huella.Min(p => p.X) + huella.Max(p => p.X)) / 2, (huella.Min(p => p.Y) + huella.Max(p => p.Y)) / 2);
+        return new ColumnaLeida(c.Id.ToString(), centro, ancho, alto);
     }
 
     private static bool Dentro(List<Punto> contorno, Punto p) => Geometria.Cortes(contorno, p.Y).Any(t => p.X >= t.Desde && p.X <= t.Hasta);

@@ -14,6 +14,22 @@ public class MotorParrillasTests
     private static ZapataEntrada Maqueta() => new(Rect(1800, 1800), 500, [new(900, 900)]);
 
     [Fact]
+    public void En_las_puntas_de_un_rombo_no_quedan_barras_donde_no_caben_los_doblados()
+    {
+        // La zapata 933661 del modelo de prueba: 1.55 m de lado girada 45°, 0.90 m de alto. Sin el mínimo, las puntas
+        // daban barras de 47 mm con patas de 750 mm y Revit las creaba sin geometría.
+        var rombo = new ZapataEntrada([new(1096, 0), new(0, 1096), new(-1096, 0), new(0, -1096)], 900, [new(0, 0)]);
+
+        ResultadoZapata r = MotorParrillas.Calcular(rombo, Config(), R);
+
+        double minimo = ReglasZapata.LargoMinimo(R.PorDiametro[5], Terminacion.Pata90);
+        Assert.Empty(r.Errores);
+        Assert.NotEmpty(r.Conjuntos);
+        Assert.All(r.Conjuntos, c => Assert.True(c.Hasta - c.Desde >= minimo, $"{c.Parrilla} {c.Direccion}: {c.Hasta - c.Desde:0} mm"));
+        Assert.Contains(r.Avisos, a => a.Contains("no caben los doblados"));
+    }
+
+    [Fact]
     public void La_zapata_de_la_maqueta_da_12_barras_abajo_y_11_arriba_por_direccion()
     {
         ResultadoZapata r = MotorParrillas.Calcular(Maqueta(), Config(), R);

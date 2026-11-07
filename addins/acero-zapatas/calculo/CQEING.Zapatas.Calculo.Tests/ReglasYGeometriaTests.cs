@@ -49,6 +49,30 @@ public class ReglasYGeometriaTests
     }
 
     [Fact]
+    public void Un_rombo_con_su_columna_recta_lleva_las_barras_en_los_ejes_del_proyecto()
+    {
+        List<Punto> rombo = [new(1000, 0), new(0, 1000), new(-1000, 0), new(0, -1000)];
+
+        Assert.Equal(0, Geometria.AnguloEjes(rombo, [0]), 6);
+    }
+
+    [Fact]
+    public void Una_zapata_girada_con_su_columna_girada_sigue_a_la_columna()
+    {
+        List<Punto> girada = Geometria.Girar([new(0, 0), new(2000, 0), new(2000, 1000), new(0, 1000)], Math.PI / 6);
+
+        Assert.Equal(Math.PI / 6, Geometria.AnguloEjes(girada, [Math.PI / 6 + Math.PI / 2]), 6);
+    }
+
+    [Fact]
+    public void Sin_columna_el_rombo_sale_de_sus_lados()
+    {
+        List<Punto> rombo = [new(1000, 0), new(0, 1000), new(-1000, 0), new(0, -1000)];
+
+        Assert.Equal(Math.PI / 4, Math.Abs(Geometria.AnguloEjes(rombo, [])), 6);
+    }
+
+    [Fact]
     public void Un_rectangulo_sin_girar_tiene_angulo_cero()
     {
         Assert.Equal(0, Geometria.AnguloEjes([new(0, 0), new(2000, 0), new(2000, 1000), new(0, 1000)]), 6);
