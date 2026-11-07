@@ -25,6 +25,17 @@ public class ProtocoloTableroTests
     }
 
     [Fact]
+    public void LeeGenerarConElMismoAceroEnVariosPisos()
+    {
+        Generar con = Assert.IsType<Generar>(ProtocoloTablero.Leer("""{"tipo":"generar","ids":["P1 · Piso 2","P1 · Piso 3"],"mismoAcero":true}"""));
+        Generar sin = Assert.IsType<Generar>(ProtocoloTablero.Leer("""{"tipo":"generar","ids":["P1"]}"""));
+
+        Assert.Equal(["P1 · Piso 2", "P1 · Piso 3"], con.Ids);
+        Assert.True(con.MismoAcero);
+        Assert.False(sin.MismoAcero);
+    }
+
+    [Fact]
     public void LeeElegirVariosDeLaPlanta()
     {
         ElegirVarios m = Assert.IsType<ElegirVarios>(ProtocoloTablero.Leer("""{"tipo":"elegirVarios","ids":["P1","P2"],"abrir":"P2"}"""));

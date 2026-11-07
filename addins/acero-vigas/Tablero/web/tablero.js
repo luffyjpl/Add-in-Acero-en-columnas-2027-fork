@@ -190,6 +190,27 @@
   const CHIP_ON = 'border: 1px solid #1F5FAF; background: #E8F0FA; color: #1F5FAF; font-weight: 600';
   const CHIP_OFF = 'border: 1px solid #C9CFD6; background: #FFFFFF; color: #5E6670';
 
+  // El piso de un pórtico de la lista, para la tarjeta de "Generar en Revit".
+  function pisoDe(p) { return p.nivel || 'Sin nivel'; }
+
+  // Los pisos donde están los pórticos de esos nombres (la misma viga o vigueta en cada piso, punto 14 de Santiago): los
+  // pórticos de todos esos pisos y los pisos sin repetir, en el orden de la lista.
+  function pisosParaGenerar(ids, pors) {
+    if (!ids || !ids.length) return { candidatos: [], pisos: [] };
+    const nombres = new Set(pors.filter((x) => ids.includes(x.id)).map((x) => x.nombre));
+    const candidatos = pors.filter((x) => nombres.has(x.nombre));
+    return { candidatos, pisos: [...new Set(candidatos.map(pisoDe))] };
+  }
+
+  // El avance del nivel (punto 14 de Santiago): construido cuando todos sus pórticos están terminados. Lo cuenta C#
+  // (AvanceNiveles). Corto para la opción del selector; largo para la línea debajo de él.
+  function avanceNivel(n, corto) {
+    if (!(n.porticos > 0)) return '';
+    if (n.construido) return corto ? ' · ✓ construido' : 'Piso construido: sus ' + n.porticos + ' pórticos están terminados';
+    if (corto) return n.terminados > 0 ? ' · ' + n.terminados + ' de ' + n.porticos : '';
+    return n.terminados + ' de ' + n.porticos + ' pórticos terminados';
+  }
+
   // Los elementos del nivel que se ven elegidos: el del pórtico abierto y, si es una vigueta con grupo, todo su grupo.
   function elegidosEnPlanta(nivel, id) {
     const els = nivel.elementos || [];
@@ -327,6 +348,7 @@
     // en mm, como los manda C#.
     aplicarSalto(salto) {
       const s = this.state, movidos = { ...s.cambios.movidos }, puntas = { ...s.bastPuntas }, ganchos = { ...s.cambios.ganchos };
+      const largos = { ...s.bastLen };
       const P = this.props.vista && this.props.vista.actual;
       salto.cambios.forEach((c) => {
         if (c.tipo === 'movido') { movidos[c.id] = { desde: c.desde, enVoladizo: c.enVoladizo }; return; }
@@ -334,16 +356,24 @@
         const b = P && P.bastones.find((x) => x.id === c.id);
         if (!b || mm(b.desde) !== c.desde) delete ganchos[c.id + '.inicio'];
         if (!b || mm(b.hasta) !== c.hasta) delete ganchos[c.id + '.fin'];
+        // corrido entero conserva el largo escrito (C# lo respeta pegado al borde); estirar una punta lo cambia
+        if (!b || c.hasta - c.desde !== mm(b.hasta) - mm(b.desde)) delete largos[c.id];
         puntas[c.id] = { desde: c.desde, hasta: c.hasta };
       });
-      this.cambiar({ cambios: { ...s.cambios, movidos, ganchos }, bastPuntas: puntas, confirmVol: null });
+      this.cambiar({ cambios: { ...s.cambios, movidos, ganchos }, bastPuntas: puntas, bastLen: largos, confirmVol: null });
     }
 
     // "Generar en Revit" (#85). Sin forzar, si algún pórtico tiene choques C# no genera y contesta "choques" (decisión 8
-    // del plan de choques); "Generar de todos modos" vuelve a mandar los mismos con forzar.
-    generar(ids, forzar) {
+    // del plan de choques); "Generar de todos modos" vuelve a mandar los mismos con forzar. mismoAcero: la misma viga en
+    // varios pisos, todos con el acero del abierto (punto 14 de Santiago).
+    generar(ids, forzar, mismoAcero = false) {
       this.idsGenerar = ids;
-      this.props.enviar({ tipo: 'generar', ids, estados: this.estadosParaGenerar(ids), forzar });
+      this.mismoAcero = mismoAcero;
+      // con el mismo acero, todos guardan el estado de la página del abierto, aunque su piso no se genere
+      const estados = mismoAcero
+        ? ids.reduce((o, id) => ({ ...o, [id]: JSON.stringify(this.estadoDeLaPagina()) }), {})
+        : this.estadosParaGenerar(ids);
+      this.props.enviar({ tipo: 'generar', ids, estados, forzar, mismoAcero });
     }
 
     choquesAlGenerar(porticos) {
@@ -657,9 +687,10 @@
           apply: () => {
             if (!o) return;
             if (!o.sePuede) { this.say(o.texto); return; }
-            // el largo escrito lo vuelve a centrar: las puntas de un arrastre mandarían sobre él
+            // el largo escrito lo vuelve a centrar, salvo pegado a un borde: ahí C# deja esa punta y saca la otra del largo
+            // (Juan, 07-nov: con gancho volvía al centro y perdía el borde)
             const puntas = { ...s.bastPuntas };
-            delete puntas[SBa.id];
+            if (SBa.puntaInicioEnBorde === SBa.puntaFinEnBorde) delete puntas[SBa.id];
             this.cambiar({ bastLen: { ...s.bastLen, [SBa.id]: f2(o.valor) }, bastPuntas: puntas });
             this.say('Bastón ' + SBa.id + ' en ' + f2(o.valor) + ' m');
           },
@@ -811,8 +842,20 @@
       const corte = avisoTexto.indexOf('. ');
       // la palomita de terminado junto al nombre (punto 5 de Santiago, 28-oct); la marca vive en las vigas de Revit
       const terminado = !!P && (vista.terminados || []).includes(P.id);
+      // la misma viga o vigueta en otros pisos (mismo nombre; punto 14 de Santiago): al generar se elige en qué pisos, con
+      // uno o con varios pórticos elegidos
+      const gen = pisosParaGenerar(s.confirmGen, PORS);
+      const genPisos = s.genPisos || [];
+      const genPorPisos = gen.pisos.length > 1;
+      const enListaP = P ? PORS.find((x) => x.id === P.id) : null;
+      const pisoDeP = enListaP ? pisoDe(enListaP) : null;
       return {
         terminado, toggleTerminado: () => { if (P) enviar({ tipo: 'marcarTerminado', id: P.id, terminado: !terminado }); },
+        genPorPisos, genPisosTitulo: (s.confirmGen && s.confirmGen.length > 1 ? 'Estos pórticos están' : 'Este pórtico está') + ' en ' + gen.pisos.length + ' pisos. ¿En cuáles se genera?',
+        pisosGen: gen.pisos.map((piso) => ({ piso, abierto: piso === pisoDeP, on: genPisos.includes(piso),
+          toggle: () => this.setState({ genPisos: genPisos.includes(piso) ? genPisos.filter((g) => g !== piso) : [...genPisos, piso] }) })),
+        genPisosOff: genPisos.length === 0,
+        genTodos: () => this.setState({ genPisos: gen.pisos.slice() }), genNinguno: () => this.setState({ genPisos: [] }),
         pors, porCount: elegidos ? enLista.length + ' de ' + PORS.length : PORS.length + ' en el modelo', filtrado: !!elegidos,
         verTodos: () => enviar({ tipo: 'verTodos' }), q: s.q, proyecto: vista.proyecto, por: por ? { name: por.nombre, sub: por.sub } : { name: '', sub: '' }, hasPor: !!P, noPor: !P,
         tipo, isCim, isAviso, summary: (bars.length + BAST.length) + ' barras · ' + nEstAll + ' estribos · ' + lapsAll.length + ' traslapos · ' + (P ? P.kg : 0).toFixed(1) + ' kg',
@@ -913,8 +956,14 @@
         confirmGenText: s.confirmGen ? 'Se generará el acero de ' + (s.confirmGen.length === 1
           ? (PORS.find((p) => p.id === s.confirmGen[0]) || { nombre: s.confirmGen[0] }).nombre
           : s.confirmGen.length + ' pórticos') + '. Lo que el add-in generó antes en ' + (s.confirmGen.length === 1 ? 'él' : 'ellos') + ' se reemplaza.' : '',
-        confirmGenYes: () => { this.generar(s.confirmGen, false); this.setState({ confirmGen: null }); },
-        confirmGenNo: () => this.setState({ confirmGen: null }),
+        confirmGenYes: () => {
+          // en los pisos marcados, los pórticos de esos nombres; todos con el acero del abierto (C# lo copia con mismoAcero)
+          const ids = genPorPisos ? gen.candidatos.filter((x) => genPisos.includes(pisoDe(x))).map((x) => x.id) : s.confirmGen;
+          if (!ids.length) return;
+          this.generar(ids, false, genPorPisos && (ids.length > 1 || ids[0] !== (P && P.id)));
+          this.setState({ confirmGen: null, genPisos: null });
+        },
+        confirmGenNo: () => this.setState({ confirmGen: null, genPisos: null }),
         // los choques al generar (decisión 8 del plan de choques): no bloquea, pregunta
         hasChoquesGen: !!s.choquesGen,
         choquesGenText: s.choquesGen ? textoChoquesGen(s.choquesGen.porticos, PORS) : '',
@@ -923,7 +972,7 @@
           this.setState({ choquesGen: null, tab: 'alzado' });
           if (!P || P.id !== primero) enviar({ tipo: 'elegirPortico', id: primero });
         },
-        choquesGenForzar: () => { this.generar(s.choquesGen.ids, true); this.setState({ choquesGen: null }); },
+        choquesGenForzar: () => { this.generar(s.choquesGen.ids, true, this.mismoAcero); this.setState({ choquesGen: null }); },
         // #85: el resumen de "Generar en Revit", una línea por cosa; se queda hasta cerrarlo
         resumen: s.resumen ? { titulo: s.resumen[0], lineas: s.resumen.slice(1) } : null, closeResumen: () => this.setState({ resumen: null }),
         pickEl: (id) => (id ? selectBar(id) : this.setState({ sel: NADA })), pickLap: (id) => { const L = lapsAll.find((x) => x.id === id); if (L) selectLap(L); },
@@ -988,7 +1037,8 @@
         // #85, tarea 10: primero la tarjeta de confirmación; "Generar" en ella manda los pórticos.
         generate: () => {
           const ids = elegidos ? enLista.map((p) => p.id) : P ? [P.id] : [];
-          if (ids.length) this.setState({ confirmGen: ids, resumen: null });
+          // de entrada, solo los pisos de los pórticos que se van a generar; los demás se marcan en la tarjeta
+          if (ids.length) this.setState({ confirmGen: ids, genPisos: [...new Set(PORS.filter((x) => ids.includes(x.id)).map(pisoDe))], resumen: null });
         },
       };
     }
@@ -1109,9 +1159,10 @@
         <div style="display: flex; align-items: center; gap: 8px">
           <label for="nivel-planta" style="color: #5E6670; font-size: 12px">Nivel</label>
           <select id="nivel-planta" value=${nivel.nombre} onChange=${(ev) => this.setState({ plNivel: ev.target.value, plZoom: 1, plPan: { x: 0, y: 0 } })} style="flex: 1; height: 32px; padding: 0 8px; border: 1px solid #C9CFD6; border-radius: 6px; font: inherit; color: #16191D; background: #FFFFFF">
-            ${niveles.map((n) => html`<option value=${n.nombre}>${n.nombre + (Number.isFinite(n.elevacion) ? ' · ' + cota(n.elevacion) : '')}</option>`)}
+            ${niveles.map((n) => html`<option value=${n.nombre}>${n.nombre + (Number.isFinite(n.elevacion) ? ' · ' + cota(n.elevacion) : '') + avanceNivel(n, true)}</option>`)}
           </select>
         </div>
+        ${nivel.porticos > 0 ? html`<span style="margin-top: -4px; font-size: 12px; font-weight: ${nivel.construido ? 600 : 400}; color: ${nivel.construido ? '#3B8A57' : '#5E6670'}">${avanceNivel(nivel, false)}</span>` : null}
         <div style="display: flex; align-items: center; gap: 6px">
           <span style="color: #5E6670; font-size: 12px; margin-right: 2px">Mostrar</span>
           <button type="button" aria-pressed=${ver.viga ? 'true' : 'false'} onClick=${tog('viga')} style="height: 24px; padding: 0 10px; border-radius: 999px; font: inherit; font-size: 12px; cursor: pointer; ${ver.viga ? CHIP_ON : CHIP_OFF}">Vigas</button>
@@ -1788,9 +1839,26 @@
           <span id="gen-t" style="font-weight: 600; font-size: 15px">¿Generar el acero en Revit?</span>
           <span id="gen-d" style="font-size: 12px; color: #5E6670; line-height: 1.5">${v.confirmGenText}</span>
         </div>
+        ${v.genPorPisos ? html`
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px">
+          <legend style="padding: 0; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #3F4A57">${v.genPisosTitulo}</legend>
+          <div style="display: flex; gap: 6px">
+            <button type="button" onClick=${v.genTodos} style="height: 24px; padding: 0 10px; border: 1px solid #C9CFD6; border-radius: 999px; background: #FFFFFF; font: inherit; font-size: 12px; color: #1F5FAF; cursor: pointer">Todos</button>
+            <button type="button" onClick=${v.genNinguno} style="height: 24px; padding: 0 10px; border: 1px solid #C9CFD6; border-radius: 999px; background: #FFFFFF; font: inherit; font-size: 12px; color: #1F5FAF; cursor: pointer">Ninguno</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto">
+          ${v.pisosGen.map((p) => html`
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #16191D; cursor: pointer">
+            <input type="checkbox" checked=${p.on} onChange=${p.toggle} style="width: 16px; height: 16px; margin: 0; accent-color: #1F5FAF; cursor: pointer" />
+            <span>${p.piso}</span>
+            ${p.abierto ? html`<span style="font-size: 11px; color: #5E6670">(el del pórtico abierto)</span>` : null}
+          </label>`)}
+          </div>
+          <span style="font-size: 11px; color: #5E6670; line-height: 1.4">Todos llevan el acero del pórtico abierto.</span>
+        </fieldset>` : null}
         <div style="display: flex; justify-content: flex-end; gap: 8px">
           <button type="button" onClick=${v.confirmGenNo} style="height: 32px; padding: 0 14px; border: 1px solid #C9CFD6; border-radius: 6px; background: #FFFFFF; font: inherit; color: #16191D; cursor: pointer">Cancelar</button>
-          <button type="button" onClick=${v.confirmGenYes} style="height: 32px; padding: 0 14px; border: 1px solid #1F5FAF; border-radius: 6px; background: #1F5FAF; font: inherit; font-weight: 600; color: #FFFFFF; cursor: pointer">Generar</button>
+          <button type="button" onClick=${v.confirmGenYes} disabled=${v.genPorPisos && v.genPisosOff} style="height: 32px; padding: 0 14px; border: 1px solid ${v.genPorPisos && v.genPisosOff ? '#9AA3AD' : '#1F5FAF'}; border-radius: 6px; background: ${v.genPorPisos && v.genPisosOff ? '#9AA3AD' : '#1F5FAF'}; font: inherit; font-weight: 600; color: #FFFFFF; cursor: pointer">Generar</button>
         </div>
       </div>
     </div>` : null}

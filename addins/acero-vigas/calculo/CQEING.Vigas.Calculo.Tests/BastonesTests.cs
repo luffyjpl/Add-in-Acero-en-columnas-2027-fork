@@ -187,6 +187,24 @@ public class BastonesTests
         Assert.Equal((-150, hasta, 1650, true), (bs1.Desde, bs1.Hasta, bs1.Largo, bs1.Manual));
     }
 
+    /// <summary>
+    /// Un bastón arrastrado hasta el borde con gancho conserva el largo escrito: la punta del borde se queda pegada y la
+    /// otra sale del largo, gancho incluido. Antes mandaban las puntas del arrastre y el largo se perdía; volver a
+    /// escribirlo lo centraba otra vez lejos del borde.
+    /// </summary>
+    [Theory]
+    [InlineData("BS2", -150, 1850, -150, 1222)]
+    [InlineData("BS3", 7000, 13950, 12578, 13950)]
+    public void UnBastonArrastradoAlBorde_ConservaElLargoEscrito(string id, int pDesde, int pHasta, int desde, int hasta)
+    {
+        var largos = new Dictionary<string, int> { [id] = 1650 };
+        var puntas = new Dictionary<string, PuntasBaston> { [id] = new(pDesde, pHasta) };
+        Baston b = De(MotorVigas.Calcular(Entrada(new ArmadoBastones(ConGancho: true, Largos: largos, Puntas: puntas))), id);
+
+        Assert.Equal((desde, hasta, 1650, true), (b.Desde, b.Hasta, b.Largo, b.Manual));
+        Assert.True(b.PuntaInicioEnBorde || b.PuntaFinEnBorde);
+    }
+
     [Fact]
     public void PrevisualizarBaston_ElDelBordeConElLargoGeneral_SiCambia()
     {

@@ -27,7 +27,6 @@ public sealed record APrevia3d(PorticoAGenerar? Portico, Reglas Reglas) : Salida
 
 /// <summary>Guardar en <paramref name="Vigas"/> la marca de terminado (punto 5 de Santiago, 28-oct), o quitarla.</summary>
 public sealed record ATerminado(IReadOnlyList<string> Vigas, bool Terminado) : Salida;
-
 /// <summary>
 /// Un pórtico para generar: <paramref name="Vigas"/> son las suyas, para borrar lo que el add-in creó antes en ellas.
 /// <paramref name="Configuracion"/> es lo que se guarda en cada viga (<see cref="ConfiguracionGuardada"/>); vacía en la
@@ -156,12 +155,17 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
                 else
                     terminados.ExceptWith(sistema);
                 return [new ATerminado(sistema.SelectMany(m => Buscar(m)!.Vigas).ToList(), terminado), Vista()];
-            case Generar(IReadOnlyList<string> ids, var estadosPagina, bool forzar):
+            case Generar(IReadOnlyList<string> ids, var estadosPagina, bool forzar, bool mismoAcero):
                 // Con varios elegidos (Ctrl), todos llevan el acero del abierto: el que se está armando, no el que cada uno
-                // tenía de antes (6-nov).
-                if (elegidos is not null && actual is not null && ids.Contains(actual))
+                // tenía de antes (6-nov). Igual la misma viga en los pisos elegidos al generar (punto 14 de Santiago),
+                // aunque el piso del abierto no se genere.
+                if (actual is not null && (mismoAcero || (elegidos is not null && ids.Contains(actual))))
+                {
                     foreach (string otra in ids.Where(i => i != actual && Buscar(i) is not null))
                         opciones[otra] = Opciones(actual);
+                    if (mismoAcero)
+                        estadosPagina = ConElEstadoDelAbierto(ids, estadosPagina);
+                }
                 AGenerar generar = AGenerar(ConSusSistemas(ids), EstadosDelSistema(ids, estadosPagina));
                 // Decisión 8 del plan de choques: avisa los choques de todos los que se generan, no solo del abierto. No
                 // bloquea: "Generar de todos modos" vuelve con forzar.
@@ -252,6 +256,20 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
             foreach (string m in miembros.Where(m => !estadosPagina.ContainsKey(m)))
                 todos[m] = estadosPagina[fuente];
         }
+        return todos;
+    }
+
+    /// <summary>
+    /// Los estados de la página con el del abierto puesto en los demás <paramref name="ids"/>: llevan su acero, y al
+    /// abrirlos la página tiene que verse igual. Sin el del abierto, quedan como vienen.
+    /// </summary>
+    private IReadOnlyDictionary<string, string>? ConElEstadoDelAbierto(IReadOnlyList<string> ids, IReadOnlyDictionary<string, string>? estadosPagina)
+    {
+        if (actual is null || estadosPagina?.GetValueOrDefault(actual) is not { } delAbierto)
+            return estadosPagina;
+        var todos = new Dictionary<string, string>(estadosPagina);
+        foreach (string id in ids)
+            todos[id] = delAbierto;
         return todos;
     }
 
@@ -385,11 +403,11 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
             vista = ConChoques(abierto, plan, ArmadorVista.Armar(abierto, Opciones(actual!), reglas.Reglas, plan)
                 with { Id = actual!, Estado = estados.GetValueOrDefault(actual!) });
         }
-        var lista = porticos.Select(p => ArmadorVista.EnLista(p.Portico) is var l && p.Nivel is not null
+        var lista = porticos.Select(p => (ArmadorVista.EnLista(p.Portico) is var l && p.Nivel is not null
             ? l with { Id = p.Id, Sub = $"{l.Sub} · {p.Nivel}", Grupo = GrupoDe(p.Id) }
-            : l with { Id = p.Id, Grupo = GrupoDe(p.Id) }).ToList();
+            : l with { Id = p.Id, Grupo = GrupoDe(p.Id) }) with { Nivel = p.Portico.Nivel ?? "" }).ToList();
         return new AJs(ProtocoloTablero.Vista(new VistaTablero(proyecto, lista, vista, ArmadorVista.Reglas(reglas), enVivo, elegidos, Disponibles(),
-            planta, porticos.Select(p => p.Id).Where(terminados.Contains).ToList())));
+            AvanceNiveles.Con(planta, terminados), porticos.Select(p => p.Id).Where(terminados.Contains).ToList())));
     }
 
     /// <summary>El texto del sistema de viguetas del pórtico en la planta; vacío si no está en ninguno.</summary>

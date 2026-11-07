@@ -18,6 +18,21 @@ public class EditorTableroTests
     private static EntradaVigas Entrada() =>
         CalculoPortico.EntradaDe(ArmadorVistaTests.Portico1(), OpcionesTablero.PorDefecto, Reglas.Generales);
 
+    /// <summary>
+    /// Viga de cimentación con 8 cm (07-nov, medido en Revit en la 925256): la pata de arriba quedaba a 45 mm de la punta
+    /// porque las puntas iban siempre a 5 cm. Va el recubrimiento de los lados del tablero, y nunca menos de los 5 cm.
+    /// </summary>
+    [Theory]
+    [InlineData(8.0, null, 80)]
+    [InlineData(4.0, 7.5, 75)]
+    [InlineData(4.0, null, 50)]
+    public void LasPuntasVanAlRecubrimientoDelTablero(double general, double? lados, int esperado)
+    {
+        OpcionesTablero o = OpcionesTablero.PorDefecto with { RecubrimientoCm = general, RecLadosCm = lados };
+
+        Assert.Equal(esperado, CalculoPortico.EntradaDe(ArmadorVistaTests.Portico1(), o, Reglas.Generales).RecubrimientoPuntas);
+    }
+
     [Fact]
     public void SubirYBajarDevuelvenLasDosOpciones()
     {

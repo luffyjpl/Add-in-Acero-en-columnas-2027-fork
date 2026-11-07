@@ -17,8 +17,11 @@ public sealed record VistaTablero(string Proyecto, IReadOnlyList<PorticoEnLista>
 /// <summary>
 /// Un pórtico en la columna izquierda. <paramref name="Sub"/> es como <c>"Eje 1 · A a D + voladizo"</c>.
 /// <paramref name="Grupo"/>: el sistema de viguetas iguales al que pertenece, como en <see cref="ElementoPlanta.Grupo"/>.
+/// <paramref name="Nivel"/>: el piso donde va ("" sin nivel); con él, "Generar en Revit" ofrece los pisos donde está la
+/// misma viga o vigueta (punto 14 de Santiago).
 /// </summary>
-public sealed record PorticoEnLista(string Id, string Nombre, string Sub, string Tipo, IReadOnlyList<TramoEnLista> Tramos, string Grupo = "");
+public sealed record PorticoEnLista(string Id, string Nombre, string Sub, string Tipo, IReadOnlyList<TramoEnLista> Tramos, string Grupo = "",
+    string Nivel = "");
 
 // La vista en planta (planta, 27-oct): un dibujo por nivel con ejes, columnas, vigas y viguetas, en m y en coordenadas
 // del modelo (la y hacia arriba). Al hacer clic en un elemento se abre su pórtico.
@@ -26,9 +29,16 @@ public sealed record PorticoEnLista(string Id, string Nombre, string Sub, string
 /// <summary>Los niveles con pórticos, de abajo hacia arriba; el de los pórticos sin nivel (<c>"Sin nivel"</c>) al final.</summary>
 public sealed record PlantaVista(IReadOnlyList<NivelPlanta> Niveles);
 
-/// <summary>Un nivel: su nombre, su cota en m y lo que se dibuja en él.</summary>
+/// <summary>
+/// Un nivel: su nombre, su cota en m y lo que se dibuja en él. <paramref name="Porticos"/> y <paramref name="Terminados"/>
+/// son su avance (punto 14 de Santiago, ver <see cref="AvanceNiveles"/>); los llena la sesión con lo marcado.
+/// </summary>
 public sealed record NivelPlanta(string Nombre, double Elevacion, IReadOnlyList<EjePlanta> Ejes, IReadOnlyList<ColumnaPlanta> Columnas,
-    IReadOnlyList<ElementoPlanta> Elementos);
+    IReadOnlyList<ElementoPlanta> Elementos, int Porticos = 0, int Terminados = 0)
+{
+    /// <summary>Construido: tiene pórticos y todos están terminados (Juan, 07-nov).</summary>
+    public bool Construido => Porticos > 0 && Terminados == Porticos;
+}
 
 /// <summary>Un eje de la grilla, de punta a punta, en m.</summary>
 public sealed record EjePlanta(string Nombre, double X1, double Y1, double X2, double Y2);

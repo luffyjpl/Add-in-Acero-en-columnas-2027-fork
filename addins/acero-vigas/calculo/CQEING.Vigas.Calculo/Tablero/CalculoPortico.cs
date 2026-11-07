@@ -67,9 +67,21 @@ public static class CalculoPortico
 
     /// <summary>Lo que recibe el motor para el pórtico <paramref name="p"/> con lo que eligió el usuario (también la vista previa, #84).</summary>
     internal static EntradaVigas EntradaDe(PorticoLeido p, OpcionesTablero o, Reglas r) =>
-        new(p.Portico, o.Tipo ?? p.Tipo, o.Superior, o.Inferior, r, o.Cara, Cambios: o.Cambios, Bastones: o.Bastones,
+        new(p.Portico, o.Tipo ?? p.Tipo, o.Superior, o.Inferior, r, o.Cara, RecubrimientoPuntas: RecubrimientoPuntas(o),
+            Cambios: o.Cambios, Bastones: o.Bastones,
             EstriboEnVoladizo: r.PorDiametro.TryGetValue(o.Estribos.Diametro, out ReglaDiametro? estribo) ? (int)Math.Ceiling(estribo.Diametro) : 0,
             Piel: o.Piel is { Cantidad: > 0 } && UbicarPiel(p, o, r) is { CabenPorLado: > 0 } u ? new GrupoBarras(Math.Min(o.Piel!.Cantidad, u.CabenPorLado), o.Piel.Diametro) : null);
+
+    /// <summary>Lo que traen las puntas si el tablero pide menos: los 5 cm de la maqueta.</summary>
+    private const int RecubrimientoPuntasMinimo = 50;
+
+    /// <summary>
+    /// De la punta de las barras (la cara de afuera de su gancho) a la cara del pórtico, en mm: el recubrimiento de los
+    /// lados del paso 1, sin bajar de <see cref="RecubrimientoPuntasMinimo"/>. Con los 5 cm fijos, la viga de cimentación
+    /// de 8 cm quedaba con la pata de arriba a 45 mm de la punta (07-nov, medido en Revit en la 925256).
+    /// </summary>
+    private static int RecubrimientoPuntas(OpcionesTablero o) =>
+        Math.Max(RecubrimientoPuntasMinimo, (int)Math.Round((o.RecLadosCm ?? o.RecubrimientoCm) * 10));
 
     /// <summary>
     /// Dónde cae la piel en el corte con el tramo más bajo del pórtico (06-nov); null si es vigueta o su diámetro no está en
