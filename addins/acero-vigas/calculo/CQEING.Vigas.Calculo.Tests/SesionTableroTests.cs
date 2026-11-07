@@ -738,6 +738,80 @@ public sealed class SesionTableroTests : IDisposable
             g.Porticos.Select(p => ConfiguracionGuardada.Leer(p.Configuracion)!.Value.Estado));
     }
 
+    // Punto 14 de Santiago (07-nov): al generar, en qué pisos de los que tienen la misma viga o vigueta.
+
+    /// <summary>El "Pórtico 1" en Piso 2 y en Piso 3, con ubicación, y el Piso 2 abierto con 4 #5 arriba.</summary>
+    private SesionTablero EnDosPisos()
+    {
+        PorticoLeido p = PlanificadorAceroTests.Portico();
+        lectura = new([p with { Nivel = "Piso 2" }, p with { Nivel = "Piso 3", Vigas = ["301", "302", "303", "304"] }], []);
+        SesionTablero s = Sesion();
+        s.Manejar(new Listo());
+        s.Manejar(new Calcular("Pórtico 1 · Piso 2", OpcionesTablero.PorDefecto with { Superior = [new GrupoBarras(4, 5)] }));
+        return s;
+    }
+
+    [Fact]
+    public void LaListaDiceElPisoDeCadaPortico()
+    {
+        JsonElement lista = VistaDe([EnDosPisos().Vista()]).GetProperty("porticos");
+
+        Assert.Equal(["Piso 2", "Piso 3"], lista.EnumerateArray().Select(p => p.GetProperty("nivel").GetString()));
+    }
+
+    [Fact]
+    public void GenerarEnVariosPisosLlevaElAceroDelAbiertoATodos()
+    {
+        SesionTablero s = EnDosPisos();
+        const string estado = """{"sup":[{"n":4,"d":"#5"}]}""";
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 1 · Piso 2", "Pórtico 1 · Piso 3"],
+            new Dictionary<string, string> { ["Pórtico 1 · Piso 2"] = estado }, Forzar: true, MismoAcero: true)).OfType<AGenerar>());
+
+        Assert.Equal([4, 4], g.Porticos.Select(p => p.Plan.Barras.Count(b => b.Pieza == "S1")));
+        Assert.Equal(["101", "301"], g.Porticos.Select(p => p.Vigas[0]));
+        // en las vigas del otro piso queda el mismo estado de la página, para que al abrirlo se vea igual
+        Assert.All(g.Porticos, p => Assert.Equal(estado, ConfiguracionGuardada.Leer(p.Configuracion)!.Value.Estado));
+    }
+
+    [Fact]
+    public void ConMismoAceroSinElPisoDelAbierto_ElOtroLlevaIgualSuAcero()
+    {
+        SesionTablero s = EnDosPisos();
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 1 · Piso 3"], Forzar: true, MismoAcero: true)).OfType<AGenerar>());
+
+        Assert.Equal(4, Assert.Single(g.Porticos).Plan.Barras.Count(b => b.Pieza == "S1"));
+    }
+
+    [Fact]
+    public void SinMismoAcero_CadaPisoGeneraConElSuyo()
+    {
+        SesionTablero s = EnDosPisos();
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 1 · Piso 2", "Pórtico 1 · Piso 3"], Forzar: true)).OfType<AGenerar>());
+
+        Assert.Equal([4, 3], g.Porticos.Select(p => p.Plan.Barras.Count(b => b.Pieza == "S1")));
+    }
+
+    /// <summary>Punto 14 de Santiago: el nivel queda construido cuando sus cuatro pórticos están terminados.</summary>
+    [Fact]
+    public void LaPlantaDiceCuantosPorticosDelNivelEstanTerminados()
+    {
+        SesionTablero s = ConViguetas();
+        (int, int, bool) Avance()
+        {
+            JsonElement n = Assert.Single(VistaDe([s.Vista()]).GetProperty("planta").GetProperty("niveles").EnumerateArray());
+            return (n.GetProperty("porticos").GetInt32(), n.GetProperty("terminados").GetInt32(), n.GetProperty("construido").GetBoolean());
+        }
+
+        s.Manejar(new MarcarTerminado("Vigueta 2", true));
+        Assert.Equal((4, 3, false), Avance());
+
+        s.Manejar(new MarcarTerminado("Pórtico 1", true));
+        Assert.Equal((4, 4, true), Avance());
+    }
+
     // Pórtico terminado (punto 5 de Santiago, 28-oct): la palomita junto al nombre y el verde en la planta.
 
     private static List<string?> Terminados(SesionTablero s) =>

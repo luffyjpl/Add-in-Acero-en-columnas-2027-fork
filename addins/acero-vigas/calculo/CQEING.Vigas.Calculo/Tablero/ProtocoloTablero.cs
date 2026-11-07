@@ -58,16 +58,18 @@ public sealed record GuardarReglas(VistaReglas Reglas) : MensajeTablero;
 /// "Generar en Revit" (#85): el acero de los pórticos <paramref name="Ids"/>. <paramref name="Estados"/> es el estado de
 /// la página de cada pórtico (JSON como texto), para guardarlo con el acero (plan de 22-oct, recordar el pórtico).
 /// Sin <paramref name="Forzar"/>, si alguno tiene choques entre barras no se genera y se avisa (decisión 8 del plan de
-/// choques de 22-oct); con él ("Generar de todos modos"), se genera igual.
+/// choques de 22-oct); con él ("Generar de todos modos"), se genera igual. Con <paramref name="MismoAcero"/> (punto 14
+/// de Santiago: la misma viga o vigueta en varios pisos), todos llevan el acero del pórtico abierto y su estado de la
+/// página.
 /// </summary>
-public sealed record Generar(IReadOnlyList<string> Ids, IReadOnlyDictionary<string, string>? Estados = null, bool Forzar = false) : MensajeTablero;
+public sealed record Generar(IReadOnlyList<string> Ids, IReadOnlyDictionary<string, string>? Estados = null, bool Forzar = false,
+    bool MismoAcero = false) : MensajeTablero;
 
 /// <summary>
 /// La palomita junto al nombre del pórtico (punto 5 de Santiago, 28-oct): marcarlo o desmarcarlo como terminado, para
 /// verlo en verde en la planta.
 /// </summary>
 public sealed record MarcarTerminado(string Id, bool Terminado) : MensajeTablero;
-
 /// <summary>Un pórtico que se iba a generar con <paramref name="Cantidad"/> choques (los puntos del alzado).</summary>
 public sealed record PorticoConChoques(string Id, int Cantidad);
 
@@ -120,11 +122,11 @@ public static class ProtocoloTablero
                 "verChoques3d" => new VerChoques3d(nodo["ver"]?.GetValue<bool>() ?? true),
                 "cambiarEnVivo" => new CambiarEnVivo(nodo["activo"]?.GetValue<bool>() ?? false),
                 "verTodos" => new VerTodos(),
-                "marcarTerminado" => new MarcarTerminado(Texto(nodo, "id"), nodo["terminado"]?.GetValue<bool>() ?? false),
-                "elegirVarios" => nodo["ids"]?.Deserialize<List<string>>(Json) is { } varios
+                "marcarTerminado" => new MarcarTerminado(Texto(nodo, "id"), nodo["terminado"]?.GetValue<bool>() ?? false),                "elegirVarios" => nodo["ids"]?.Deserialize<List<string>>(Json) is { } varios
                     ? new ElegirVarios(varios, Texto(nodo, "abrir")) : new Desconocido(tipo),
                 "generar" => nodo["ids"]?.Deserialize<List<string>>(Json) is { } ids
-                    ? new Generar(ids, nodo["estados"]?.Deserialize<Dictionary<string, string>>(Json), nodo["forzar"]?.GetValue<bool>() ?? false)
+                    ? new Generar(ids, nodo["estados"]?.Deserialize<Dictionary<string, string>>(Json), nodo["forzar"]?.GetValue<bool>() ?? false,
+                        nodo["mismoAcero"]?.GetValue<bool>() ?? false)
                     : new Desconocido(tipo),
                 "guardarReglas" => nodo["reglas"]?.Deserialize<VistaReglas>(Json) is { PorDiametro: not null } r
                     ? new GuardarReglas(r) : new Desconocido(tipo),
