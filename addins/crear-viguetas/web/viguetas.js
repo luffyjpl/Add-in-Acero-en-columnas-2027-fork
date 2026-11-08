@@ -28,6 +28,8 @@
     doc: '', pisos: [], tipos: [], piso: null, comoBorde: false, modo: 'puntos', paneles: [], bordes: [], perimetro: [],
     // Modo Puntos: las zonas que armó el usuario (contorno y vacíos, por ejes), las que devolvió C# y el trazo en curso.
     zonas: [], zonasArm: [], trazo: [], conVacio: false,
+    // Vacíos marcados en Por vigas o Paneles (decisión 29).
+    vaciosPanel: [],
     dir: 'X', sep: '0,80', anc: '0,10', tipo: '', continuas: true, seguir: true, borradas: [], quitar: [], editar: false, propuesta: null, vista: null,
   };
   try {
@@ -91,6 +93,14 @@
     S.trazo = [];
     if (S.conVacio) {
       const centro = [t.reduce((s, p) => s + p[0], 0) / t.length, t.reduce((s, p) => s + p[1], 0) / t.length];
+      if (!porPuntos()) {
+        // Decisión 29: en Por vigas y Paneles, el vacío va en lo elegido que contiene su centro.
+        S.conVacio = false;
+        if (elegidos().some((x) => dentroDe(x.eje, centro))) S.vaciosPanel = [...S.vaciosPanel, t];
+        else aviso('El vacío tiene que quedar dentro de lo elegido.');
+        lateral(); pintar(); pedir();
+        return;
+      }
       const z = S.zonas.find((x) => dentroDe(x.contorno, centro));
       S.conVacio = false;
       if (!z) { aviso('El vacío tiene que quedar dentro de una zona.'); lateral(); pintar(); return; }
@@ -134,7 +144,9 @@
   }
   function pedido() {
     const V = valores();
-    return { paneles: S.paneles, direccion: S.dir, ejeAEje: V.s, ancho: V.b, borradas: S.borradas, continuas: S.continuas, seguir: S.seguir, quitarModelo: S.quitar };
+    return { paneles: S.paneles, direccion: S.dir, ejeAEje: V.s, ancho: V.b, borradas: S.borradas, continuas: S.continuas, seguir: S.seguir, quitarModelo: S.quitar,
+      // Decisión 28: en Paneles las viguetas siguen por su línea, salvo con «Solo P…». Decisión 29: vacíos fuera de Puntos.
+      prolongar: S.modo === 'uno' && S.paneles.length === 1 && S.sinAviso !== S.paneles[0], vacios: porPuntos() ? [] : S.vaciosPanel };
   }
   function abrirPiso(id) { enviar({ tipo: 'piso', id, viguetasComoBorde: S.comoBorde }); }
 
@@ -147,7 +159,7 @@
     } else if (m.tipo === 'piso') {
       const mismo = S.piso && S.piso.id === m.id;
       S.piso = m; S.comoBorde = m.viguetasComoBorde;
-      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.seguir = true; }
+      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.seguir = true; S.vaciosPanel = []; }
       // Al crear o quitar, C# vuelve a leer el piso y olvida las zonas: se mandan de nuevo, como el perímetro.
       if (porPuntos()) {
         $('modal').hidden = true;
@@ -223,6 +235,11 @@
         : `<span class="info"><b>${esc(pan.id)}</b> · libre <b>${fmt(c.x1 - c.x0)} × ${fmt(c.y1 - c.y0)}</b> m</span>`)
         + (creadas() ? `<span class="info">Ya tiene${sel.length > 1 ? 'n' : ''} <b>${creadas()}</b> viguetas creadas por CQEING.</span>` : '');
     }
+    if (!porPuntos() && S.piso) {
+      // Decisión 29: ＋ Vacío también en Por vigas y Paneles.
+      const filas = S.vaciosPanel.map((v, i) => `<li><span>vacío ${i + 1} · ${v.length} puntos</span><button class="x" data-act="sin-vacio" data-i="${i}" title="Quitar el vacío ${i + 1}" aria-label="Quitar el vacío ${i + 1}">×</button></li>`).join('');
+      infoPanel += `${filas ? `<ul class="zonas">${filas}</ul>` : ''}<button class="ib ${S.conVacio ? 'vac' : ''}" data-act="vacio" ${sel.length ? '' : 'disabled'} aria-pressed="${S.conVacio}" title="Marca los puntos de un vacío dentro de lo elegido: las viguetas paran en él">＋ Vacío${S.conVacio ? '<span class="k">marcando</span>' : ''}</button>`;
+    }
     $('side').innerHTML = `
       <div class="sec"><div class="sh">${n(1, !!S.piso)}Piso</div>
         <select class="sel" id="f-piso" aria-label="Piso">${S.piso ? '' : '<option value="">Elige un piso</option>'}${S.pisos.map((p) => `<option value="${esc(p.id)}" ${S.piso && S.piso.id === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>
@@ -270,6 +287,9 @@
   /** Cambia los paneles elegidos: la propuesta y las eliminadas se reinician. */
   function elegir(ids) {
     S.paneles = ids; S.borradas = []; S.quitar = []; S.propuesta = null; S.editar = false;
+    // Decisión 29: los vacíos que ya no caen en lo elegido se van.
+    const dentro = (v) => { const c = [v.reduce((s, p) => s + p[0], 0) / v.length, v.reduce((s, p) => s + p[1], 0) / v.length]; return elegidos().some((x) => dentroDe(x.eje, c)); };
+    S.vaciosPanel = S.vaciosPanel.filter(dentro);
     lateral(); pintar(); pedir();
   }
 
@@ -278,12 +298,13 @@
     const v = b.dataset.v;
     if (b.dataset.act === 'editar') { S.editar = !S.editar; lateral(); pintar(); return; }
     if (b.dataset.act === 'vacio') { S.conVacio = !S.conVacio; S.trazo = []; lateral(); pintar(); return; }
+    if (b.dataset.act === 'sin-vacio') { S.vaciosPanel = S.vaciosPanel.filter((_, i) => i !== Number(b.dataset.i)); S.borradas = []; lateral(); pintar(); pedir(); return; }
     if (b.dataset.act === 'sin-zona') return quitarZona(b.dataset.z, b.dataset.vacio === undefined ? undefined : Number(b.dataset.vacio));
     if (b.dataset.act === 'seguir') { S.seguir = v === 'true'; S.borradas = []; guardar(); ubicacion(); pedir(); return; }
     if (b.dataset.act === 'modo' && S.modo !== v) {
       // Cambiar de modo empieza de nuevo: cada uno elige de otra manera (y en C# las zonas y los perímetros comparten ids).
       S.modo = v; guardar();
-      S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false;
+      S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.vaciosPanel = [];
       return elegir([]);
     }
     if (b.dataset.act === 'dir' && S.dir !== v) {
@@ -353,6 +374,7 @@
     S.zonasArm.forEach((x) => {
       h += `<path class="pn sel zona" d="${anillos([x.libre, ...x.huecosLibre])}" ${ns}><title>${esc(x.id)}</title></path>`;
     });
+    S.vaciosPanel.forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
     S.zonas.forEach((z) => {
       h += `<polygon class="zeje" points="${z.contorno.map(pt).join(' ')}" ${ns}/>`;
       z.vacios.forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
@@ -412,6 +434,7 @@
           h += cotas(pan, r, p, fs);
         });
     }
+    if (!porPuntos() && S.conVacio && !S.editar) h += capaPuntos(fs, ns);
     if (porPuntos()) {
       S.zonasArm.forEach((x) => {
         if (p) return;
@@ -542,7 +565,7 @@
       const id = vg.dataset.v;
       S.borradas = S.borradas.includes(id) ? S.borradas.filter((x) => x !== id) : [...S.borradas, id];
       lateral(); pedir();
-    } else if (!S.editar && porPuntos()) {
+    } else if (!S.editar && (porPuntos() || S.conVacio)) {
       const q = e.target.closest('[data-pt]');
       if (q) clicPunto(Number(q.dataset.pt));
     } else if (!S.editar && perimetral()) {
@@ -558,7 +581,7 @@
     }
   });
   // Decisión 14: el trazo también se cierra con Enter, clic derecho o doble clic, sin volver al primer punto.
-  const puedeCerrar = () => porPuntos() && !S.editar && S.trazo.length >= 3;
+  const puedeCerrar = () => (porPuntos() || S.conVacio) && !S.editar && S.trazo.length >= 3;
   pv.addEventListener('contextmenu', (e) => { if (puedeCerrar()) { e.preventDefault(); cerrarTrazo(); } });
   pv.addEventListener('dblclick', () => { if (puedeCerrar()) cerrarTrazo(); });
   window.addEventListener('keydown', (e) => {
@@ -588,10 +611,10 @@
     const n = S.trazo.length, que = S.conVacio ? 'del vacío' : 'del contorno';
     // Decisión 27: se cierra solo en cuadrado (el último en línea con el primero).
     const cierra = n >= 3 && enLineaRecta(S.trazo[n - 1], S.trazo[0]);
-    const avisoPuntos = porPuntos() && !S.editar && S.piso
+    const avisoPuntos = (porPuntos() || S.conVacio) && !S.editar && S.piso
       ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${n
         ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${cierra ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : n >= 3 ? 'Para cerrar en cuadrado, marca un punto en línea con el primero.' : 'Sigue marcando puntos en línea (sin diagonales).'}`
-        : S.conVacio ? 'Marca los puntos del <b>vacío</b>, dentro de una zona: las viguetas paran en él.'
+        : S.conVacio ? `Marca los puntos del <b>vacío</b>, dentro de ${porPuntos() ? 'una zona' : 'lo elegido'}: las viguetas paran en él.`
           : S.zonas.length ? `<b>${esc(lista(S.zonas.map((z) => z.id)))}</b> armada${S.zonas.length > 1 ? 's' : ''}. Marca otra zona, separada o no, o un <b>＋ Vacío</b>.`
             : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${cierra ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
       : '';
@@ -599,7 +622,7 @@
       ? `<div class="banner hint"><span>${sel.length ? `<b>${esc(lista(S.paneles))}</b>: perímetro cerrado con ${S.bordes.length} elementos. Clic en otro elemento para cambiarlo.` : `Haz clic en las <b>vigas, viguetas de borde o voladizos</b> que forman el perímetro${S.bordes.length ? ` · llevas ${S.bordes.length}, todavía no cierran` : ''}.`}</span>${S.bordes.length ? '<button class="bb" data-act="limpiar">Empezar de nuevo</button>' : ''}</div>`
       : '';
     const enColumna = vecinos.length > 1
-      ? `<div class="banner hint"><span><b>${esc(sel[0].id)}</b> está en una ${linea()} con ${esc(lista(vecinos.filter((x) => x !== sel[0].id)))}. ¿Las viguetas van seguidas?</span><button class="bb" data-act="solo">Solo ${esc(sel[0].id)}</button><button class="bb azul" data-act="toda">Toda la ${linea()} (${vecinos.length} paneles)</button></div>`
+      ? `<div class="banner hint"><span><b>${esc(sel[0].id)}</b> está en una ${linea()} con ${esc(lista(vecinos.filter((x) => x !== sel[0].id)))}. Sus viguetas siguen por ella hasta donde lleguen.</span><button class="bb" data-act="solo">Solo ${esc(sel[0].id)}</button><button class="bb azul" data-act="toda">Toda la ${linea()} (${vecinos.length} paneles)</button></div>`
       : '';
     $('msg').innerHTML = S.editar
       ? `<div class="banner"><span><b>Eliminar viguetas:</b> clic sobre una vigueta para quitarla o restaurarla. Las del modelo (azul oscuro) también se quitan por tramos, de cada lado de la viga que las cruza${partidas ? '. Las que cruzan una viga están partidas: quita el lado que no va' : ''}.</span><button class="bb" data-act="deshacer" ${S.borradas.length + S.quitar.length ? '' : 'disabled'}>Deshacer</button><button class="bb solid" data-act="listo">Listo</button></div>`
@@ -648,7 +671,7 @@
     if (b.dataset.act === 'deshacer') { if (S.quitar.length) S.quitar = S.quitar.slice(0, -1); else S.borradas = S.borradas.slice(0, -1); pedir(); }
     if (b.dataset.act === 'listo') S.editar = false;
     if (b.dataset.act === 'toda') return elegir(enLinea(S.paneles[0]));
-    if (b.dataset.act === 'solo') { S.sinAviso = S.paneles[0]; pintar(); return; }
+    if (b.dataset.act === 'solo') { S.sinAviso = S.paneles[0]; S.borradas = []; pintar(); pedir(); return; }
     if (b.dataset.act === 'limpiar') { S.bordes = []; S.perimetro = []; return elegir([]); }
     if (b.dataset.act === 'cerrar') return cerrarTrazo();
     if (b.dataset.act === 'atras') S.trazo = S.trazo.slice(0, -1);

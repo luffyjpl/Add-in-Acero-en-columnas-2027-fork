@@ -127,12 +127,15 @@ internal sealed class PuenteViguetas
     {
         if (piso is null)
             return (null, false);
-        List<Panel> paneles = piso.PanelesDe(p.Paneles);
+        List<Panel> paneles = piso.ConVacios(piso.PanelesDe(p.Paneles), p.LosVacios, p.Ancho);
         HashSet<string> borradas = p.Borradas.ToHashSet();
         // Donde ya hay una vigueta del modelo, quitada o no, no se propone otra (decisión 28).
         List<(Punto Desde, Punto Hasta)> ocupadas = piso.PiezasDelModelo(paneles).Select(x => (x.Inicio, x.Fin)).ToList();
+        // #954, decisión 28: en Paneles, cada vigueta sigue por su línea por los paneles no elegidos.
+        List<Panel>? resto = p.Prolongar ? piso.Paneles.Where(q => !p.Paneles.Contains(q.Id)).ToList() : null;
+        List<(double Cota, double Desde, double Hasta)>? lineas = p.Prolongar ? piso.LineasExistentes(p.Direccion, paneles) : null;
         PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
-            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas);
+            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas, resto, lineas);
         PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion, paneles));
         bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
         return (p.Seguir || !hay ? siguiendo : Con(null), hay);

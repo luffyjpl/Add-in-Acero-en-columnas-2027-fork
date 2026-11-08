@@ -18,9 +18,13 @@ public sealed record ElegirPiso(string Id, bool ViguetasComoBorde) : MensajeVigu
 /// ids de las piezas de viguetas del modelo que se quitan al crear (<see cref="PiezaModelo"/>, decisión 22).
 /// </summary>
 public sealed record PedirPropuesta(IReadOnlyList<string> Paneles, Direccion Direccion, double EjeAEje, double Ancho, IReadOnlyList<string> Borradas,
-    bool Continuas = true, bool Seguir = true, IReadOnlyList<string>? QuitarModelo = null) : MensajeViguetas
+    bool Continuas = true, bool Seguir = true, IReadOnlyList<string>? QuitarModelo = null, bool Prolongar = false,
+    IReadOnlyList<IReadOnlyList<Punto>>? Vacios = null) : MensajeViguetas
 {
     public IReadOnlyList<string> DelModelo => QuitarModelo ?? [];
+
+    /// <summary>Los vacíos marcados en Por vigas o Paneles (#954, decisión 29).</summary>
+    public IReadOnlyList<IReadOnlyList<Punto>> LosVacios => Vacios ?? [];
 }
 
 public sealed record CrearViguetas(PedirPropuesta Propuesta, string Tipo) : MensajeViguetas;
@@ -71,7 +75,7 @@ public static class ProtocoloViguetas
             return new DesconocidoViguetas();
         List<string> paneles = e.Paneles ?? [];
         PedirPropuesta Pedido() => new(paneles, e.Direccion ?? Direccion.X, e.EjeAEje ?? 0, e.Ancho ?? 0, e.Borradas ?? [], e.Continuas ?? true, e.Seguir ?? true,
-            e.QuitarModelo ?? []);
+            e.QuitarModelo ?? [], e.Prolongar ?? false, (e.Vacios ?? []).Select(Puntos).ToList());
         return e.Tipo switch
         {
             "listo" => new ListoViguetas(),
@@ -192,6 +196,8 @@ public static class ProtocoloViguetas
         public List<string>? Borradas { get; set; }
         public string? TipoVigueta { get; set; }
         public List<ZonaEntrada>? Zonas { get; set; }
+        public bool? Prolongar { get; set; }
+        public List<List<double[]>>? Vacios { get; set; }
     }
 
     private sealed class ZonaEntrada

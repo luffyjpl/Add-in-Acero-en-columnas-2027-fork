@@ -1014,6 +1014,64 @@ public class ViguetasTests
     }
 
     [Fact]
+    public void ElegidoUnPanelLaViguetaSigueHastaAbajoPorLosDemas()
+    {
+        // Revisión del 08-nov, fila 6 (decisión 28): se elige solo el panel de arriba y las viguetas llegan hasta abajo.
+        PisoViguetas piso = ColumnaDeTres();
+        Panel arriba = piso.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+        List<Panel> resto = piso.Paneles.Where(p => p != arriba).ToList();
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([arriba], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces,
+            prolongarPor: resto, lineasExistentes: piso.LineasExistentes(Direccion.Y, [arriba]))!;
+
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal(4, lineas.Count);
+        Assert.All(lineas, l => Assert.Equal((0.0, 9000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+        Assert.Single(p.Tipos);
+        // Sin prolongar («Solo P6»), solo el panel elegido.
+        PropuestaViguetas solo = PlanificadorViguetas.Planificar([arriba], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces)!;
+        Assert.All(solo.Lineas(continuas: true), l => Assert.Equal((6000.0, 9000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+    }
+
+    [Fact]
+    public void LaViguetaQueSigueParaDondeYaHayOtraMuyCerca()
+    {
+        // Decisión 28: en el panel del medio ya hay una vigueta en x = 1,70 m. La de 1,60 m queda a menos de medio eje a
+        // eje: para en la viga; las demás siguen hasta abajo.
+        PisoViguetas piso = ColumnaDeTres();
+        var conVigueta = new PisoViguetas(piso.Piso with
+        {
+            Armazon = [.. piso.Piso.Armazon, new ArmazonPiso("vt", new(1700, 3000), new(1700, 6000), 100, "VT_10X35", false)],
+        }, false);
+        Panel arriba = conVigueta.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([arriba], Direccion.Y, 800, 100, new HashSet<string>(), conVigueta.Cruces,
+            prolongarPor: conVigueta.Paneles.Where(q => q != arriba), lineasExistentes: conVigueta.LineasExistentes(Direccion.Y, [arriba]))!;
+
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal((6000.0, 9000.0), lineas.Where(l => Math.Round(l.Desde.X) == 1600).Select(l => (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))).Single());
+        Assert.All(lineas.Where(l => Math.Round(l.Desde.X) != 1600), l => Assert.Equal((0.0, 9000.0), (Math.Round(l.Desde.Y), Math.Round(l.Hasta.Y))));
+    }
+
+    [Fact]
+    public void UnVacioTambienSeAplicaAUnPanelOPerimetro()
+    {
+        // Revisión del 08-nov, fila 7 (decisión 29): un vacío marcado en el modo Paneles o Por vigas funciona como en Puntos.
+        PisoViguetas piso = ColumnaDeTres();
+        Panel arriba = piso.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+
+        Panel conVacio = Assert.Single(piso.ConVacios([arriba], [Rectangulo(1500, 7000, 2500, 8000)], 100));
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([conVacio], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        Assert.Equal(arriba.Id, conVacio.Id);
+        Assert.Equal(4, p.DeBorde.Count);
+        // Ninguna vigueta pasa por el vacío (libre de y = 6,90 a 8,10 m, de x = 1,40 a 2,60 m).
+        Assert.DoesNotContain(p.Viguetas, v => v.Cota > 1400 && v.Cota < 2600 && v.Desde < 8100 && v.Hasta > 6900);
+        // Un vacío fuera del panel no lo cambia.
+        Assert.Same(arriba, Assert.Single(piso.ConVacios([arriba], [Rectangulo(1500, 1000, 2500, 2000)], 100)));
+    }
+
+    [Fact]
     public void LasCreadasDentroDeLoElegidoNoSonGuia()
     {
         // Reunión del 05-nov: al reemplazar, las nuevas seguían a las que se iban a borrar (decisión 21).
@@ -1101,5 +1159,11 @@ public class ViguetasTests
         Assert.True(c.Propuesta.Seguir);
         Assert.Empty(c.Propuesta.DelModelo);
         Assert.IsType<DesconocidoViguetas>(ProtocoloViguetas.Leer("{roto"));
+        // #954, decisiones 28 y 29: prolongar y vacíos en el pedido.
+        PedirPropuesta conTodo = Assert.IsType<PedirPropuesta>(ProtocoloViguetas.Leer(
+            """{"tipo":"propuesta","paneles":["P1"],"direccion":"Y","ejeAEje":800,"ancho":100,"prolongar":true,"vacios":[[[0,0],[0,10],[10,10],[10,0]]]}"""));
+        Assert.True(conTodo.Prolongar);
+        Assert.Equal(4, Assert.Single(conTodo.LosVacios).Count);
+        Assert.False(c.Propuesta.Prolongar);
     }
 }

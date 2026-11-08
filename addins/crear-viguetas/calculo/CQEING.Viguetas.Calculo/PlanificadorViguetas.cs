@@ -153,7 +153,8 @@ public static class PlanificadorViguetas
     /// </summary>
     public static PropuestaViguetas? Planificar(IEnumerable<Panel> paneles, Direccion direccion, double ejeAEje, double ancho,
         IReadOnlySet<string> borradas, IEnumerable<BordePanel>? cruces = null, IReadOnlyList<double>? guias = null,
-        IEnumerable<(Punto Desde, Punto Hasta)>? ocupadas = null, IEnumerable<BordePanel>? divisiones = null)
+        IEnumerable<(Punto Desde, Punto Hasta)>? ocupadas = null, IEnumerable<BordePanel>? divisiones = null,
+        IEnumerable<Panel>? prolongarPor = null, IEnumerable<(double Cota, double Desde, double Hasta)>? lineasExistentes = null)
     {
         bool repartoEnY = direccion == Direccion.X;
         List<BordePanel> vigas = cruces?.ToList() ?? [];
@@ -228,9 +229,53 @@ public static class PlanificadorViguetas
         }
         if (repartos.Count == 0)
             return null;
+        if (prolongarPor is not null)
+            piezas.AddRange(Prolongar(piezas, prolongarPor.ToList(), lineasExistentes?.ToList() ?? [], repartoEnY, ejeAEje, vigas, borradas, ancho));
         List<ViguetaBorde> bordes = todos.SelectMany(p => deBorde[p.Id]).ToList();
         (List<Vigueta> conTipo, List<TipoVigueta> tipos) = Tipificar(piezas);
         return new PropuestaViguetas(direccion, ancho, repartos, conTipo, tipos, bordes);
+    }
+
+    /// <summary>
+    /// Decisión 28: cada vigueta propuesta sigue por su línea, de los dos lados, por los paneles de
+    /// <paramref name="resto"/> que la continúan a través de una viga. Para donde ya hay una vigueta en esa línea o donde
+    /// quedaría a menos de medio eje a eje de otra (<paramref name="existentes"/>), o si la pieza se eliminó.
+    /// </summary>
+    private static List<Vigueta> Prolongar(List<Vigueta> piezas, List<Panel> resto, List<(double Cota, double Desde, double Hasta)> existentes,
+        bool repartoEnY, double ejeAEje, List<BordePanel> vigas, IReadOnlySet<string> borradas, double ancho)
+    {
+        var nuevas = new List<Vigueta>();
+        bool Libre(double cota, double d, double h) => !existentes.Any(o =>
+            Math.Min(o.Hasta, h) - Math.Max(o.Desde, d) > PiezaMinima && Math.Abs(o.Cota - cota) < ejeAEje / 2);
+        foreach (List<Vigueta> cadena in PropuestaViguetas.Cadenas(piezas.Where(v => !v.Borrada)))
+        {
+            double cota = cadena[0].Cota;
+            var usados = new HashSet<string>();
+            void Avanzar(double extremo, bool haciaArriba)
+            {
+                while (true)
+                {
+                    Panel? siguiente = null;
+                    (double D, double H) tramo = default;
+                    foreach (Panel q in resto.Where(q => !usados.Contains(q.Id)))
+                        foreach ((double d, double h) in Geometria.CortesAnillos(q.AnillosEje, repartoEnY, cota))
+                            if (Math.Abs((haciaArriba ? d : h) - extremo) <= MismaLinea)
+                                (siguiente, tramo) = (q, (d, h));
+                    if (siguiente is null || !Libre(cota, tramo.D, tramo.H))
+                        return;
+                    usados.Add(siguiente.Id);
+                    string id = $"{siguiente.Id}:L{Math.Round(cota)}";
+                    List<Vigueta> deEste = Piezas(siguiente, cota, id, null, repartoEnY, vigas, borradas, ancho).ToList();
+                    nuevas.AddRange(deEste);
+                    if (deEste.Count == 0 || deEste.Any(v => v.Borrada))
+                        return;
+                    extremo = haciaArriba ? tramo.H : tramo.D;
+                }
+            }
+            Avanzar(cadena[^1].EjeHasta, haciaArriba: true);
+            Avanzar(cadena[0].EjeDesde, haciaArriba: false);
+        }
+        return nuevas;
     }
 
     /// <summary>
