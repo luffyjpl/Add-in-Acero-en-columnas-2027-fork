@@ -257,6 +257,19 @@
     (en X o en Y, 5° de tolerancia, como la decisión 20) con el anterior **no se agrega**: el aviso pide marcar primero
     la esquina. Tampoco se cierra si el último y el primero no quedan en línea. No se completa la esquina solo: con dos
     puntos en diagonal hay dos esquinas posibles y el add-in no sabe cuál es la buena (el usuario lo aceptó así).
+28. **En Paneles, la vigueta sigue por su línea hasta donde llegue** (revisión del 08-nov, fila 6: «por qué el voladizo
+    superior solo crea una parte y no hasta abajo»; el usuario: que se haga lo que dijeron). Al elegir **un** panel en el
+    modo Paneles (con varios elegidos no, porque ahí no está el botón «Solo…»), cada vigueta propuesta se prolonga, de los dos lados, por los paneles vecinos no elegidos de esa misma línea,
+    a través de las vigas, panel por panel. Para en el primer panel donde ya hay una vigueta en esa línea (a 3 cm o menos:
+    ya sigue) o donde quedaría a menos de medio eje a eje de otra que ya está. Las creadas que «Crear» va a reemplazar no
+    cuentan. Con **«Solo P6»** del aviso se crea solo ese panel. Por vigas y Puntos no se prolongan: ahí el contorno lo
+    marca el usuario. `PlanificadorViguetas.Prolongar`, `PisoViguetas.LineasExistentes`, mensaje `prolongar`.
+29. **«＋ Vacío» también en Por vigas y Paneles** (revisión del 08-nov, fila 7: la vigueta atraviesa voladizos y huecos al
+    elegir la columna entera, y había que eliminarlas a mano). El add-in no puede adivinar un hueco que el modelo no tiene
+    dibujado: se marca con puntos, igual que en el modo Puntos (sin diagonales, decisión 27). Cada vacío se aplica al
+    panel o perímetro elegido que contiene su centro, con las mismas reglas de las decisiones 5, 11, 18, 22 y 25. La
+    página los manda en cada pedido (`vacios`) y C# los aplica con `PisoViguetas.ConVacios`. Se quitan con su ×; al
+    cambiar de modo o de piso se borran.
 
 ## Plan paso a paso
 
@@ -500,3 +513,16 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin crear-
       - [x] `dotnet test CQEING-Addins.sln`: 0 fallos (59 de viguetas). Compila para 2026 sin advertencias. Desplegado para
             2027 (Revit cerrado, comprobado).
       - [ ] Probar en Revit (el usuario pidió publicarlo el 06-nov: se publica como `crear-viguetas-v1.2.1`; la prueba en Revit queda a su cargo).
+- [ ] 08-nov, revisión (filas 6 y 7): decisiones 28 y 29. Rama `viguetas-prolongar-y-vacios-954` desde `main`.
+      - [x] 28: `PlanificadorViguetas.Prolongar`, `PisoViguetas.LineasExistentes`, `PedirPropuesta.Prolongar`; la página
+            manda `prolongar` en Paneles salvo con «Solo P…». Pruebas `ElegidoUnPanelLaViguetaSigueHastaAbajoPorLosDemas` y
+            `LaViguetaQueSigueParaDondeYaHayOtraMuyCerca`.
+      - [x] 29: `PisoViguetas.ConVacios` y `ConHuecos` (el mismo cálculo que las zonas), `PedirPropuesta.Vacios`; en la
+            página, «＋ Vacío» con su lista en Por vigas y Paneles. Prueba `UnVacioTambienSeAplicaAUnPanelOPerimetro`.
+      - [x] En el navegador (demo, viendo los mensajes que manda la página): en Paneles `prolongar` va en true y con «Solo
+            P1» en false; los puntos aparecen solo al marcar el vacío; un clic en otro panel no cambia lo elegido; el vacío
+            se dibuja, va en el pedido y se quita con su ×; en Por vigas también, sin prolongar. La demo no calcula ni
+            la prolongación ni los vacíos: eso lo cubren las pruebas de C#.
+      - [x] `dotnet test CQEING-Addins.sln`: 0 fallos (62 de viguetas). Compila para 2026 sin advertencias. Desplegado
+            para 2027 (Revit cerrado, comprobado).
+      - [ ] Probar en Revit (el usuario pidió publicarlo el 08-nov sin esa prueba: se publica como `crear-viguetas-v1.3.0`).

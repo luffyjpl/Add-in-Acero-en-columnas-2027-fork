@@ -155,11 +155,31 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         (List<Punto> libre, List<Punto> apoyo, List<(Punto, Punto)> bordes) = Correr(eje, ancho);
         if (libre.Count < 3 || Geometria.Area(libre) <= 0)
             return null;
+        var panel = new Panel(z.Id, eje, libre, [], [], bordes, [apoyo], []);
+        return ConHuecos(panel, z.Vacios.Where(v => v.Count >= 3), ancho);
+    }
+
+    /// <summary>
+    /// Decisión 29: los paneles elegidos en Por vigas o Paneles con sus vacíos: cada vacío va en el panel que contiene su
+    /// centro, con las mismas reglas que en una zona por puntos.
+    /// </summary>
+    public List<Panel> ConVacios(IEnumerable<Panel> paneles, IReadOnlyList<IReadOnlyList<Punto>> vacios, double ancho)
+    {
+        List<IReadOnlyList<Punto>> validos = vacios.Where(v => v.Count >= 3).ToList();
+        return paneles.Select(p =>
+        {
+            List<IReadOnlyList<Punto>> suyos = validos.Where(v => Geometria.Dentro(p.Eje, Geometria.Centro(v))).ToList();
+            return suyos.Count == 0 ? p : ConHuecos(p with { Apoyos = [p.Eje], HuecosEje = [], HuecosLibre = [], BordesVacios = [] }, suyos, ancho);
+        }).ToList();
+    }
+
+    private Panel ConHuecos(Panel panel, IEnumerable<IReadOnlyList<Punto>> vacios, double ancho)
+    {
         var huecosEje = new List<IReadOnlyList<Punto>>();
         var huecosLibre = new List<IReadOnlyList<Punto>>();
-        var apoyos = new List<IReadOnlyList<Punto>> { apoyo };
+        var apoyos = new List<IReadOnlyList<Punto>>(panel.Apoyos!);
         var bordesVacios = new List<(Punto, Punto)>();
-        foreach (IReadOnlyList<Punto> v in z.Vacios.Where(v => v.Count >= 3))
+        foreach (IReadOnlyList<Punto> v in vacios)
         {
             // Horario: correr «hacia adentro» del anillo agranda el vacío, o sea, va hacia adentro de la losa.
             List<Punto> hueco = Orientar(Enderezar(v.Select(AlEje).ToList()), antihorario: false);
@@ -169,7 +189,7 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
             apoyos.Add(huecoApoyo);
             bordesVacios.AddRange(bordesHueco);
         }
-        return new Panel(z.Id, eje, libre, huecosEje, huecosLibre, bordes, apoyos, bordesVacios);
+        return panel with { HuecosEje = huecosEje, HuecosLibre = huecosLibre, Apoyos = apoyos, BordesVacios = bordesVacios };
     }
 
     /// <summary>Un lado va «casi derecho» si se inclina esto (tangente, unos 5°) o menos respecto de X o de Y.</summary>
@@ -372,6 +392,21 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
             if (juntas.Count == 0 || c - juntas[^1] > JuntarGuias)
                 juntas.Add(c);
         return juntas;
+    }
+
+    /// <summary>
+    /// Decisión 28: las viguetas que ya están, paralelas a <paramref name="direccion"/>: su cota y su tramo a lo largo. No
+    /// cuentan las creadas que pasan por <paramref name="elegidos"/>, porque «Crear» las va a reemplazar.
+    /// </summary>
+    public List<(double Cota, double Desde, double Hasta)> LineasExistentes(Direccion direccion, IEnumerable<Panel> elegidos)
+    {
+        bool enX = direccion == Direccion.X;
+        HashSet<string> reemplazo = elegidos.SelectMany(CreadasEn).Select(a => a.Id).ToHashSet();
+        return Piso.Armazon.Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX) && !reemplazo.Contains(a.Id))
+            .Select(a => enX
+                ? (a.En(0.5).Y, Math.Min(a.Desde.X, a.Hasta.X), Math.Max(a.Desde.X, a.Hasta.X))
+                : (a.En(0.5).X, Math.Min(a.Desde.Y, a.Hasta.Y), Math.Max(a.Desde.Y, a.Hasta.Y)))
+            .ToList();
     }
 
     /// <summary>Tramos (mm) de menos de esto no se dejan como resto ni como pieza: quedarían pegados a la viga.</summary>
