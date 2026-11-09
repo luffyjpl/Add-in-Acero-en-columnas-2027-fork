@@ -105,18 +105,28 @@ public static class GeneradorLongitudinal
         ganchoPropio.Traza = linea => traza.AppendLine(linea);
 #endif
 
-        foreach (ColumnaPlan columnaPlan in opciones.Plan.Columnas)
+        // Plan del 07-nov, decisión 5: la forma recta la elige el add-in, no
+        // Revit entre las que tenga el modelo (ver FormaRectaLongitudinal).
+        BarraContinua.FormaRecta = FormaRectaLongitudinal.Buscar(doc);
+        try
         {
-            try
+            foreach (ColumnaPlan columnaPlan in opciones.Plan.Columnas)
             {
-                GenerarColumna(doc, columnaPlan, barrasPorNombre, ganchosPorNombre, formaEstribo, formasRechazadas, propios, tiposEmpalme, ganchoPropio, cacheHost, res);
+                try
+                {
+                    GenerarColumna(doc, columnaPlan, barrasPorNombre, ganchosPorNombre, formaEstribo, formasRechazadas, propios, tiposEmpalme, ganchoPropio, cacheHost, res);
+                }
+                catch (Exception ex)
+                {
+                    string marca = columnaPlan.Contexto?.Marca ?? columnaPlan.Id;
+                    res.Avisos.Add($"{marca} (longitudinal): {GeometriaSeccion.Explicar(ex)}");
+                    traza.AppendLine($"EXCEPCIÓN en {marca}: {ex}");
+                }
             }
-            catch (Exception ex)
-            {
-                string marca = columnaPlan.Contexto?.Marca ?? columnaPlan.Id;
-                res.Avisos.Add($"{marca} (longitudinal): {GeometriaSeccion.Explicar(ex)}");
-                traza.AppendLine($"EXCEPCIÓN en {marca}: {ex}");
-            }
+        }
+        finally
+        {
+            BarraContinua.FormaRecta = null;
         }
 
 #if DEBUG
@@ -655,8 +665,11 @@ public static class GeneradorLongitudinal
                 "para que no termine del lado del vecino.");
 
         if (piezas > 0)
+        {
+            res.ColumnasConLongitudinal.Add(columnaPlan.Id);
             res.Detalles.Add(
                 $"{contexto.Marca}: {anillo.Count} barra(s) longitudinal(es) de punta a punta, {piezas} pieza(s) con sus traslapos.");
+        }
 
         GenerarMenores(
             doc, columnaPlan, contexto, cfg, barrasPorNombre, ganchosPorNombre, formaEstribo, formasRechazadas, propios,

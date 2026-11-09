@@ -42,6 +42,7 @@ internal sealed class PuenteColumnas
         // Storage): guardarlas necesita transacción, y se hace en la cola.
         var almacen = new AlmacenConfiguracionesRevit(documento);
         persistir.Almacen = almacen;
+        persistir.Documento = documento;
         persistir.AlFallar = motivo => Enviar(sesion!.Avisar($"No se pudieron guardar las configuraciones en el modelo: {motivo}"));
         almacen.CambiosPendientes += () => cola.Encolar(persistir.Execute);
 
@@ -50,6 +51,8 @@ internal sealed class PuenteColumnas
             Modelo = documento.Title,
         };
 
+        // Solo se genera en el proyecto del tablero (decisión 6 del plan del 07-nov).
+        generar.Documento = documento;
         generar.AlTerminar = resultado => Enviar(sesion.ResultadoGeneracion(resultado));
         generar.AlFallar = mensaje => Enviar(sesion.ErrorGeneracion(mensaje));
         previa3D.Documento = documento;
@@ -107,6 +110,10 @@ internal sealed class PuenteColumnas
             sesion.GeneracionPedida = null;
             generar.Opciones = opciones;
             generar.Execute(app);
+
+            // Lo generado ya se ve de verdad en «CQEING Columnas 3D» (decisión 8):
+            // el dibujo de la vista previa se quita para que no se mezclen.
+            previa3D.Olvidar();
             app.ActiveUIDocument?.RefreshActiveView();
         }
     }

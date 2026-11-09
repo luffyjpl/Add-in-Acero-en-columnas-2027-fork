@@ -1,5 +1,6 @@
 namespace practicacq.Logica;
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
@@ -82,6 +83,47 @@ internal static class Vista3DColumna
         uidoc.ActiveView = vista;
         if (caja is not null && uidoc.GetOpenUIViews().FirstOrDefault(u => u.ViewId == vista.Id) is UIView abierta)
             abierta.ZoomAndCenterRectangle(caja.Min, caja.Max);
+    }
+
+    /// <summary>La vista del add-in, o null si todavía no se creó.</summary>
+    private static View3D? Buscar(Document doc) =>
+        new FilteredElementCollector(doc).OfClass(typeof(View3D)).Cast<View3D>()
+            .FirstOrDefault(v => !v.IsTemplate && v.Name == Tubos3D.NombreVista);
+
+    /// <summary>
+    /// Después de generar (decisiones 8 y 10 de
+    /// docs/planes/2026-11-07-estribos-centrados-y-fallas-santiago.md): vuelve
+    /// a mostrar la armadura en la vista del add-in, que la ocultaba para la
+    /// vista previa. Dentro de una transacción abierta.
+    /// </summary>
+    public static void MostrarArmadura(Document doc)
+    {
+        try
+        {
+            var armadura = new ElementId(BuiltInCategory.OST_Rebar);
+            if (Buscar(doc) is View3D vista && vista.CanCategoryBeHidden(armadura) && vista.GetCategoryHidden(armadura))
+                vista.SetCategoryHidden(armadura, false);
+        }
+        catch (Exception)
+        {
+            // Solo afecta lo que se ve: no puede tumbar la generación.
+        }
+    }
+
+    /// <summary>
+    /// Antes de dibujar la vista previa: si la armadura quedó visible (después
+    /// de generar), se vuelve a ocultar para que no se mezcle con el dibujo.
+    /// Abre su propia transacción: sin ninguna abierta.
+    /// </summary>
+    public static void OcultarArmadura(Document doc)
+    {
+        var armadura = new ElementId(BuiltInCategory.OST_Rebar);
+        if (Buscar(doc) is not View3D vista || !vista.CanCategoryBeHidden(armadura) || vista.GetCategoryHidden(armadura)) return;
+
+        using var t = new Transaction(doc, "Armado de columnas: vista 3D");
+        t.Start();
+        vista.SetCategoryHidden(armadura, true);
+        t.Commit();
     }
 
     /// <summary>

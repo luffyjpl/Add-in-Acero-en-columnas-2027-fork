@@ -104,17 +104,41 @@ void SeparacionesHasta(IReadOnlyList<double> z, double maximo, string que)
         Cierto(z[i] - z[i - 1] > 1e-9 && z[i] - z[i - 1] <= maximo + 1e-9, $"{que}: separación {z[i] - z[i - 1]} entre {i - 1} y {i}");
 }
 
-Probar("reparto_uniforme", () =>
+// Regla del 07-nov (docs/planes/2026-11-07-estribos-centrados-y-fallas-santiago.md):
+// todos los espacios a la separación exacta, sin espacio corto, y el grupo centrado.
+void Exactas(IReadOnlyList<double> z, double s, string que)
 {
+    for (int i = 1; i < z.Count; i++) Igual(s, z[i] - z[i - 1], $"{que}: espacio {i}");
+}
+
+Probar("reparto_uniforme_centrado", () =>
+{
+    // De 0.05475 a 2.94525: 2.8905 libres, 14 espacios de 0.20 (2.80) y 0.0905 que sobran.
     RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.0, Uniforme(0.20), Solo(9.5));
-    Igual(0.05475, r.Alturas[0], "primera");
-    Igual(2.94525, r.Alturas[^1], "última");
-    Cierto(r.Zonas.Count == 1 && r.Zonas[0].Nombre == "uniforme", "una zona uniforme");
-    Cierto(r.Zonas[0].Cantidad == r.Alturas.Count, "cantidad de la zona");
-    SeparacionesHasta(r.Alturas, 0.20, "uniforme");
-    double s = r.Alturas[1] - r.Alturas[0];
-    for (int i = 2; i < r.Alturas.Count; i++) Igual(s, r.Alturas[i] - r.Alturas[i - 1], $"separación {i}");
+    Cierto(r.Alturas.Count == 15, $"{r.Alturas.Count} estribos");
+    Exactas(r.Alturas, 0.20, "uniforme");
+    Igual(0.05475 + 0.0905 / 2, r.Alturas[0], "primera");
+    Igual(3.0 - r.Alturas[^1], r.Alturas[0], "los dos bordes iguales");
+    Cierto(r.Zonas.Count == 1 && r.Zonas[0].Nombre == "uniforme" && r.Corridas.Count == 1, "una zona, un conjunto");
     Cierto(r.Aviso is null, "sin aviso");
+});
+
+// El ejemplo de Luciano: un nudo donde salían 3 a la separación y uno más pegado.
+Probar("reparto_nudo_sin_estribo_pegado", () =>
+{
+    // Nudo de 0.45 a 0.15: 0.3405 libres -> 2 espacios de 0.15 (antes 3 estribos y un cuarto a 0.04).
+    RepartoEstribos.Resultado r = RepartoEstribos.Calcular(1.0, 1.45, Uniforme(0.15), Solo(9.5));
+    Cierto(r.Alturas.Count == 3, $"{r.Alturas.Count} estribos");
+    Exactas(r.Alturas, 0.15, "nudo");
+    Igual(1.45 - r.Alturas[^1], r.Alturas[0] - 1.0, "centrado");
+    Cierto(r.Alturas[0] - 1.0 >= 0.05475 - 1e-9, "a 5 cm o más del borde");
+});
+
+Probar("reparto_mas_corto_que_una_separacion", () =>
+{
+    RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 0.20, Uniforme(0.15), Solo(9.5));
+    Cierto(r.Alturas.Count == 1, $"{r.Alturas.Count} estribos");
+    Igual(0.10, r.Alturas[0], "en el medio");
 });
 
 Probar("reparto_confinado", () =>
@@ -122,13 +146,18 @@ Probar("reparto_confinado", () =>
     RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.0, Confinado(0.50, 0.07, 0.14), Solo(9.5));
     Cierto(string.Join(",", r.Zonas.Select(z => z.Nombre)) == "confinado inferior,zona central,confinado superior",
         string.Join(",", r.Zonas.Select(z => z.Nombre)));
-    Cierto(r.Alturas.Distinct().Count() == r.Alturas.Count, "sin alturas repetidas");
     Cierto(r.Zonas.Sum(z => z.Cantidad) == r.Alturas.Count, "las zonas suman el total");
-    Igual(0.05475 + 0.50, r.Alturas[r.Zonas[0].Cantidad], "primera de la zona central");
-    Igual(2.94525, r.Alturas[^1], "última");
-    SeparacionesHasta(r.Alturas.Take(r.Zonas[0].Cantidad + 1).ToList(), 0.07, "confinado inferior");
-    SeparacionesHasta(r.Alturas.TakeLast(r.Zonas[2].Cantidad).ToList(), 0.07, "confinado superior");
-    SeparacionesHasta(r.Alturas, 0.14, "todo el tramo");
+    Cierto(r.Corridas.Count == 3, $"{r.Corridas.Count} conjuntos");
+    RepartoEstribos.Zona abajo = r.Zonas[0], centro = r.Zonas[1], arriba = r.Zonas[2];
+    Cierto(abajo.Cantidad == 8 && arriba.Cantidad == 8, $"confinados {abajo.Cantidad} y {arriba.Cantidad}");
+    Igual(0.05475, abajo.Alturas[0], "el de abajo a 5 cm");
+    Igual(2.94525, arriba.Alturas[^1], "el de arriba a 5 cm");
+    Exactas(abajo.Alturas, 0.07, "confinado inferior");
+    Exactas(arriba.Alturas, 0.07, "confinado superior");
+    Exactas(centro.Alturas, 0.14, "central");
+    double antes = centro.Alturas[0] - abajo.Alturas[^1], despues = arriba.Alturas[0] - centro.Alturas[^1];
+    Igual(antes, despues, "central centrada");
+    Cierto(antes >= 0.07 - 1e-9 && antes < 0.07 + 0.07 + 1e-9, $"transición {antes}");
 });
 
 Probar("reparto_confinado_sin_zona_central", () =>
@@ -136,7 +165,20 @@ Probar("reparto_confinado_sin_zona_central", () =>
     RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.0, Confinado(1.50, 0.07, 0.14), Solo(9.5));
     Cierto(r.Zonas.Count == 1 && r.Zonas[0].Nombre == "confinado (sin zona central)", "una zona sin central");
     Cierto(r.Aviso is not null, "con aviso");
-    SeparacionesHasta(r.Alturas, 0.07, "confinado de punta a punta");
+    Exactas(r.Alturas, 0.07, "confinado de punta a punta");
+    Igual(3.0 - r.Alturas[^1], r.Alturas[0], "centrado");
+});
+
+Probar("reparto_central_sin_lugar", () =>
+{
+    // L1 0.30 a 0.10: los confinados llegan a 0.35475 y 0.64525; entre ellos 0.29, menos de 2 × 0.10... no:
+    // 0.2905 >= 0.20, así que va uno solo en el medio. Con L1 0.35 no entra ninguno.
+    RepartoEstribos.Resultado uno = RepartoEstribos.Calcular(0, 1.0, Confinado(0.30, 0.10, 0.20), Solo(9.5));
+    Cierto(uno.Zonas.Single(z => z.Nombre == "zona central").Cantidad == 1, "uno en el medio");
+    Igual(0.5, uno.Zonas.Single(z => z.Nombre == "zona central").Alturas[0], "en el medio");
+    RepartoEstribos.Resultado ninguno = RepartoEstribos.Calcular(0, 1.0, Confinado(0.40, 0.10, 0.20), Solo(9.5));
+    Cierto(ninguno.Zonas.All(z => z.Nombre != "zona central"), "sin central");
+    SeparacionesHasta(ninguno.Alturas, 0.20, "todo el tramo");
 });
 
 Probar("reparto_tramo_sin_altura_libre", () =>
@@ -151,23 +193,16 @@ Probar("reparto_espaciado_cero", () =>
     Cierto(RepartoEstribos.Calcular(0, 3.0, new ConfigTramo { Modo = ModoEstribo.Confinado }, Solo(9.5)).Alturas.Count == 0, "confinado en 0");
 });
 
-// Con estribos menores, el reparto deja lugar al paquete (5 cm al borde del paquete).
+// Con estribos menores, el reparto deja lugar al paquete (5 cm al borde del paquete, como mínimo).
 Probar("reparto_con_paquete", () =>
 {
     var grapa = new EstriboMenor { Forma = FormaMenor.GrapaC, Eje = EjeCaja.Fila, Desde = 0, Hasta = 0 };
     PaqueteEstribos.Paquete p = PaqueteEstribos.Calcular(new[] { grapa }, 9.5, _ => 9.5);
     RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.0, Uniforme(0.20), p);
-    Igual(0.05 + p.Debajo + p.DesplazamientoPrincipal, r.Alturas[0], "primera");
-    Igual(3.0 - 0.05 - p.Encima + p.DesplazamientoPrincipal, r.Alturas[^1], "última");
-});
-
-// La cuenta de un grupo, sin unidades (el generador la llama en pies).
-Probar("cantidad_en_grupo", () =>
-{
-    Cierto(RepartoEstribos.CantidadEnGrupo(1.0, 0.20, incluirUltimo: true) == 6, "1 m @ 20 -> 6");
-    Cierto(RepartoEstribos.CantidadEnGrupo(1.0, 0.20, incluirUltimo: false) == 5, "sin el último -> 5");
-    Cierto(RepartoEstribos.CantidadEnGrupo(1.05, 0.20, incluirUltimo: true) == 7, "1,05 m @ 20 -> 7");
-    Cierto(RepartoEstribos.CantidadEnGrupo(1.0, 0, incluirUltimo: true) == 0, "espaciado 0 -> 0");
+    (double zInf, double zSup) = RepartoEstribos.Limites(0, 3.0, p);
+    Cierto(r.Alturas[0] >= zInf - 1e-9 && r.Alturas[^1] <= zSup + 1e-9, "dentro de los límites");
+    Igual(zSup - r.Alturas[^1], r.Alturas[0] - zInf, "centrado");
+    Exactas(r.Alturas, 0.20, "con paquete");
 });
 
 // Los límites del reparto, compartidos con GeneradorArmado.GenerarTramo.

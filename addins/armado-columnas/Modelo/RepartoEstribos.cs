@@ -5,37 +5,28 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Alturas de los estribos de un tramo, sin Revit (#256,
-/// docs/planes/2026-11-05-largos-y-estribos-columnas-245-256.md, decisiones 2
-/// y 9): la misma regla que vigas (<c>DistribuidorEstribos.Repartir</c>,
-/// commit e993767). El primero y el último a 5 cm del borde del paquete, y
-/// entre medio cada zona a su separación exacta: lo que sobra queda en un
-/// último espacio más corto, nunca más largo. Si ese espacio da menos de 5 cm,
-/// los dos últimos se igualan para que no queden dos estribos casi juntos.
+/// Alturas de los estribos de un tramo, sin Revit. Regla del 07-nov
+/// (docs/planes/2026-11-07-estribos-centrados-y-fallas-santiago.md, decisiones
+/// 2 y 3; reemplaza la decisión 9 del #256): todos los espacios a la
+/// separación exacta, sin espacio corto. Los 5 cm al borde del paquete son un
+/// mínimo: van los estribos que entren y el grupo se centra, así que los
+/// bordes pueden quedar a más de 5 cm.
 ///
-/// Las confinadas van exactas desde su nudo; la central, exacta desde el
-/// último confinado de abajo, con el espacio corto contra el primero del
-/// confinado de arriba (como el centro de una luz en vigas).
+/// Las confinadas van exactas desde 5 cm de su punta; la central, exacta y
+/// centrada entre el último confinado de abajo y el primero de arriba, sin
+/// quedar a menos de la separación del confinado de ninguno.
 ///
-/// Antes cada grupo era un <c>SetLayoutAsMaximumSpacing</c> de Revit, que
-/// reparte parejo sin pasarse: pedido cada 0.14 salía cada 0.13.
+/// Columnas ya no sigue a vigas (<c>DistribuidorEstribos.Repartir</c> deja el
+/// último espacio más corto): decisión 1 del plan del 07-nov.
 ///
 /// La usan la vista previa (para mostrar lo mismo que se va a generar) y
 /// <c>GeneradorArmado</c>, que crea un conjunto de Revit por cada
-/// <see cref="Corrida"/>: el estribo del espacio corto, si no es el borde de
-/// una zona confinada, queda en un conjunto aparte, como en vigas.
+/// <see cref="Corrida"/>: con esta regla, uno por zona.
 /// </summary>
 public static class RepartoEstribos
 {
     /// <summary>Del borde del tramo al borde del paquete, en cada punta.</summary>
     public const double SeparacionExtremosMetros = 0.05;
-
-    /// <summary>
-    /// El espacio más corto que se deja entre dos estribos, en metros: si lo
-    /// que sobra al final de una zona es menos, los dos últimos espacios se
-    /// igualan (como <c>EspacioMinimo</c> de vigas, 50 mm).
-    /// </summary>
-    public const double EspacioMinimoMetros = 0.05;
 
     private const double Tolerancia = 1e-6;
 
@@ -44,7 +35,7 @@ public static class RepartoEstribos
 
     /// <param name="Nombre">El rótulo del grupo: «uniforme», «confinado inferior», «zona central», «confinado superior» o «confinado (sin zona central)».</param>
     /// <param name="ZDesde">Donde empieza la zona configurada (en las confinadas, L1 desde su punta).</param>
-    /// <param name="Espaciado">La separación pedida: la real entre todos, salvo el último espacio, que puede ser más corto.</param>
+    /// <param name="Espaciado">La separación pedida: la real entre todos los estribos de la zona.</param>
     /// <param name="Alturas">Los estribos de esta zona, de abajo hacia arriba.</param>
     public sealed record Zona(string Nombre, double ZDesde, double ZHasta, double Espaciado, IReadOnlyList<double> Alturas)
     {
@@ -91,28 +82,30 @@ public static class RepartoEstribos
         if (cfg.Modo == ModoEstribo.Uniforme)
         {
             if (cfg.EspaciadoUniforme > Tolerancia)
-                Agregar("uniforme", zInf, zSup, cfg.EspaciadoUniforme, Repartir(zInf, zSup, cfg.EspaciadoUniforme));
+                Agregar("uniforme", zInf, zSup, cfg.EspaciadoUniforme, Centrados(zInf, zSup, cfg.EspaciadoUniforme));
         }
         else if (cfg.LongitudConfinamiento * 2 >= altura - Tolerancia)
         {
             aviso = "la longitud de confinamiento ×2 no deja zona central; se armó confinado de punta a punta.";
             if (cfg.EspaciadoConfinado > Tolerancia)
-                Agregar("confinado (sin zona central)", zInf, zSup, cfg.EspaciadoConfinado, Repartir(zInf, zSup, cfg.EspaciadoConfinado));
+                Agregar("confinado (sin zona central)", zInf, zSup, cfg.EspaciadoConfinado, Centrados(zInf, zSup, cfg.EspaciadoConfinado));
         }
         else if (cfg.EspaciadoConfinado > Tolerancia)
         {
-            double sc = cfg.EspaciadoConfinado, l1 = cfg.LongitudConfinamiento;
+            // Decisión 3: los confinados fijos desde 5 cm de cada punta, tantos
+            // como entren en L1; la central centrada entre ellos.
+            double sc = cfg.EspaciadoConfinado, sn = cfg.EspaciadoNoConfinado, l1 = cfg.LongitudConfinamiento;
             int espacios = (int)Math.Floor(l1 / sc + Tolerancia);
-            double zFinInferior = zInf + espacios * sc, zInicioSuperior = zSup - espacios * sc;
+            double ultimoInferior = zInf + espacios * sc, primeroSuperior = zSup - espacios * sc;
 
             List<double> inferior = Enumerable.Range(0, espacios + 1).Select(i => zInf + i * sc).ToList();
-            List<double> superior = Enumerable.Range(0, espacios + 1).Select(i => zSup - (espacios - i) * sc).ToList();
-            List<double> central = cfg.EspaciadoNoConfinado > Tolerancia
-                ? Repartir(zFinInferior, zInicioSuperior, cfg.EspaciadoNoConfinado).Skip(1).SkipLast(1).ToList()
+            List<double> superior = Enumerable.Range(0, espacios + 1).Select(i => primeroSuperior + i * sc).ToList();
+            List<double> central = sn > Tolerancia
+                ? Centrados(ultimoInferior + sc, primeroSuperior - sc, sn, vacioSiNoEntra: true).ToList()
                 : new List<double>();
 
             Agregar("confinado inferior", zInf, zInf + l1, sc, inferior);
-            Agregar("zona central", zInf + l1, zSup - l1, cfg.EspaciadoNoConfinado, central);
+            Agregar("zona central", zInf + l1, zSup - l1, sn, central);
             Agregar("confinado superior", zSup - l1, zSup, sc, superior);
         }
 
@@ -131,25 +124,24 @@ public static class RepartoEstribos
          zSuperior - SeparacionExtremosMetros - paquete.Encima + paquete.DesplazamientoPrincipal);
 
     /// <summary>
-    /// De <paramref name="desde"/> a <paramref name="hasta"/> (los dos con
-    /// estribo) cada <paramref name="separacion"/>, con lo que sobra en el
-    /// último espacio. Si sobra menos de <see cref="EspacioMinimoMetros"/>,
-    /// los dos últimos espacios se igualan para que no queden dos estribos
-    /// casi juntos: ninguno pasa de la separación. Copia de
-    /// <c>DistribuidorEstribos.Repartir</c> de vigas, en metros.
+    /// Entre <paramref name="desde"/> y <paramref name="hasta"/>, todos los
+    /// estribos que entren cada <paramref name="separacion"/> exacta, con el
+    /// grupo centrado: lo que sobra (menos de una separación) se reparte mitad
+    /// en cada punta. Si el largo es menor que una separación va uno solo, en
+    /// el medio; con <paramref name="vacioSiNoEntra"/> y un largo negativo no
+    /// va ninguno (la zona central sin lugar). Decisión 2 del plan del 07-nov.
     /// </summary>
-    public static IReadOnlyList<double> Repartir(double desde, double hasta, double separacion)
+    public static IReadOnlyList<double> Centrados(double desde, double hasta, double separacion, bool vacioSiNoEntra = false)
     {
         double largo = hasta - desde;
+        if (largo < -Tolerancia)
+            return vacioSiNoEntra ? Array.Empty<double>() : new[] { (desde + hasta) / 2 };
         if (largo <= Tolerancia)
-            return new[] { desde };
-        int espacios = (int)Math.Ceiling(largo / separacion - Tolerancia);
-        List<double> distancias = Enumerable.Range(0, espacios).Select(i => i * separacion).ToList();
-        double sobra = largo - (espacios - 1) * separacion;
-        if (espacios > 1 && sobra < EspacioMinimoMetros - Tolerancia)
-            distancias[^1] = largo - (separacion + sobra) / 2;
-        distancias.Add(largo);
-        return distancias.Select(x => desde + x).ToList();
+            return new[] { (desde + hasta) / 2 };
+
+        int espacios = (int)Math.Floor(largo / separacion + Tolerancia);
+        double primero = desde + (largo - espacios * separacion) / 2;
+        return Enumerable.Range(0, espacios + 1).Select(i => primero + i * separacion).ToList();
     }
 
     /// <summary>

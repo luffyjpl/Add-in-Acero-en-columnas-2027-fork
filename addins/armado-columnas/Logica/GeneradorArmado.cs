@@ -185,11 +185,17 @@ public static class GeneradorArmado
 
             try
             {
+                int gruposAntes = res.GruposCreados;
                 if (!GenerarTramo(
                         doc, contexto.Marca, tramo, cfg, barrasPorNombre, ganchosPorNombre, formaEstribo, propios, ganchoPropio,
                         piezas, recubrimientoPies, zonaComun, tramosConSeccionMayor, cacheHost, ganchosYaAvisados, formasRechazadas, res))
                 {
                     res.TramosOmitidos++;
+                }
+                else if (res.GruposCreados > gruposAntes)
+                {
+                    // Decisión 7 del plan del 07-nov: solo cuenta lo que se creó de verdad.
+                    res.TramosGenerados.Add((columnaPlan.Id, i));
                 }
             }
             catch (Exception ex)
@@ -387,8 +393,8 @@ public static class GeneradorArmado
         };
 
         // Uniforme, o confinado abajo / central / arriba (#5): cada zona a su
-        // separación exacta y lo que sobra en un último espacio más corto,
-        // como vigas (#256). Un conjunto de Revit por corrida de separación
+        // separación exacta, sin espacio corto y centrada (plan del 07-nov,
+        // decisiones 2 y 3). Un conjunto de Revit por corrida de separación
         // constante: la cuenta es la misma de la vista previa.
         RepartoEstribos.Resultado reparto = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete);
         if (reparto.Aviso is not null) res.Avisos.Add($"{etiquetaTramo}: {reparto.Aviso}");
@@ -403,7 +409,7 @@ public static class GeneradorArmado
     /// <summary>
     /// Un <c>Rebar</c> por corrida de <see cref="RepartoEstribos"/>: varios
     /// estribos a la misma separación (<c>NumberWithSpacing</c>, como vigas) o
-    /// uno solo, el del espacio que sobra (<c>Single</c>) -- #256.
+    /// uno solo (<c>Single</c>), cuando en la zona entra uno -- #256.
     /// </summary>
     private static void CrearGrupo(
         Document doc,

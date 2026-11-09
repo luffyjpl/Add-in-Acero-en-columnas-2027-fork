@@ -336,8 +336,8 @@
       const otras = v.compatibles.length - 1;
       const R = col.resumen;
       return html`<main class="centro">
-        ${v.generacion.resultado ? html`<div class="resultado" role="status">
-          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M3 8.5l3 3 7-7.5" stroke="#1E7A46" stroke-width="1.8" fill="none" stroke-linecap="round"></path></svg>
+        ${v.generacion.resultado ? html`<div class=${v.generacion.resultado.nadaArmado ? 'resultado nada' : 'resultado'} role="status">
+          ${v.generacion.resultado.nadaArmado ? null : html`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" style="flex-shrink: 0; margin-top: 2px"><path d="M3 8.5l3 3 7-7.5" stroke="#1E7A46" stroke-width="1.8" fill="none" stroke-linecap="round"></path></svg>`}
           <span style="flex: 1">${v.generacion.resultado.detalles.map((d) => html`<span style="display: block">${d}</span>`)}</span>
         </div>` : null}
         ${v.generacion.resultado && v.generacion.resultado.avisos.length ? html`<div class="aviso" role="alert">

@@ -157,4 +157,5 @@ public sealed record Filtro3DVista(
     IReadOnlyList<ZonaEstribo> Zonas, IReadOnlyList<int> NumerosOcultos, ModoPartes Partes, int? SoloTramo);
 
 /// <param name="Avisos">Lo que salió mal o a medias al generar: la página lo muestra aparte, en naranja, y no como parte del «Se armó».</param>
-public sealed record ResultadoVista(IReadOnlyList<string> Detalles, IReadOnlyList<string> Avisos);
+/// <param name="NadaArmado">No se creó acero en ninguna columna: la página no lo muestra como éxito (plan del 07-nov, decisión 7).</param>
+public sealed record ResultadoVista(IReadOnlyList<string> Detalles, IReadOnlyList<string> Avisos, bool NadaArmado = false);

@@ -78,6 +78,13 @@ public static class BarraContinua
     /// </summary>
     public static Action<string>? Traza { get; set; }
 
+    /// <summary>
+    /// La forma recta con que se crea cada varilla (<see cref="FormaRectaLongitudinal.Buscar"/>),
+    /// o null para dejar que Revit elija como antes. La pone
+    /// <c>GeneradorLongitudinal.Generar</c> durante la corrida.
+    /// </summary>
+    public static RebarShape? FormaRecta { get; set; }
+
     private static string Z(double pies) => $"{GeometriaSeccion.Metros(pies):0.###}";
 
     private static string Describir(Rebar r)
@@ -636,6 +643,25 @@ public static class BarraContinua
         // recorta). La normal
         // tiene que ser perpendicular a la barra: con BasisZ el plano queda
         // degenerado y CreateFromCurves devuelve null siempre.
+        // Plan del 07-nov, decisión 5: con la forma recta elegida por el
+        // add-in, la misma en cualquier modelo. Si Revit no la acepta, como
+        // antes: que elija él.
+        if (FormaRecta is { IsValidObject: true } forma)
+        {
+            try
+            {
+                Rebar? conForma = Rebar.CreateFromCurvesAndShape(
+                    doc, forma, p.Barra, host, p.Normal, new List<Curve> { linea }, terminaciones);
+                if (conForma is not null) return conForma;
+                Traza?.Invoke($"  CreateFromCurvesAndShape con «{forma.Name}» devolvió null; se deja elegir a Revit.");
+            }
+            catch (Exception ex)
+            {
+                Traza?.Invoke($"  CreateFromCurvesAndShape con «{forma.Name}» tiró {ex.GetType().Name}: {ex.Message}; se deja elegir a Revit.");
+                try { doc.Regenerate(); } catch { /* best-effort */ }
+            }
+        }
+
         return Rebar.CreateFromCurves(
             doc, RebarStyle.Standard, p.Barra, host, p.Normal,
             new List<Curve> { linea }, terminaciones,

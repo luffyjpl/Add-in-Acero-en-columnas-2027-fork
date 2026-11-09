@@ -18,10 +18,19 @@ public sealed class ManejadorPersistirConfiguraciones : IExternalEventHandler
     /// <summary>Se llama con el motivo si no se pudo guardar.</summary>
     public Action<string>? AlFallar { get; set; }
 
+    /// <summary>El proyecto del almacén: solo se guarda si es el activo (ver <see cref="DocumentoActivo"/>).</summary>
+    public Document? Documento { get; set; }
+
     public void Execute(UIApplication app)
     {
         if (Almacen is null) return;
-        if (app.ActiveUIDocument?.Document is not Document doc) return;
+        if (DocumentoActivo.DelTablero(app, Documento, out string? otroProyecto) is not Document doc)
+        {
+            // Lo pendiente sigue en el almacén: se guarda con el próximo cambio
+            // hecho con el proyecto correcto activo.
+            AlFallar?.Invoke(otroProyecto ?? "No hay ningún proyecto activo en Revit.");
+            return;
+        }
 
         using var transaccion = new Transaction(doc, "CQEING - guardar configuraciones");
         try

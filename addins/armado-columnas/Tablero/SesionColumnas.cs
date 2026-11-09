@@ -46,6 +46,7 @@ public sealed class SesionColumnas
     private bool _pendiente;
     private List<string>? _resultado;
     private List<string> _avisosResultado = new();
+    private bool _nadaArmado;
     private string? _error;
     private PlanArmado? _planEnviado;
 
@@ -143,7 +144,7 @@ public sealed class SesionColumnas
             _configuracion,
             new GeneracionVista(
                 _choques.ToList(), _pendiente,
-                _resultado is null ? null : new ResultadoVista(_resultado.ToList(), _avisosResultado.ToList()),
+                _resultado is null ? null : new ResultadoVista(_resultado.ToList(), _avisosResultado.ToList(), _nadaArmado),
                 _error,
                 _columnas.Where(c => _listas.Contains(c.Id)).Select(c => c.Marca).ToList()),
             new Vista3DVista(
@@ -651,8 +652,13 @@ public sealed class SesionColumnas
 
         if (_planEnviado is not null)
         {
+            // Decisión 7 del plan del 07-nov: solo pasa a armada la columna en
+            // la que se creó algo; las demás siguen listas para volver a generar.
+            PlanArmado generado = resultado.PlanGenerado ?? _planEnviado;
+            var armadas = generado.Columnas.Select(c => c.Id).ToHashSet();
+
             List<string> marcas = new();
-            foreach (ColumnaPlan columna in _planEnviado.Columnas)
+            foreach (ColumnaPlan columna in generado.Columnas)
             {
                 _generadas.TryGetValue(columna.Id, out ColumnaGenerada? previa);
                 _generadas[columna.Id] = ColumnaGenerada.Combinar(previa, columna, _planEnviado.GeneradoEl);
@@ -660,15 +666,25 @@ public sealed class SesionColumnas
                 marcas.Add(columna.Contexto?.Marca ?? columna.Id);
             }
 
-            _resultado = new List<string>
-            {
-                (marcas.Count == 1 ? $"Se armó la columna {marcas[0]}" : $"Se armaron {marcas.Count} columnas: {string.Join(", ", marcas)}")
-                    + (resultado.Avisos.Count > 0 ? ", pero con avisos: revísalos abajo." : "."),
-                resultado.Eliminados > 0
-                    ? $"Se reemplazaron {resultado.Eliminados} elemento(s) de acero que había antes."
-                    : "No había acero anterior en esas columnas.",
-            };
+            List<string> sinArmar = _planEnviado.Columnas
+                .Where(c => !armadas.Contains(c.Id))
+                .Select(c => c.Contexto?.Marca ?? c.Id)
+                .ToList();
+
+            _resultado = new List<string>();
+            if (marcas.Count > 0)
+                _resultado.Add(
+                    (marcas.Count == 1 ? $"Se armó la columna {marcas[0]}" : $"Se armaron {marcas.Count} columnas: {string.Join(", ", marcas)}")
+                    + (resultado.Avisos.Count > 0 ? ", pero con avisos: revísalos abajo." : "."));
+            if (sinArmar.Count > 0)
+                _resultado.Add(
+                    (sinArmar.Count == 1 ? $"No se pudo armar la columna {sinArmar[0]}" : $"No se pudieron armar {sinArmar.Count} columnas: {string.Join(", ", sinArmar)}")
+                    + ": no se creó nada. Siguen listas para volver a generar; el motivo está en los avisos.");
+            _resultado.Add(resultado.Eliminados > 0
+                ? $"Se reemplazaron {resultado.Eliminados} elemento(s) de acero que había antes."
+                : "No había acero anterior en esas columnas.");
             _avisosResultado = resultado.Avisos.ToList();
+            _nadaArmado = marcas.Count == 0;
         }
         _planEnviado = null;
         return Vista();

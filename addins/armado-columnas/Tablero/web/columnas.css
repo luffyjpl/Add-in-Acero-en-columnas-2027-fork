@@ -202,6 +202,8 @@ table.cuadro tr.usada td { background: var(--azul-fondo); }
 
 .aviso-flotante { position: fixed; left: 50%; bottom: 20px; z-index: 30; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); padding: 10px 14px; border-radius: 8px; background: var(--tinta); color: #FFFFFF; box-shadow: 0 8px 24px rgba(22,25,29,.25); line-height: 1.4; }
 .resultado { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #A8D5B9; border-radius: 6px; background: var(--verde-fondo); line-height: 1.45; }
+/* Generar terminó pero no se creó acero en ninguna columna (plan del 07-nov, decisión 7). */
+.resultado.nada { border-color: #F1B5AE; background: var(--rojo-fondo); color: var(--rojo); }
 
 /* Maqueta fuera de Revit: el selector de ejemplos. En Revit no aparece. */
 .maqueta { display: flex; align-items: center; gap: 8px; padding: 0 8px; height: 26px; border: 1px dashed var(--control); border-radius: 13px; color: var(--suave); font-size: 12px; }
