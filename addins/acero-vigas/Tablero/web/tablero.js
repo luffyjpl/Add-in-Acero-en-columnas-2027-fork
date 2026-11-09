@@ -194,12 +194,17 @@
   function pisoDe(p) { return p.nivel || 'Sin nivel'; }
 
   // Los pisos donde están los pórticos de esos nombres (la misma viga o vigueta en cada piso, punto 14 de Santiago): los
-  // pórticos de todos esos pisos y los pisos sin repetir, en el orden de la lista.
-  function pisosParaGenerar(ids, pors) {
+  // pórticos de todos esos pisos y los pisos sin repetir, de abajo hacia arriba: en el orden de `niveles` (los de la
+  // planta, que C# manda por cota); los que no están ahí, al final (Juan, 09-nov: salían en el orden de la lista).
+  function pisosParaGenerar(ids, pors, niveles = []) {
     if (!ids || !ids.length) return { candidatos: [], pisos: [] };
     const nombres = new Set(pors.filter((x) => ids.includes(x.id)).map((x) => x.nombre));
     const candidatos = pors.filter((x) => nombres.has(x.nombre));
-    return { candidatos, pisos: [...new Set(candidatos.map(pisoDe))] };
+    const orden = niveles.map((n) => n.nombre);
+    const lugar = (piso) => (orden.indexOf(piso) < 0 ? orden.length : orden.indexOf(piso));
+    const pisos = [...new Set(candidatos.map(pisoDe))].map((piso, i) => ({ piso, i }))
+      .sort((a, b) => lugar(a.piso) - lugar(b.piso) || a.i - b.i).map((x) => x.piso);
+    return { candidatos, pisos };
   }
 
   // El avance del nivel (punto 14 de Santiago): construido cuando todos sus pórticos están terminados. Lo cuenta C#
@@ -848,7 +853,7 @@
       const terminado = !!P && (vista.terminados || []).includes(P.id);
       // la misma viga o vigueta en otros pisos (mismo nombre; punto 14 de Santiago): al generar se elige en qué pisos, con
       // uno o con varios pórticos elegidos
-      const gen = pisosParaGenerar(s.confirmGen, PORS);
+      const gen = pisosParaGenerar(s.confirmGen, PORS, (vista.planta && vista.planta.niveles) || []);
       const genPisos = s.genPisos || [];
       const genPorPisos = gen.pisos.length > 1;
       const enListaP = P ? PORS.find((x) => x.id === P.id) : null;
