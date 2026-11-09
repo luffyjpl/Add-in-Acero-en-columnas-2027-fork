@@ -374,6 +374,10 @@
         ? ids.reduce((o, id) => ({ ...o, [id]: JSON.stringify(this.estadoDeLaPagina()) }), {})
         : this.estadosParaGenerar(ids);
       this.props.enviar({ tipo: 'generar', ids, estados, forzar, mismoAcero });
+      // C# guarda la página de cada uno (con varios elegidos o el mismo acero, la del abierto con sus tramos): al abrirlos
+      // se toma esa y no la vieja de la memoria, que mostraba otros estribos (09-nov)
+      const actual = this.props.vista && this.props.vista.actual ? this.props.vista.actual.id : null;
+      ids.filter((id) => id !== actual).forEach((id) => { delete this.opcionesPorPortico[id]; });
     }
 
     choquesAlGenerar(porticos) {
