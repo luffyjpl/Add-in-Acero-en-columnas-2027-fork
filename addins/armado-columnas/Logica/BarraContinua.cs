@@ -300,7 +300,7 @@ public static class BarraContinua
         try { doc.Regenerate(); } catch { /* best-effort */ }
 
         var opciones = new List<AcomodoTraslapos.Varilla>();
-        var traslados = new List<XYZ?>();
+        var traslados = new List<IReadOnlyList<XYZ>>();
         foreach ((Pedido p, IReadOnlyList<Rebar> cadena) in varillas)
         {
             double radio = p.Barra.BarNominalDiameter / 2;
@@ -317,24 +317,31 @@ public static class BarraContinua
                 catch { /* best-effort: esa pieza no se mira */ }
             }
 
-            // Los dos grupos: el que está en la posición pedida (el más cerca)
-            // y el corrido. Voltear es llevar el corrido a la posición pedida.
-            XYZ? traslado = null;
-            XYZ? enSuLugar = desvios.OrderBy(d => d.GetLength()).FirstOrDefault();
-            XYZ? corrido = enSuLugar is null ? null : desvios.FirstOrDefault(d => d.DistanceTo(enSuLugar) > holgura);
-            if (enSuLugar is not null && corrido is not null)
+            // Las maneras de dejarla: como la dejó Revit, o con la cadena
+            // corrida para que un grupo de piezas quede en la posición pedida.
+            // Con un traslapo son dos (la de Revit y la volteada). Con dos,
+            // Revit deja las piezas a los dos lados de la pedida y ninguna en
+            // ella (C-2 de «edificio tevening», 09-nov): hay que poder llevar
+            // cualquiera de los dos grupos a la pedida. Solo valen las que dejan
+            // todas las piezas entre las esquinas; si ninguna, la de Revit.
+            bool Dentro(XYZ t) => desvios.All(d =>
+                p.X + d.X + t.X >= p.Limites.XMin - holgura && p.X + d.X + t.X <= p.Limites.XMax + holgura &&
+                p.Y + d.Y + t.Y >= p.Limites.YMin - holgura && p.Y + d.Y + t.Y <= p.Limites.YMax + holgura);
+
+            var candidatos = new List<XYZ> { XYZ.Zero };
+            foreach (XYZ d in desvios.OrderBy(d => d.GetLength()))
             {
-                XYZ t = enSuLugar - corrido;
-                bool dentro = desvios.All(d =>
-                    p.X + d.X + t.X >= p.Limites.XMin - holgura && p.X + d.X + t.X <= p.Limites.XMax + holgura &&
-                    p.Y + d.Y + t.Y >= p.Limites.YMin - holgura && p.Y + d.Y + t.Y <= p.Limites.YMax + holgura);
-                if (dentro) traslado = t;
+                XYZ t = XYZ.Zero - d;
+                if (candidatos.All(c => c.DistanceTo(t) > holgura)) candidatos.Add(t);
             }
 
-            traslados.Add(traslado);
-            opciones.Add(new AcomodoTraslapos.Varilla(comun, traslado is null
-                ? null
-                : comun.Select(q => q with { X = q.X + traslado.X, Y = q.Y + traslado.Y }).ToList()));
+            List<XYZ> validos = candidatos.Where(Dentro).ToList();
+            if (validos.Count == 0) validos.Add(XYZ.Zero);
+
+            traslados.Add(validos);
+            opciones.Add(new AcomodoTraslapos.Varilla(validos
+                .Select(t => (IReadOnlyList<AcomodoTraslapos.Pieza>)comun.Select(q => q with { X = q.X + t.X, Y = q.Y + t.Y }).ToList())
+                .ToList()));
         }
 
         int[] elegidas = AcomodoTraslapos.Elegir(opciones, obstaculos);
@@ -353,7 +360,8 @@ public static class BarraContinua
         for (int i = 0; i < varillas.Count; i++)
         {
             IReadOnlyList<Rebar> cadena = varillas[i].Cadena;
-            if (elegidas[i] == 1 && traslados[i] is { } t)
+            XYZ t = traslados[i][elegidas[i]];
+            if (t.GetLength() > holgura)
             {
                 Traza?.Invoke(
                     $"VOLTEAR la varilla «{varillas[i].Pedido.Barra.Name}» en ({GeometriaSeccion.Metros(varillas[i].Pedido.X):0.###}, " +
