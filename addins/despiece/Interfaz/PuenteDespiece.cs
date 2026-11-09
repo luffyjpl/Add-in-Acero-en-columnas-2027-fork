@@ -313,9 +313,24 @@ internal sealed class PuenteDespiece
             ElementoLeido e = grupos[grupo].Elementos[0];
             bool negros = raiz.GetProperty("negros").GetBoolean();
             UsarLetra(raiz);
-            PreviaGenerada p = e.EsColumna
-                ? GeneradorColumna.Generar(doc, Columna(e), ventana.CarpetaPrevia, negros, movible)
-                : GeneradorPrevia.Generar(doc, Continua(e), ventana.CarpetaPrevia, negros, movible);
+            // Lo seleccionado en Revit sale resaltado en la imagen exportada (celeste, 09-nov): se suelta mientras se genera y
+            // se devuelve al terminar (decisión 9 del plan de #317).
+            Autodesk.Revit.UI.Selection.Selection? seleccion = uiapp.ActiveUIDocument?.Selection;
+            ICollection<ElementId> seleccionados = seleccion?.GetElementIds() ?? [];
+            if (seleccionados.Count > 0)
+                seleccion!.SetElementIds([]);
+            PreviaGenerada p;
+            try
+            {
+                p = e.EsColumna
+                    ? GeneradorColumna.Generar(doc, Columna(e), ventana.CarpetaPrevia, negros, movible)
+                    : GeneradorPrevia.Generar(doc, Continua(e), ventana.CarpetaPrevia, negros, movible);
+            }
+            finally
+            {
+                if (seleccionados.Count > 0)
+                    seleccion!.SetElementIds(seleccionados.Where(id => doc.GetElement(id) is not null).ToList());
+            }
             // En la columna, la primera sección es la de traslapos (puede faltar) y la segunda la de varillas (decisión 16).
             listo = new
             {

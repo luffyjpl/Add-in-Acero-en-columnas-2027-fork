@@ -38,7 +38,7 @@ internal sealed class AccionesRevit : IExternalEventHandler, IDisposable
             }
             catch (Exception e)
             {
-                Registro.Paso("trabajo: FALLA " + e.GetType().Name + ": " + e.Message);
+                Registro.Paso("trabajo: FALLA " + e.GetType().Name + ": " + e.Message + " | " + e.StackTrace?.Replace(Environment.NewLine, " | "));
                 Registrar(e);
                 Fallo?.Invoke(e.Message);
             }

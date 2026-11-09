@@ -32,9 +32,18 @@ public static class TextosDespiece
         return $"{cantidad} {Nombre(tipo)} L= {largo}";
     }
 
-    /// <summary><c>46 #3 L= 0.99 G= 0.08</c>: cantidad, largo total y gancho, en metros.</summary>
-    public static string Estribo(string tipo, int cantidad, double largoM, double ganchoM) =>
-        $"{Barra(tipo, cantidad, largoM)} G= {Metros(ganchoM)}";
+    /// <summary>
+    /// Encima del estribo aparte, como la referencia de Santiago (#313): <c>Cantidad: 84</c>, <c>L= 1.24 m</c> (largo
+    /// total) y <c>G= 0.08</c> (gancho), una por línea (<see cref="Salto"/>).
+    /// </summary>
+    public static string EncabezadoEstribo(int cantidad, double largoM, double ganchoM) =>
+        $"Cantidad: {cantidad}{Salto}L= {Metros(largoM)} m{Salto}G= {Metros(ganchoM)}";
+
+    /// <summary>Dónde se cortó la sección, desde el extremo izquierdo de la viga (#314): <c>x= 1.50</c>.</summary>
+    public static string Corte(double xM) => $"x= {Metros(xM)}";
+
+    /// <summary>El corte de línea de una nota de Revit.</summary>
+    public const string Salto = "\r";
 
     /// <summary>
     /// El largo que dicen las cotas de la barra: Revit mide por el eje y descuenta el doblez, las cotas miden por fuera.

@@ -24,11 +24,17 @@ internal sealed record DespieceMovible(IReadOnlyDictionary<string, Movimiento> M
 
     public List<PiezaMovible> Piezas { get; } = [];
 
+    /// <summary>Textos con flechas a piezas (el <c>2x piel</c>): la página mueve la punta de cada flecha con su pieza.</summary>
+    public List<GuiaMovible> Guias { get; } = [];
+
     public (PuntoModelo A, PuntoModelo B)? Marcas { get; set; }
 }
 
 /// <summary>Un texto de la capa: su centro en coordenadas de la vista, en pies.</summary>
 internal sealed record TextoMovible(string Texto, PuntoModelo Centro, bool Girado);
+
+/// <summary>Un texto fijo con una flecha a cada pieza de <paramref name="Puntas"/>; <paramref name="Desde"/> es donde salen.</summary>
+internal sealed record GuiaMovible(TextoMovible Texto, PuntoModelo Desde, List<(string Pieza, PuntoModelo Punta)> Puntas);
 
 /// <summary>Una pieza de la capa. Sin <paramref name="Puntos"/>, es un texto suelto, como la etiqueta de unos estribos.</summary>
 internal sealed record PiezaMovible(string Id, string Color, List<PuntoModelo> Puntos, TextoMovible Etiqueta, List<TextoMovible> Anexos);
@@ -55,30 +61,43 @@ internal static class GeneradorPrevia
     // Las separaciones de la vista larga se midieron a 1:50, en pies del modelo; el texto ocupa lo que dice la escala,
     // así que se reducen en proporción para que la vista no quede llena de aire.
     private const double Proporcion = EscalaVista.Base / 50.0;
-    private static double SeparacionViga => 0.14 * M * Letra.Factor;
+    private static double SeparacionViga => 0;
     // A 1:15 la caja de la nota baja 0.09 m desde su punto (medido en V 3, 30-oct); el resto es aire sobre la barra.
-    private static double AltoTexto => 0.11 * M * Letra.Factor;
-    private static double EspacioCotas => 0.15 * M * Letra.Factor;
+    private static double AltoTexto => 0.08 * M * Letra.Factor;
+    private static double EspacioCotas => 0.02 * M * Letra.Factor;
     private const double MinimoGancho = 0.05 * M;
     private const double MinimoTraslapo = 0.01 * M;
     private static double MedioAnchoEtiqueta => 0.65 * M * Proporcion * Letra.Factor;
-    private static double HuecoFilas => 0.15 * M * Proporcion * Letra.Factor;
+    private static double HuecoFilas => 0.08 * M * Proporcion * Letra.Factor;
     private static double HuecoEnFila => 0.20 * M * Proporcion * Letra.Factor;
-    private static double DesfaseTraslapo => 0.08 * M * Letra.Papel;
+    private static double DesfaseTraslapo => 0.02 * M * Letra.Papel;
     private const double MismaZona = 0.10 * M;
     // La caja de la nota mide 0.12 m de alto a 1:15 (medido en V 3, 30-oct).
     private static double FilaEstribos => 0.13 * M * Letra.Factor;
-    private static double BajaNota => 0.09 * M * Letra.Factor;
-    private static double SubeNota => 0.03 * M * Letra.Factor;
+    /// <summary>
+    /// Entre dos filas de etiquetas de estribos sobre la viga: casi el alto de la letra (decisión 41 del plan de #317; con
+    /// FilaEstribos quedaban muy separadas y empujaban hacia arriba las barras).
+    /// </summary>
+    private static double FilaEtiquetasEstribos => 0.06 * M * Letra.Factor;
+    /// <summary>Medio ancho de un texto de una línea en la vista larga: el ancho medio de una letra de Arial es 0.55 de su alto.</summary>
+    private static double MedioAnchoTexto(string texto) => texto.Length * 0.55 * Letra.Mm / 1000 * EscalaLongitudinal * M / 2;
+
+    /// <summary>Medio ancho de la medida de un traslapo (<c>1.50</c>), para correrla al costado de una etiqueta.</summary>
+    private static double MedioAnchoTraslapo => 0.15 * M * Proporcion * Letra.Factor;
     private static double AireNota => 0.01 * M * Letra.Papel;
     private static double AnchoNotaGirada => 0.10 * M * Letra.Factor;
 
-    // Bajo la sección, de arriba abajo: las etiquetas (hasta 0.29 m), la cota del ancho y el recubrimiento. Así las flechas
-    // no cruzan las cotas. A la izquierda, la cota del alto y su recubrimiento.
-    private static double CotaAnchoSeccion => 0.42 * M * Letra.Factor;
-    private static double TextoAnchoSeccion => 0.46 * M * Letra.Factor;
-    private static double CotaAltoSeccion => 0.15 * M * Letra.Factor;
-    private static double TextoAltoSeccion => 0.30 * M * Letra.Factor;
+    // Bajo la sección y a su izquierda, como en la columna (#282, #313): primero (más cerca) la cadena del recubrimiento
+    // `0.04 | 0.27 | 0.04`, después la cota total; debajo de todo, la leyenda. Ya no hay etiquetas con flechas (#313).
+    private static double CadenaSeccion => 0.06 * M * Letra.Factor;
+    private static double TotalSeccion => 0.12 * M * Letra.Factor;
+    private static double LeyendaSeccion => 0.30 * M * Letra.Factor;
+    private static double FilaLeyenda => 0.13 * M * Letra.Factor;
+    private static double AnchoCuadro => 0.09 * M * Letra.Factor;
+    /// <summary>El <c>x= 1.50</c> sobre la sección (#314): el punto de la nota, sobre la cara de arriba.</summary>
+    private static double SobreSeccion => 0.20 * M * Letra.Factor;
+    /// <summary>El encabezado del estribo aparte, tres líneas (<see cref="TextosDespiece.EncabezadoEstribo"/>).</summary>
+    private static double AltoEncabezado => 0.30 * M * Letra.Factor;
 
     // La vista es de la viga y las columnas de sus nudos, sin el acero de ellas (#262, Juan 05-nov). El recorte va al alto
     // de la viga más el asomo de las columnas; las barras sacadas se ven por fuera de él.
@@ -86,16 +105,16 @@ internal static class GeneradorPrevia
     // Lo que se ve de las columnas arriba y abajo de la viga (#262, decisión 9 del plan de #266): un poco, como las vigas en
     // la vista de columna. Las etiquetas de estribos y las barras sacadas empiezan después.
     private const double Asomo = 0.20 * M;
-    private static double ColaEje => 0.3 * M * Proporcion * Letra.Papel;
-    private static double CabezaEje => 0.8 * M * Proporcion * Letra.Papel;
+    private static double ColaEje => 0.15 * M * Proporcion * Letra.Papel;
+    private static double CabezaEje => 0.4 * M * Proporcion * Letra.Papel;
     // Las cotas (#264, opción A de la maqueta): abajo una sola línea, con las caras de columnas y luces libres escritas
     // arriba de ella y los ejes debajo; arriba de todo, el largo completo de la viga.
     // De lo más bajo del dibujo a la línea (sus números van arriba, como antes la fila de luces).
-    private static double CotaLinea => 0.35 * M * Proporcion * Letra.Factor;
+    private static double CotaLinea => 0.20 * M * Proporcion * Letra.Factor;
     // Debajo de la línea: los números de los ejes y la nota del total entre ejes.
-    private static double BajoLinea => 0.35 * M * Proporcion * Letra.Factor;
+    private static double BajoLinea => 0.25 * M * Proporcion * Letra.Factor;
     // De lo más alto (las barras de arriba) a la cota del largo de la viga.
-    private static double CotaArriba => 0.35 * M * Proporcion * Letra.Factor;
+    private static double CotaArriba => 0.20 * M * Proporcion * Letra.Factor;
     private const double AlturaPlano = 0.03 * M;
 
     /// <summary>Un bastón va más adentro que la capa exterior por más de esto.</summary>
@@ -197,6 +216,20 @@ internal static class GeneradorPrevia
                 etiqueta = Texto(p.Etiqueta),
                 anexos = p.Anexos.Select(Texto),
             }),
+            guias = movible.Guias.Select(g =>
+            {
+                (double x, double y) = c.APixel(g.Desde);
+                return new
+                {
+                    texto = Texto(g.Texto),
+                    desde = new[] { x, y },
+                    puntas = g.Puntas.Select(p =>
+                    {
+                        (double px, double py) = c.APixel(p.Punta);
+                        return new { pieza = p.Pieza, x = px, y = py };
+                    }),
+                };
+            }),
         };
     }
 
@@ -269,6 +302,9 @@ internal static class GeneradorPrevia
 
         public TextNote? Etiqueta { get; set; }
 
+        /// <summary>En la piel, de qué cara de la viga es (0 o 1): cada cara va en su línea, con sus traslapos.</summary>
+        public int Cara { get; init; }
+
         public List<TextNote> Anexos { get; } = [];
 
         private double GanchoArriba => Barra.get_BoundingBox(null).Max.Z - Mayor(Barra).GetEndPoint(0).Z;
@@ -320,32 +356,37 @@ internal static class GeneradorPrevia
         Registro.Paso("longitudinal: coloreando");
         Colorear(doc, vista, barras);
         SoloContorno(vista, apoyos);
+        ContornoCompleto(doc, vista, viga, derecha, enPlano, min, max, apoyos);
         doc.Regenerate();
 
         // Se sacan todas lejos de la viga, se mide cuánto ocupa cada una y se acomodan en filas sin encimarse.
         Registro.Paso("longitudinal: sacando barras");
         List<Rebar> longitudinales = barras.Where(b => EsLongitudinal(b, derecha)).ToList();
-        var creadas = new List<(Rebar Barra, Element Detalle, XYZ Posicion, int Cantidad)>();
+        var creadas = new List<(Rebar Barra, Element Detalle, XYZ Posicion, int Cantidad, int Cara)>();
         // Una misma pieza puede ser varios conjuntos (S1: 3 #5 y dos sueltas #4). Las de igual diámetro y largo se dibujan
         // una vez, con su cantidad total: para figurar el acero son la misma barra. Las hechas a mano no se juntan.
         foreach (IGrouping<string, Rebar> iguales in longitudinales.GroupBy(b => MarcaVigas.Pieza(b) is { } pieza
             ? $"{pieza}|{b.GetTypeId()}|{Math.Round(LectorDespiece.LargoBarra(b) * 304.8)}"
             : b.Id.ToString()))
         {
-            Rebar b = iguales.First();
-            XYZ c = Centro(b);
-            XYZ p = new XYZ(c.X, c.Y, max.Z + 11 * M) + haciaElQueMira * (enPlano - c).DotProduct(haciaElQueMira);
-            Registro.Paso($"longitudinal: barra {b.Id}");
-            Element d = RebarBendingDetail.Create(doc, vista.Id, b.Id, 0, tipos.BarraSinMedidas, p, 0);
-            Pintar(vista, d.Id, b, 2);
-            creadas.Add((b, d, p, iguales.Sum(x => x.Quantity)));
+            List<(Rebar Barra, int Cantidad)> piezas = MarcaVigas.EsPiel(iguales.First()) ? PorCara(iguales.ToList()) : [(iguales.First(), iguales.Sum(x => x.Quantity))];
+            for (int cara = 0; cara < piezas.Count; cara++)
+            {
+                (Rebar b, int cantidad) = piezas[cara];
+                XYZ c = Centro(b);
+                XYZ p = new XYZ(c.X, c.Y, max.Z + 11 * M) + haciaElQueMira * (enPlano - c).DotProduct(haciaElQueMira);
+                Registro.Paso($"longitudinal: barra {b.Id}");
+                Element d = RebarBendingDetail.Create(doc, vista.Id, b.Id, 0, tipos.BarraSinMedidas, p, 0);
+                Pintar(vista, d.Id, b, 2);
+                creadas.Add((b, d, p, cantidad, cara));
+            }
         }
         doc.Regenerate();
         List<Sacada> sacadas = creadas.Select(c =>
         {
             BoundingBoxXYZ m = c.Detalle.get_BoundingBox(vista);
             double a = m.Min.DotProduct(derecha), b = m.Max.DotProduct(derecha);
-            return new Sacada(c.Barra, c.Detalle, c.Posicion, c.Cantidad, Math.Min(a, b), Math.Max(a, b), m.Min.Z - c.Posicion.Z, m.Max.Z - c.Posicion.Z);
+            return new Sacada(c.Barra, c.Detalle, c.Posicion, c.Cantidad, Math.Min(a, b), Math.Max(a, b), m.Min.Z - c.Posicion.Z, m.Max.Z - c.Posicion.Z) { Cara = c.Cara };
         }).ToList();
 
         double mitad = (min.Z + max.Z) / 2;
@@ -355,7 +396,8 @@ internal static class GeneradorPrevia
         bool EstaArriba(Sacada s) => MarcaVigas.Serie(s.Barra) switch
         {
             "S" or "BS" => true,
-            "I" or "BI" => false,
+            // Toda la piel junta, debajo de la viga (#315, decisión 1 del plan de #317).
+            "I" or "BI" or "P" => false,
             _ => Mayor(s.Barra).GetEndPoint(0).Z > mitad,
         };
         // Con marca del add-in de vigas, los bastones son BS y BI; sin marca, una barra recta que va más adentro que la capa
@@ -367,33 +409,96 @@ internal static class GeneradorPrevia
         // La piel pegada a la viga (Luciano, 06-nov, #301); después los bastones, entre la viga y las corridas (Juan, 31-oct);
         // después una fila por diámetro, la más gruesa primero; al final, lo que quede.
         bool EsPiel(Sacada s) => MarcaVigas.EsPiel(s.Barra);
-        double Lineas(List<Sacada> lado, string serie, double desde, bool haciaArriba)
+        double Lineas(List<Sacada> lado, string serie, double desde, bool haciaArriba, double minima = double.NegativeInfinity, double maxima = double.PositiveInfinity)
         {
-            double z = Acomodar(doc, vista, lado.Where(EsPiel).ToList(), desde, haciaArriba, tipos);
-            z = Acomodar(doc, vista, lado.Where(EsBaston).ToList(), z, haciaArriba, tipos);
+            if (!haciaArriba)
+                minima = maxima;
+            // Una pila por lado: cada fila se apoya en la anterior, también entre grupos (decisión 39 del plan de #317).
+            var pila = new Pila();
+            // La piel, una línea por cara con sus traslapos, como las corridas (decisión 43 del plan de #317): cada pedazo en su
+            // fila la alejaba de la viga.
+            double z = desde;
+            foreach (IGrouping<int, Sacada> cara in lado.Where(EsPiel).GroupBy(s => s.Cara).OrderBy(g => g.Key))
+                z = AcomodarLinea(doc, vista, cara.ToList(), derecha, z, haciaArriba, tipos, minima, pila);
+            z = Acomodar(doc, vista, lado.Where(EsBaston).ToList(), z, haciaArriba, tipos, minima, pila);
             foreach (IGrouping<int, Sacada> diametro in lado.Where(s => MarcaVigas.Serie(s.Barra) == serie)
                 .GroupBy(s => LectorDespiece.Numero(doc.GetElement(s.Barra.GetTypeId()).Name)).OrderByDescending(g => g.Key))
-                z = AcomodarLinea(doc, vista, diametro.ToList(), derecha, z, haciaArriba, tipos);
-            return Acomodar(doc, vista, lado.Where(s => MarcaVigas.Serie(s.Barra) != serie && !EsBaston(s) && !EsPiel(s)).ToList(), z, haciaArriba, tipos);
+                z = AcomodarLinea(doc, vista, diametro.ToList(), derecha, z, haciaArriba, tipos, minima, pila);
+            return Acomodar(doc, vista, lado.Where(s => MarcaVigas.Serie(s.Barra) != serie && !EsBaston(s) && !EsPiel(s)).ToList(), z, haciaArriba, tipos, minima, pila);
         }
         var sueltas = new List<(Rebar Barra, TextNote Nota)>();
         // Pegadas a la viga, no sobre el asomo de las columnas: con él quedaban 0.20 m más arriba (#302).
         int filasEstribos = EtiquetarEstribos(doc, vista, barras, derecha, enPlano, max.Z, tipos, sueltas);
-        double tope = Lineas(deArriba, "S", max.Z + asomo + SeparacionViga + FilaEstribos * Math.Max(filasEstribos - 1, 0), true);
-        double fondo = Lineas(deAbajo, "I", min.Z - asomo - SeparacionViga, false);
+        // Arriba, los ganchos que bajan pueden llegar hasta el asomo de las columnas, al lado de los textos de los estribos;
+        // la línea de cada barra, en cambio, va siempre por encima de esos textos (decisión 30 del plan de #317).
+        double sobreEstribos = filasEstribos > 0 ? max.Z + AltoTexto + FilaEtiquetasEstribos * (filasEstribos - 1) + 0.075 * M * Letra.Factor : double.NegativeInfinity;
+        double tope = Lineas(deArriba, "S", max.Z + asomo + SeparacionViga, true, sobreEstribos);
+        // Abajo, la etiqueta de la primera fila puede ir al lado del asomo de las columnas; la línea de la barra, debajo de
+        // él (decisión 42 del plan de #317).
+        double fondo = Lineas(deAbajo, "I", min.Z - SeparacionViga, false, maxima: min.Z - asomo - AireNota);
 
         Recortar(vista, centro, largo / 2 + 1.0 * M, largo / 2 + 1.0 * M, alto / 2 + asomo + HolguraRecorte, alto / 2 + asomo + HolguraRecorte);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Levels), true);
         doc.Regenerate();
         double techo = Math.Max(tope, max.Z), suelo = Math.Min(fondo, min.Z);
         AjustarEjes(doc, vista, techo + CotaArriba + CabezaEje, suelo - CotaLinea - BajoLinea - ColaEje);
-        Cotar(doc, vista, centro, derecha, largo, min, max, suelo, tipos);
+        Cotar(doc, vista, centro, derecha, largo, min, max, suelo, techo, tipos);
         CotarColumnas(doc, vista, viga, centro, derecha, min, max, suelo, techo, tipos);
         vista.DisplayStyle = DisplayStyle.FlatColors;
         AplicarMovimientos(doc, sacadas, sueltas, movible, derecha);
+        // Después de los movimientos: las flechas van adonde quedó cada piel (decisión 27 del plan de #317).
+        GuiaPiel? piel = DosVecesPiel(doc, vista, sacadas.Where(EsPiel).ToList(), derecha, tipos);
         if (movible.Separar)
-            Separar(doc, vista, sacadas, sueltas, movible, derecha, enPlano, min, max);
+            Separar(doc, vista, sacadas, sueltas, movible, derecha, enPlano, min, max, piel);
         return vista;
+    }
+
+    /// <summary>
+    /// <c>2x piel</c> a la izquierda de la piel, con una flecha a cada fila (#315, referencia de Santiago): la piel va en
+    /// las dos caras de la viga. Cada línea conserva su etiqueta (decisión 2 del plan de #317). Con varias piezas en una
+    /// fila (piel con traslapos) la flecha va a la de la izquierda: a todas cruzaba el dibujo (decisión 27). Devuelve la nota
+    /// y a qué pieza apunta cada flecha, para que en el paso de arrastrar las flechas sigan a la piel.
+    /// </summary>
+    private static GuiaPiel? DosVecesPiel(Document doc, View vista, List<Sacada> pieles, XYZ derecha, TiposPropios tipos)
+    {
+        List<Sacada> colocadas = pieles.Where(s => s.Final is not null).ToList();
+        if (colocadas.Count == 0)
+            return null;
+        // La línea de cada pieza, como la deja ColocarFilas: Final = línea − Linea − Abajo.
+        double Linea(Sacada s) => s.Final!.Z + s.Abajo + s.Linea;
+        // Una flecha por cara (cada cara es una línea, decisión 43), a su pieza de la izquierda.
+        List<Sacada> filas = colocadas.GroupBy(s => s.Cara).Select(g => g.OrderBy(s => s.Izquierda).First()).ToList();
+        Sacada primera = colocadas.OrderBy(s => s.Izquierda).First();
+        XYZ EnX(double x, double z) => new XYZ(primera.Posicion.X, primera.Posicion.Y, z) + derecha * (x - primera.Posicion.DotProduct(derecha));
+        TextNote nota = TextNote.Create(doc, vista.Id, EnX(primera.Izquierda - MedioAnchoEtiqueta, filas.Average(Linea) + AltoTexto / 2), "2x piel",
+            tipos.Nota(HorizontalTextAlignment.Right));
+        var puntas = new List<(Sacada Pieza, XYZ Punta)>();
+        foreach (Sacada s in filas)
+        {
+            XYZ punta = EnX(s.Izquierda + MedioAnchoEtiqueta / 2, Linea(s));
+            nota.AddLeader(TextNoteLeaderTypes.TNLT_STRAIGHT_R).End = punta;
+            puntas.Add((s, punta));
+        }
+        Pintar(vista, nota.Id, primera.Barra, null);
+        // Sin esto la nota recién creada no tiene caja en la vista y Separar fallaba al medirla (NullReference, 09-nov).
+        doc.Regenerate();
+        Registro.Paso($"longitudinal: 2x piel con {filas.Count} flechas ({colocadas.Count} piezas)");
+        return new GuiaPiel(nota, puntas);
+    }
+
+    /// <summary>El <c>2x piel</c> y sus flechas, cada una con la pieza a la que apunta.</summary>
+    private sealed record GuiaPiel(TextNote Nota, List<(Sacada Pieza, XYZ Punta)> Puntas);
+
+
+    /// <summary>
+    /// La piel, siempre dos líneas, una por cara de la viga, cada una con la mitad de las barras (decisión 22 del plan de
+    /// #317, Luciano: "5 de este lado y 5 del otro: deberían aparecer 2 barras azules que digan 5 #4"). No importa cómo
+    /// estén repartidas en conjuntos de Revit.
+    /// </summary>
+    private static List<(Rebar Barra, int Cantidad)> PorCara(List<Rebar> piel)
+    {
+        int total = piel.Sum(b => b.Quantity);
+        return total >= 2 ? [(piel[0], total / 2), (piel[^1], total - total / 2)] : [(piel[0], total)];
     }
 
     private static string ClaveEstribos(Rebar b) => "e" + b.Id.Value;
@@ -407,6 +512,8 @@ internal static class GeneradorPrevia
                 continue;
             XYZ arriba = XYZ.BasisZ * (m.Dz / 0.3048);
             RebarBendingDetail.SetPosition(s.Detalle, s.Final + arriba);
+            // Donde quedó: las flechas de la piel se ponen después y lo leen (decisión 27).
+            s.Final = s.Final! + arriba;
             foreach (TextNote anexo in s.Anexos)
                 anexo.Coord += arriba;
             if (s.Etiqueta is not null)
@@ -424,7 +531,7 @@ internal static class GeneradorPrevia
     /// Mide lo movible, lo oculta de la imagen y deja las dos cruces de calibración: la página lo dibuja encima y se puede
     /// arrastrar. Una línea o un texto medidos aquí caen en el mismo sitio donde los pondría Revit.
     /// </summary>
-    private static void Separar(Document doc, View vista, List<Sacada> sacadas, List<(Rebar Barra, TextNote Nota)> sueltas, DespieceMovible movible, XYZ derecha, XYZ enPlano, XYZ min, XYZ max)
+    private static void Separar(Document doc, View vista, List<Sacada> sacadas, List<(Rebar Barra, TextNote Nota)> sueltas, DespieceMovible movible, XYZ derecha, XYZ enPlano, XYZ min, XYZ max, GuiaPiel? piel = null)
     {
         (double A, double B) EnX(BoundingBoxXYZ c)
         {
@@ -464,6 +571,25 @@ internal static class GeneradorPrevia
         {
             movible.Piezas.Add(new PiezaMovible(ClaveEstribos(barra), LectorDespiece.Color(doc.GetElement(barra.GetTypeId()).Name), [], Texto(nota, false), []));
             Ocultar(nota);
+        }
+        // El 2x piel y sus flechas también los dibuja la página, para que las flechas sigan a la piel al arrastrarla
+        // (decisión 27 del plan de #317). Las flechas salen del borde derecho de la nota.
+        if (piel is not null)
+        {
+            BoundingBoxXYZ? c = piel.Nota.get_BoundingBox(vista);
+            if (c is null)
+            {
+                Registro.Paso("longitudinal: el 2x piel no tiene caja; queda en la imagen");
+                piel = null;
+            }
+        }
+        if (piel is not null)
+        {
+            BoundingBoxXYZ c = piel.Nota.get_BoundingBox(vista);
+            (_, double derechaNota) = EnX(c);
+            movible.Guias.Add(new GuiaMovible(Texto(piel.Nota, false), new PuntoModelo(derechaNota, (c.Min.Z + c.Max.Z) / 2),
+                piel.Puntas.Select(p => (p.Pieza.Barra.Id.Value.ToString(), new PuntoModelo(p.Punta.DotProduct(derecha), p.Punta.Z))).ToList()));
+            Ocultar(piel.Nota);
         }
         if (movible.Ocultos.Count > 0)
             vista.HideElements(movible.Ocultos);
@@ -582,15 +708,17 @@ internal static class GeneradorPrevia
             if (escritas.Any(e => e.Texto == texto && Math.Abs(e.Centro - centro) < MismaZona))
                 continue;
             escritas.Add((texto, centro));
-            int fila = finDeFila.FindIndex(fin => centro - MedioAnchoEtiqueta > fin + HuecoEnFila);
+            // Por lo que mide su texto, no el de una barra: con el de una barra se iban a una tercera fila (decisión 43).
+            double medio = MedioAnchoTexto(texto);
+            int fila = finDeFila.FindIndex(fin => centro - medio > fin + HuecoEnFila);
             if (fila < 0)
             {
                 fila = finDeFila.Count;
                 finDeFila.Add(0);
             }
-            finDeFila[fila] = centro + MedioAnchoEtiqueta;
+            finDeFila[fila] = centro + medio;
             XYZ punto = enPlano + derecha * (centro - enPlano.DotProduct(derecha));
-            TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(punto.X, punto.Y, techo + AltoTexto + FilaEstribos * fila), texto, tipos.Nota(HorizontalTextAlignment.Center));
+            TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(punto.X, punto.Y, techo + AltoTexto + FilaEtiquetasEstribos * fila), texto, tipos.Nota(HorizontalTextAlignment.Center));
             Pintar(vista, nota.Id, b, null);
             sueltas.Add((b, nota));
         }
@@ -615,7 +743,7 @@ internal static class GeneradorPrevia
     /// Las luces entre ejes, en la línea de abajo con los números debajo, y el total en una nota (#264). Son cotas de Revit,
     /// ligadas a los ejes (#222). Con menos de dos ejes no hay qué acotar.
     /// </summary>
-    private static void Cotar(Document doc, View vista, XYZ centro, XYZ derecha, double largo, XYZ min, XYZ max, double fondo, TiposPropios tipos)
+    private static void Cotar(Document doc, View vista, XYZ centro, XYZ derecha, double largo, XYZ min, XYZ max, double fondo, double techo, TiposPropios tipos)
     {
         double desde = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), hasta = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
         List<Grid> ejes = new FilteredElementCollector(doc, vista.Id).OfClass(typeof(Grid)).Cast<Grid>()
@@ -642,11 +770,12 @@ internal static class GeneradorPrevia
         Dimension cadena = Cota(ejes, linea);
         doc.Regenerate();
         PasarTextoAbajo(cadena, linea);
-        // El total entre ejes, en una nota al final de la línea, del lado de los ejes: así no se pierde ninguna medida.
+        // El total entre ejes, en una nota al final de la cota de arriba, junto al largo de la viga (decisión 24 del plan de
+        // #317; antes iba al final de la línea de abajo): así no se pierde ninguna medida.
         if (ejes.Count > 2)
         {
             double total = Math.Abs(ejes[^1].Curve.GetEndPoint(0).DotProduct(derecha) - ejes[0].Curve.GetEndPoint(0).DotProduct(derecha));
-            XYZ punto = new XYZ(centro.X, centro.Y, linea - AireNota) + derecha * (largo / 2 + 0.10 * M * Letra.Factor);
+            XYZ punto = new XYZ(centro.X, centro.Y, techo + CotaArriba + AltoTexto) + derecha * (largo / 2 + 0.10 * M * Letra.Factor);
             TextNote.Create(doc, vista.Id, punto, "Ejes " + Cadena(total), tipos.Nota(HorizontalTextAlignment.Left));
         }
     }
@@ -690,7 +819,7 @@ internal static class GeneradorPrevia
     /// Pone cada barra en la primera fila donde quepa, de la viga hacia afuera, con su etiqueta encima. Devuelve hasta qué
     /// altura llegó la última fila.
     /// </summary>
-    private static double Acomodar(Document doc, View vista, List<Sacada> sacadas, double desde, bool haciaArriba, TiposPropios tipos)
+    private static double Acomodar(Document doc, View vista, List<Sacada> sacadas, double desde, bool haciaArriba, TiposPropios tipos, double lineaMinima = double.NegativeInfinity, Pila? pila = null)
     {
         // El reparto vive en AcomodadorFilas, con sus pruebas de que nada se encima. Aquí solo importa a qué fila va cada una.
         IEnumerable<PiezaFila> piezas = sacadas.Select((s, i) =>
@@ -700,7 +829,7 @@ internal static class GeneradorPrevia
         });
         List<List<(Sacada, double)>> filas = AcomodadorFilas.Acomodar(piezas, 0, true, HuecoEnFila, 0).Piezas.GroupBy(u => u.Fila).OrderBy(g => g.Key)
             .Select(g => g.Select(u => (sacadas[u.Pieza.Indice], 0.0)).ToList()).ToList();
-        return ColocarFilas(doc, vista, filas, desde, haciaArriba, tipos);
+        return ColocarFilas(doc, vista, filas, desde, haciaArriba, tipos, lineaMinima: lineaMinima, pila: pila);
     }
 
     /// <summary>
@@ -708,7 +837,7 @@ internal static class GeneradorPrevia
     /// Santiago: las que se traslapan quedan en la misma fila y una se corre <see cref="DesfaseTraslapo"/> para que se vea
     /// el traslapo (#223). Los bastones van entre esta fila y la viga.
     /// </summary>
-    private static double AcomodarLinea(Document doc, View vista, List<Sacada> sacadas, XYZ derecha, double desde, bool haciaArriba, TiposPropios tipos)
+    private static double AcomodarLinea(Document doc, View vista, List<Sacada> sacadas, XYZ derecha, double desde, bool haciaArriba, TiposPropios tipos, double lineaMinima = double.NegativeInfinity, Pila? pila = null)
     {
         if (sacadas.Count == 0)
             return desde;
@@ -734,14 +863,24 @@ internal static class GeneradorPrevia
             }
             anterior = tramo;
         }
-        return ColocarFilas(doc, vista, [fila], desde, haciaArriba, tipos, derecha, traslapos);
+        return ColocarFilas(doc, vista, [fila], desde, haciaArriba, tipos, derecha, traslapos, lineaMinima, pila);
+    }
+
+    /// <summary>La última fila puesta de un lado de la viga: su línea y lo que ocupa encima y debajo de ella.</summary>
+    private sealed class Pila
+    {
+        public double? Linea { get; set; }
+
+        public double Sobre { get; set; }
+
+        public double Bajo { get; set; }
     }
 
     /// <summary>Un traslapo de una fila: su centro a lo largo de la vista y su largo, en pies.</summary>
     private sealed record Traslapo(Sacada Pieza, double Centro, double Largo);
 
     /// <summary>Coloca las filas de la viga hacia afuera. Cada pieza puede ir corrida un desfase; la etiqueta va a la altura de la más alta de su fila.</summary>
-    private static double ColocarFilas(Document doc, View vista, List<List<(Sacada S, double Desfase)>> filas, double desde, bool haciaArriba, TiposPropios tipos, XYZ? derecha = null, List<Traslapo>? traslapos = null)
+    private static double ColocarFilas(Document doc, View vista, List<List<(Sacada S, double Desfase)>> filas, double desde, bool haciaArriba, TiposPropios tipos, XYZ? derecha = null, List<Traslapo>? traslapos = null, double lineaMinima = double.NegativeInfinity, Pila? pila = null)
     {
         double z = desde;
         foreach (List<(Sacada S, double Desfase)> fila in filas)
@@ -754,6 +893,15 @@ internal static class GeneradorPrevia
             double sobreLinea = Math.Max(fila.Max(f => f.S.Alto - f.S.Linea + f.Desfase), etiqueta) + (traslapos is { Count: > 0 } ? EspacioCotas : AireNota);
             double altoFila = bajoLinea + sobreLinea;
             double linea = (haciaArriba ? z : z - altoFila) + bajoLinea;
+            // Junto a la fila anterior: el texto de una va al medio de sus barras y el gancho de la otra en la punta, así que
+            // entre las dos líneas basta el mayor, no la suma (decisión 39 del plan de #317, captura de Luciano).
+            if (pila?.Linea is { } anterior)
+                linea = haciaArriba ? anterior + Math.Max(pila.Sobre, bajoLinea) + HuecoFilas : anterior - Math.Max(pila.Bajo, sobreLinea) - HuecoFilas;
+            // lineaMinima: arriba, la línea más baja posible; abajo, la más alta (decisiones 30 y 42 del plan de #317).
+            if (haciaArriba ? linea < lineaMinima : linea > lineaMinima && !double.IsNegativeInfinity(lineaMinima))
+                linea = lineaMinima;
+            if (pila is not null)
+                (pila.Linea, pila.Sobre, pila.Bajo) = (linea, sobreLinea, bajoLinea);
             foreach ((Sacada s, double desfase) in fila)
             {
                 s.Final = new XYZ(s.Posicion.X, s.Posicion.Y, linea - s.Linea - s.Abajo + desfase);
@@ -767,17 +915,21 @@ internal static class GeneradorPrevia
             // de Revit (probado el 30-oct). Si le cae encima a una etiqueta de la fila, sube al espacio libre.
             foreach (Traslapo t in derecha is null ? [] : traslapos ?? [])
             {
-                // Justo sobre la más alta de las dos barras que se traslapan, no a la altura de la fila (Juan, 31-oct). Solo sube
-                // si ahí mismo hay una etiqueta a su altura.
+                // Justo sobre la más alta de las dos barras que se traslapan, no a la altura de la fila (Juan, 31-oct). Si ahí mismo
+                // hay una etiqueta, se corre a su costado del lado del traslapo; antes subía una fila y quedaba lejos de su barra
+                // (Luciano, 09-nov, decisión 41 del plan de #317).
                 double sobreTraslapo = fila.First(f => ReferenceEquals(f.S, t.Pieza)).Desfase;
-                bool choca = fila.Any(f => Math.Abs(f.Desfase - sobreTraslapo) < AltoTexto && Math.Abs(f.S.Posicion.DotProduct(derecha!) - t.Centro) < MedioAnchoEtiqueta);
-                XYZ punto = t.Pieza.Posicion + derecha! * (t.Centro - t.Pieza.Posicion.DotProduct(derecha!));
-                double alto = linea + sobreTraslapo + AltoTexto + (choca ? AltoTexto : 0);
+                double centro = t.Centro;
+                if (fila.Where(f => Math.Abs(f.Desfase - sobreTraslapo) < AltoTexto && Math.Abs(f.S.Posicion.DotProduct(derecha!) - t.Centro) < MedioAnchoEtiqueta)
+                    .Select(f => f.S.Posicion.DotProduct(derecha!)).OrderBy(c => Math.Abs(c - t.Centro)).FirstOrDefault(double.NaN) is var vecina && !double.IsNaN(vecina))
+                    centro = vecina + (t.Centro >= vecina ? 1 : -1) * (MedioAnchoEtiqueta + MedioAnchoTraslapo);
+                XYZ punto = t.Pieza.Posicion + derecha! * (centro - t.Pieza.Posicion.DotProduct(derecha!));
+                double alto = linea + sobreTraslapo + AltoTexto;
                 TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(punto.X, punto.Y, alto), (t.Largo * 0.3048).ToString("0.00", CultureInfo.InvariantCulture), tipos.Nota(HorizontalTextAlignment.Center));
                 Pintar(vista, nota.Id, t.Pieza.Barra, null);
                 t.Pieza.Anexos.Add(nota);
             }
-            z = haciaArriba ? z + altoFila + HuecoFilas : z - altoFila - HuecoFilas;
+            z = haciaArriba ? linea + sobreLinea + HuecoFilas : linea - bajoLinea - HuecoFilas;
         }
         return z;
     }
@@ -826,7 +978,7 @@ internal static class GeneradorPrevia
         double ancho = Math.Abs((max - min).DotProduct(base_));
         double alto = max.Z - min.Z;
         XYZ medio = (min + max) / 2;
-        double aLoLargo = PuntoDeCorte(doc, viga, barras, dir);
+        double aLoLargo = PuntoDeCorte(doc, viga, barras, dir, min, max);
         XYZ corte = medio + dir * (aLoLargo - medio.DotProduct(dir));
 
         Transform t = Transform.Identity;
@@ -834,7 +986,7 @@ internal static class GeneradorPrevia
         t.BasisY = XYZ.BasisZ;
         t.BasisZ = base_.CrossProduct(XYZ.BasisZ);
         t.Origin = corte;
-        var caja = new BoundingBoxXYZ { Transform = t, Min = new XYZ(-1, -1, -0.3 * M), Max = new XYZ(1, 1, 0) };
+        var caja = new BoundingBoxXYZ { Transform = t, Min = new XYZ(-1, -1, -FondoSeccion), Max = new XYZ(1, 1, 0) };
         ViewSection vista = Preparar(doc, tipo, caja, "S", EscalaSeccion);
         // Revit puede voltear la vista: lo que manda es su derecha real.
         XYZ derecha = vista.RightDirection;
@@ -847,6 +999,12 @@ internal static class GeneradorPrevia
         var gris = new OverrideGraphicSettings();
         gris.SetCutBackgroundPatternId(Solido(doc));
         gris.SetCutBackgroundPatternColor(new Color(205, 205, 205));
+        // Solo lo cortado: lo que la vista ve de la viga detrás del corte (más ancha, o metida en una zapata) salía como
+        // una franja negra o gris oscuro, y Santiago no la quiere (#314, decisión 37 del plan de #317).
+        gris.SetProjectionLineColor(new Color(255, 255, 255));
+        gris.SetSurfaceForegroundPatternVisible(false);
+        gris.SetSurfaceBackgroundPatternVisible(false);
+        gris.SetSurfaceTransparency(100);
         foreach (ElementId id in viga.Vigas)
             vista.SetElementOverrides(id, gris);
         vista.DisplayStyle = DisplayStyle.FlatColors;
@@ -863,116 +1021,222 @@ internal static class GeneradorPrevia
         if (detras.Count > 0)
             vista.HideElements(detras);
 
-        // Una etiqueta con flecha por cada barra que pasa por el corte. El bastón no se etiqueta (Santiago, 30-oct).
-        var cortadas = new List<(Rebar Barra, XYZ Punto)>();
-        foreach (Rebar b in barras.Where(b => EsLongitudinal(b, dir) && !MarcaVigas.EsBaston(b)))
+        // Las barras que pasan por el corte, para la leyenda: sin etiquetas con flechas ni cantidades, solo el color y el
+        // diámetro (#313, Santiago 09-nov: "quitar la cantidad de varillas y solo poner una leyenda").
+        var cortadas = new List<Rebar>();
+        foreach (Rebar b in barras.Where(b => EsLongitudinal(b, dir)))
         {
             for (int i = 0; i < b.Quantity; i++)
             {
-                // Con la curva transformada: el add-in de vigas corre barras dentro del conjunto (MoveBarInSet), y la
-                // posición del conjunto no lo sabe; la flecha caía 2 cm al lado de la barra (Sección V 3, 30-oct).
+                // Con la curva transformada: el add-in de vigas corre barras dentro del conjunto (MoveBarInSet).
                 Curve mayor = b.GetTransformedCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, i).OrderByDescending(c => c.Length).First();
-                XYZ a = mayor.GetEndPoint(0), e = mayor.GetEndPoint(1);
-                double pa = a.DotProduct(dir), pe = e.DotProduct(dir);
+                double pa = mayor.GetEndPoint(0).DotProduct(dir), pe = mayor.GetEndPoint(1).DotProduct(dir);
                 if (aLoLargo >= Math.Min(pa, pe) && aLoLargo <= Math.Max(pa, pe))
-                    cortadas.Add((b, a + dir * (aLoLargo - pa)));
+                    cortadas.Add(b);
             }
         }
-        // Una sola etiqueta por grupo y diámetro, con una flecha a cada barra: «10 #5» en vez de diez «1 #5» (06-nov). Las
-        // pieles van aparte, a la izquierda de la sección; el estribo ocupa la derecha.
-        void Etiquetar(List<(Rebar Barra, XYZ Punto)> grupo, Func<int, int, XYZ> donde, HorizontalTextAlignment alineado, TextNoteLeaderTypes flecha)
+        // Como la de la columna (decisión 22 del plan de #287): el cuadrito en el color y el texto en negro, uno debajo de
+        // otro, el más grueso primero. La piel en su propia fila (decisión 5 del plan de #317).
+        var leyenda = cortadas.GroupBy(b => (Numero: LectorDespiece.Numero(doc.GetElement(b.GetTypeId()).Name), Piel: MarcaVigas.EsPiel(b), Nombre: NombreBarra(doc, b)))
+            .OrderBy(g => g.Key.Piel).ThenByDescending(g => g.Key.Numero).Select(g => g.Key).ToList();
+        // Los estribos y menores, en el color de su diámetro, si ese diámetro no está ya (decisión 15 del plan de #317).
+        foreach (Rebar b in barras.Where(b => !EsLongitudinal(b, dir)).GroupBy(b => NombreBarra(doc, b)).Select(g => g.First()))
         {
-            var porDiametro = grupo.GroupBy(c => NombreBarra(doc, c.Barra)).OrderBy(g => g.Key).ToList();
-            for (int i = 0; i < porDiametro.Count; i++)
-            {
-                TextNote nota = TextNote.Create(doc, vista.Id, donde(i, porDiametro.Count), $"{porDiametro[i].Count()} {porDiametro[i].Key}", tipos.Nota(alineado));
-                foreach ((Rebar _, XYZ punto) in porDiametro[i])
-                    nota.AddLeader(flecha).End = punto;
-                Pintar(vista, nota.Id, porDiametro[i].First().Barra, null);
-            }
+            string nombre = NombreBarra(doc, b);
+            if (!leyenda.Any(l => !l.Piel && l.Nombre == nombre))
+                leyenda.Add((LectorDespiece.Numero(doc.GetElement(b.GetTypeId()).Name), false, nombre));
         }
-        double paso = 0.28 * M * Letra.Factor;
-        XYZ EnFila(double dz, int i, int n) => corte + XYZ.BasisZ * dz + derecha * ((i - (n - 1) / 2.0) * paso - 0.08 * M * Letra.Factor);
-        var principales = cortadas.Where(c => !MarcaVigas.EsPiel(c.Barra)).ToList();
-        Etiquetar(principales.Where(c => c.Punto.Z > medio.Z).ToList(), (i, n) => EnFila(alto / 2 + 0.38 * M * Letra.Factor, i, n),
-            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
-        Etiquetar(principales.Where(c => c.Punto.Z <= medio.Z).ToList(), (i, n) => EnFila(-alto / 2 - 0.2 * M * Letra.Factor, i, n),
-            HorizontalTextAlignment.Left, TextNoteLeaderTypes.TNLT_STRAIGHT_L);
-        // Las pieles, por fuera de la cota del alto y de su cadena (TextoAltoSeccion): ahí se encimaba «10 #4» (06-nov). El
-        // recorte se abre a la izquierda para que quepan.
-        var pieles = cortadas.Where(c => MarcaVigas.EsPiel(c.Barra)).ToList();
-        Etiquetar(pieles,
-            (i, n) => corte - derecha * (ancho / 2 + TextoAltoSeccion + 0.12 * M * Letra.Factor) + XYZ.BasisZ * ((n - 1) / 2.0 - i) * 0.12 * M * Letra.Factor,
-            HorizontalTextAlignment.Right, TextNoteLeaderTypes.TNLT_STRAIGHT_R);
-        double izquierda = ancho / 2 + (pieles.Count > 0 ? 0.85 : 0.55) * M * Letra.Factor;
-        if (pieles.Count > 0)
-            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor, alto / 2 + 0.7 * M * Letra.Factor);
+        XYZ esquinaIzquierda = corte - derecha * (ancho / 2);
+        for (int i = 0; i < leyenda.Count; i++)
+        {
+            XYZ fila = esquinaIzquierda - XYZ.BasisZ * (alto / 2 + LeyendaSeccion + i * FilaLeyenda);
+            TextNote cuadro = TextNote.Create(doc, vista.Id, fila, "■", tipos.Nota(HorizontalTextAlignment.Left));
+            (byte r, byte v, byte a) = ColoresDiametro.Rgb(leyenda[i].Numero);
+            Columnas.SeccionColumna.Pintar(vista, cuadro.Id, new Color(r, v, a), siempre: true);
+            TextNote.Create(doc, vista.Id, fila + derecha * AnchoCuadro, leyenda[i].Nombre + (leyenda[i].Piel ? " piel" : ""), tipos.Nota(HorizontalTextAlignment.Left));
+        }
+        Registro.Paso("sección: leyenda " + string.Join(", ", leyenda.Select(l => l.Nombre + (l.Piel ? " piel" : ""))));
 
-        // El estribo aparte, solo con sus medidas. Con este tipo de detalle sale parado, como en la sección. El cerrado es
-        // el de más curvas: la grapa de la misma zona también cruza el corte.
+        // Dónde se cortó, desde el extremo izquierdo de la viga como se ve en la vista larga (#314, decisión 6 del plan de #317).
+        // Desde el comienzo del dibujo de la vista larga, donde arranca la cota del largo total (la cara de afuera de la
+        // primera columna): así x se lee sobre esa cota, de izquierda a derecha (decisión 38 del plan de #317).
+        XYZ lectura = SentidoDeLectura(doc, viga);
+        double inicio = InicioDelDibujo(doc, viga, lectura, min, max);
+        double x = corte.DotProduct(lectura) - inicio;
+        TextNote.Create(doc, vista.Id, corte + XYZ.BasisZ * (alto / 2 + SobreSeccion), TextosDespiece.Corte(x * 0.3048), tipos.Nota(HorizontalTextAlignment.Center));
+        Registro.Paso($"sección: corte en x= {x * 0.3048:0.000} desde el extremo izquierdo");
+
+        double izquierda = ancho / 2 + TotalSeccion + 0.15 * M * Letra.Factor;
+        double arriba = alto / 2 + SobreSeccion + 0.10 * M * Letra.Factor;
+        double abajo = alto / 2 + LeyendaSeccion + Math.Max(0, leyenda.Count - 1) * FilaLeyenda + 0.15 * M * Letra.Factor;
+        // El estribo aparte, cerrado como lo dibuja Revit (#313). El cerrado es el de más curvas: la grapa de la misma zona
+        // también cruza el corte.
         Rebar? estribo = new FilteredElementCollector(doc, vista.Id).OfCategory(BuiltInCategory.OST_Rebar).OfType<Rebar>()
             .Where(b => viga.Vigas.Contains(b.GetHostId()) && !EsLongitudinal(b, dir))
             .OrderByDescending(b => Curvas(b, false).Count).FirstOrDefault();
         if (estribo is not null)
         {
             XYZ centroDetalle = corte + derecha * 0.7 * M * Letra.Factor;
-            Element d = RebarBendingDetail.Create(doc, vista.Id, estribo.Id, 0, tipos.Barra, centroDetalle, 0);
-            Pintar(vista, d.Id, estribo, 3);
-            EtiquetarGancho(doc, vista, estribo, centroDetalle, medio.Z, tipos);
-            double abajo = ResumirEstribos(doc, vista, barras.Where(b => !EsLongitudinal(b, dir)).ToList(), estribo, d, centroDetalle, tipos);
-            Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, Math.Max(alto / 2 + 0.7 * M * Letra.Factor, medio.Z - abajo + 0.1 * M * Letra.Factor), alto / 2 + 0.7 * M * Letra.Factor);
+            List<List<Rebar>> formas = FormasEstribos(barras.Where(b => !EsLongitudinal(b, dir)).ToList(), estribo);
+            (double techo, double piso) = ApilarEstribos(doc, vista, formas, estribo, centroDetalle, tipos);
+            arriba = Math.Max(arriba, techo - medio.Z + 0.05 * M * Letra.Factor);
+            abajo = Math.Max(abajo, medio.Z - piso + 0.10 * M * Letra.Factor);
         }
+        Recortar(vista, corte, izquierda, ancho / 2 + 1.05 * M * Letra.Factor, abajo, arriba);
         Acotar(doc, vista, viga, estribo, corte, derecha, medio.Z, tipos);
         return vista;
     }
 
     /// <summary>
-    /// Cada forma de estribo de la viga, también las menores (grapas), con su detalle y debajo su cantidad total, su largo y
-    /// su gancho: <c>46 #3 L= 0.99 G= 0.08</c> (Juan, 31-oct). El principal ya está dibujado; los demás se apilan debajo.
-    /// Devuelve hasta qué altura bajó.
+    /// Cada forma de estribo aparte, la principal primero y las menores (grapas, cajas) apiladas debajo, en la sección de la
+    /// viga y en la de la columna. Cada una cerrada como la dibuja Revit y en el color de su diámetro, con su encabezado
+    /// encima (<c>Cantidad: 84</c>, <c>L= 1.24 m</c>, <c>G= 0.08</c>), su ancho y su alto acotados una vez y su diámetro
+    /// debajo (<c>#3</c>); los textos y las cotas en negro (#313, decisiones 14 y 18 del plan de #317). "Arriba" es el de
+    /// la vista: Z en la sección de la viga, Y en la planta de la columna. Revit solo dibuja el detalle de una barra que se
+    /// ve en la vista (31-oct: lanza ArgumentException); de una forma que no se ve van solo sus textos. Devuelve hasta
+    /// dónde subió y bajó, medido sobre "arriba".
     /// </summary>
-    private static double ResumirEstribos(Document doc, View vista, List<Rebar> estribos, Rebar principal, Element detallePrincipal, XYZ centroDetalle, TiposPropios tipos)
+    internal static (double Techo, double Piso) ApilarEstribos(Document doc, View vista, List<List<Rebar>> formas, Rebar principal, XYZ punto, TiposPropios tipos)
     {
-        string Clave(Rebar b) => $"{b.GetTypeId()}|{b.GetShapeId()}|{Math.Round(LectorDespiece.LargoBarra(b) * 304.8)}";
-        List<IGrouping<string, Rebar>> formas = estribos.GroupBy(Clave).OrderByDescending(g => g.Key == Clave(principal) ? int.MaxValue : Curvas(g.First(), false).Count).ToList();
-        double tope = double.NaN, abajo = centroDetalle.Z;
-        // Revit solo dibuja el detalle de una barra que se vea en la vista (medido el 31-oct: lanza ArgumentException con viewId).
+        XYZ arriba = vista.UpDirection, derecha = vista.RightDirection;
+        double Alto(XYZ p) => p.DotProduct(arriba);
+        XYZ En(double alto) => punto + arriba * (alto - Alto(punto));
         var enLaVista = new HashSet<ElementId>(new FilteredElementCollector(doc, vista.Id).OfCategory(BuiltInCategory.OST_Rebar).ToElementIds());
-        foreach (IGrouping<string, Rebar> forma in formas)
+        double? tope = null;
+        double techo = Alto(punto), piso = Alto(punto);
+        foreach (List<Rebar> forma in formas)
         {
-            bool esPrincipal = forma.Key == Clave(principal);
-            Rebar? visible = forma.FirstOrDefault(x => enLaVista.Contains(x.Id));
-            Rebar b = esPrincipal ? principal : visible ?? forma.First();
-            Element? detalle = esPrincipal ? detallePrincipal : null;
-            if (!esPrincipal && visible is not null)
+            // La forma de más piezas va primero en la lista (FormasEstribos): se dibuja esa si se ve.
+            Rebar b = forma.Contains(principal) ? principal : forma.FirstOrDefault(x => enLaVista.Contains(x.Id)) ?? forma[0];
+            // Lo alto del detalle; la primera forma queda centrada en el punto y las demás debajo de la anterior.
+            double arribaDetalle = tope is { } t ? t - AireNota - AltoEncabezado : Alto(punto), abajoDetalle = arribaDetalle;
+            if (enLaVista.Contains(b.Id))
             {
-                detalle = RebarBendingDetail.Create(doc, vista.Id, b.Id, 0, tipos.Barra, centroDetalle, 0);
-                Pintar(vista, detalle.Id, b, 3);
-            }
-            double piso = double.IsNaN(tope) ? centroDetalle.Z : tope;
-            if (detalle is not null)
-            {
-                doc.Regenerate();
-                BoundingBoxXYZ m = detalle.get_BoundingBox(vista);
-                double dz = double.IsNaN(tope) ? 0 : tope - m.Max.Z;
-                if (dz != 0)
-                    RebarBendingDetail.SetPosition(detalle, new XYZ(centroDetalle.X, centroDetalle.Y, centroDetalle.Z + dz));
-                piso = m.Min.Z + dz;
+                try
+                {
+                    Element d = RebarBendingDetail.Create(doc, vista.Id, b.Id, 0, tipos.Barra, punto, 0);
+                    Pintar(vista, d.Id, b, 3);
+                    doc.Regenerate();
+                    BoundingBoxXYZ m = d.get_BoundingBox(vista);
+                    double sube = Math.Max(Alto(m.Min), Alto(m.Max)), baja = Math.Min(Alto(m.Min), Alto(m.Max));
+                    double corrimiento = tope is null ? 0 : arribaDetalle - sube;
+                    if (corrimiento != 0)
+                        RebarBendingDetail.SetPosition(d, punto + arriba * corrimiento);
+                    arribaDetalle = sube + corrimiento;
+                    abajoDetalle = baja + corrimiento;
+                    double centro = (m.Min.DotProduct(derecha) + m.Max.DotProduct(derecha)) / 2;
+                    abajoDetalle = AcotarEstribo(doc, vista, b, punto + derecha * (centro - punto.DotProduct(derecha)), arribaDetalle, abajoDetalle, tipos);
+                }
+                catch (Exception e)
+                {
+                    Registro.Paso($"estribos: {b.Id} sin detalle: {e.Message}");
+                }
             }
             else
-            {
-                // Ninguna de esta forma pasa por el corte: sin dibujo, pero con su cantidad y sus medidas.
-                Registro.Paso($"estribos: sin detalle para {b.Id}, ninguna pasa por el corte");
-            }
-            string tipo = doc.GetElement(b.GetTypeId()).Name;
-            TextNote nota = TextNote.Create(doc, vista.Id, new XYZ(centroDetalle.X, centroDetalle.Y, piso - AireNota),
-                TextosDespiece.Estribo(tipo, forma.Sum(x => x.Quantity), LectorDespiece.LargoBarra(b) * 0.3048, Gancho(b) * 0.3048), tipos.Nota(HorizontalTextAlignment.Center));
-            Pintar(vista, nota.Id, b, null);
-            abajo = piso - AireNota - FilaEstribos;
-            tope = abajo - HuecoEstribos;
+                Registro.Paso($"estribos: {b.Id} no se ve en la vista, van solo sus textos");
+            // Las notas no se pintan: van en negro siempre, aunque no se pidan los textos en negro (#313).
+            double encabezado = arribaDetalle + AireNota + AltoEncabezado;
+            TextNote.Create(doc, vista.Id, En(encabezado),
+                TextosDespiece.EncabezadoEstribo(forma.Sum(x => x.Quantity), LectorDespiece.LargoBarra(b) * 0.3048, Gancho(b) * 0.3048),
+                tipos.Nota(HorizontalTextAlignment.Center));
+            TextNote.Create(doc, vista.Id, En(abajoDetalle - AireNota), TextosDespiece.Nombre(doc.GetElement(b.GetTypeId()).Name),
+                tipos.Nota(HorizontalTextAlignment.Center));
+            techo = Math.Max(techo, encabezado);
+            piso = Math.Min(piso, abajoDetalle - AireNota - FilaEstribos);
+            tope = piso - HuecoEstribos;
         }
-        return abajo;
+        return (techo, piso);
     }
+
+    /// <summary>
+    /// El ancho debajo del estribo aparte y el alto a su izquierda, una vez cada uno, como la referencia de Santiago
+    /// (decisión 14 del plan de #317). Por los tramos rectos de la barra más su diámetro, como el recubrimiento; una forma
+    /// chata (grapa) solo lleva el ancho. <paramref name="centro"/> está en el eje vertical del detalle. Devuelve hasta dónde
+    /// bajó, para poner el diámetro debajo.
+    /// </summary>
+    private static double AcotarEstribo(Document doc, View vista, Rebar b, XYZ centro, double arribaDetalle, double abajoDetalle, TiposPropios tipos)
+    {
+        XYZ arriba = vista.UpDirection, derecha = vista.RightDirection;
+        double d = ((RebarBarType)doc.GetElement(b.GetTypeId())).BarNominalDiameter;
+        List<XYZ> puntos = Curvas(b, true).SelectMany(c => c.Tessellate()).ToList();
+        if (puntos.Count == 0)
+            return abajoDetalle;
+        double ancho = puntos.Max(p => p.DotProduct(derecha)) - puntos.Min(p => p.DotProduct(derecha)) + d;
+        double alto = puntos.Max(p => p.DotProduct(arriba)) - puntos.Min(p => p.DotProduct(arriba)) + d;
+        // El detalle puede tener ganchos que asoman: las cotas van por la barra, centradas en el detalle.
+        double medio = (arribaDetalle + abajoDetalle) / 2;
+        XYZ En(double x, double y) => centro + derecha * x + arriba * (y - centro.DotProduct(arriba));
+        double linea = medio - alto / 2 - CotaDetalle;
+        CadenaPorPlanos(doc, vista, $"estribos: ancho de {b.Id}", En(-ancho / 2, Math.Min(linea, abajoDetalle - CotaDetalle)), derecha, [0, ancho], tipos.Cota);
+        if (alto > FormaChata)
+            CadenaPorPlanos(doc, vista, $"estribos: alto de {b.Id}", En(-ancho / 2 - CotaDetalle, medio - alto / 2), arriba, [0, alto], tipos.Cota);
+        return Math.Min(linea, abajoDetalle - CotaDetalle);
+    }
+
+    /// <summary>
+    /// Las formas de estribo de la viga o la columna, cada una con sus barras, la principal primero y las demás de más a
+    /// menos tramos. Las que tienen el mismo diámetro, la misma cantidad de tramos y el mismo largo recto (±3 cm) son la
+    /// misma forma: la grapa con el gancho grande de los traslapos se suma a la normal (decisión 16 del plan de #317). En
+    /// cada forma van primero las barras de la variante con más piezas, que es la que se dibuja.
+    /// </summary>
+    internal static List<List<Rebar>> FormasEstribos(List<Rebar> estribos, Rebar principal)
+    {
+        double Recto(Rebar b) => Curvas(b, true).Sum(c => c.Length);
+        int Tramos(Rebar b) => Curvas(b, true).Count;
+        // Primero cada variante exacta (diámetro, largo y gancho al centímetro), la de más piezas primero.
+        List<List<Rebar>> variantes = estribos
+            .GroupBy(b => $"{b.GetTypeId()}|{Math.Round(LectorDespiece.LargoBarra(b) * 30.48)}|{Math.Round(Gancho(b) * 30.48)}")
+            .Select(g => g.ToList()).OrderByDescending(v => v.Sum(b => b.Quantity)).ToList();
+        var formas = new List<List<Rebar>>();
+        foreach (List<Rebar> variante in variantes)
+        {
+            Rebar b = variante[0];
+            List<Rebar>? misma = formas.FirstOrDefault(f => f[0].GetTypeId() == b.GetTypeId() && Tramos(f[0]) == Tramos(b)
+                && Math.Abs(Recto(f[0]) - Recto(b)) <= MismoRecto);
+            if (misma is null)
+                formas.Add([.. variante]);
+            else
+            {
+                Registro.Paso($"estribos: {variante.Sum(x => x.Quantity)} de {b.Id} se suman a la forma de {misma[0].Id}");
+                misma.AddRange(variante);
+            }
+        }
+        return formas.OrderByDescending(f => f.Contains(principal) ? int.MaxValue : Curvas(f[0], false).Count).ToList();
+    }
+
+    /// <summary>Dos estribos con el tramo recto así de parecido son la misma forma (decisión 16 del plan de #317).</summary>
+    private const double MismoRecto = 0.03 * M;
+
+    /// <summary>Una forma menos alta que esto (una grapa) no lleva la cota del alto.</summary>
+    private const double FormaChata = 0.10 * M;
+
+    /// <summary>De la barra del estribo aparte a la línea de su cota: deja lugar al número, que va encima de la línea.</summary>
+    private static double CotaDetalle => 0.08 * M * Letra.Factor;
+
+    /// <summary>
+    /// Lo más a la izquierda del concreto de la viga continua, medido sobre <paramref name="sentido"/>: de ahí se cuenta el
+    /// <c>x=</c> del corte (#314). Por los vértices de sus sólidos, no por la caja, que en una viga inclinada en planta es más
+    /// grande que la viga.
+    /// </summary>
+    private static double Extremo(Document doc, VigaContinua viga, XYZ sentido)
+    {
+        var valores = new List<double>();
+        foreach (Element e in viga.Vigas.Select(doc.GetElement))
+        {
+            foreach (GeometryObject g in e.get_Geometry(new Options()))
+            {
+                IEnumerable<Solid> solidos = g is GeometryInstance i ? i.GetInstanceGeometry().OfType<Solid>() : g is Solid s ? [s] : [];
+                foreach (Solid solido in solidos.Where(x => x.Volume > 0))
+                    foreach (Edge borde in solido.Edges)
+                        valores.AddRange(borde.Tessellate().Select(p => p.DotProduct(sentido)));
+            }
+        }
+        if (valores.Count > 0)
+            return valores.Min();
+        (XYZ min, XYZ max) = Caja(doc, viga);
+        return Math.Min(min.DotProduct(sentido), max.DotProduct(sentido));
+    }
+
 
     /// <summary>El largo del gancho que da Revit para esta barra (el más largo de sus dos puntas), en pies; 0 si no tiene.</summary>
     internal static double Gancho(Rebar b)
@@ -983,47 +1247,9 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>
-    /// El largo de la pata de cada gancho del estribo aparte, como los <c>0.08</c> de la captura de Juan (31-oct): el
-    /// detalle de plegado no los acota aunque su tipo lo pida (probado el 3-nov, ni en texto ni en cota). El gancho que se
-    /// queda dentro lleva su largo al otro lado de las patas, donde el estribo tiene espacio. El que Revit despliega con el
-    /// primer tramo (<see cref="BendingDetailSegmentsRepresentation.Unfold"/>) queda por fuera, junto a la esquina de las
-    /// patas, y su largo va al lado, fuera del estribo.
-    /// </summary>
-    internal static void EtiquetarGancho(Document doc, View vista, Rebar estribo, XYZ centroDetalle, double centroZ, TiposPropios tipos)
-    {
-        IList<Curve> curvas = Curvas(estribo, false);
-        if (curvas.Count == Curvas(estribo, true).Count)
-            return;
-        XYZ derecha = vista.RightDirection;
-        // "Arriba" es el de la vista: Z en la sección de la viga, Y en la planta de la sección de columna (hallazgo 36 del
-        // plan de columnas). En la viga da lo mismo que antes, cuando se usaba Z.
-        XYZ arriba = vista.UpDirection;
-        double Alto(XYZ p) => p.DotProduct(arriba);
-        XYZ En(double z) => centroDetalle + arriba * (z - Alto(centroDetalle));
-        List<XYZ> puntos = curvas.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
-        double minZ = puntos.Min(Alto), maxZ = puntos.Max(Alto), centroEstribo = (minZ + maxZ) / 2;
-        double minX = puntos.Min(p => p.DotProduct(derecha)), maxX = puntos.Max(p => p.DotProduct(derecha)), centroX = (minX + maxX) / 2;
-        List<XYZ> puntas = new[] { curvas[0], curvas[^1] }.SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
-        bool patasAbajo = puntas.Average(Alto) < centroEstribo;
-        string texto = (Gancho(estribo) * 0.3048).ToString("0.00", CultureInfo.InvariantCulture);
-
-        double z = centroZ + (patasAbajo ? puntas.Max(Alto) - centroEstribo + BajaNota + AireNota : puntas.Min(Alto) - centroEstribo - SubeNota - AireNota);
-        TextNote dentro = TextNote.Create(doc, vista.Id, En(z), texto, tipos.Nota(HorizontalTextAlignment.Center));
-        Pintar(vista, dentro.Id, estribo, null);
-
-        if (new[] { 0, 1 }.Count(i => estribo.GetHookTypeId(i) != ElementId.InvalidElementId) < 2)
-            return;
-        bool patasDerecha = puntas.Average(p => p.DotProduct(derecha)) > centroX;
-        double x = (patasDerecha ? maxX - centroX + AireNota : minX - centroX - AireNota);
-        double zFuera = centroZ + (patasAbajo ? minZ - centroEstribo - SubeNota - AireNota : maxZ - centroEstribo + BajaNota + AireNota);
-        TextNote fuera = TextNote.Create(doc, vista.Id, En(zFuera) + derecha * x, texto,
-            tipos.Nota(patasDerecha ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Right));
-        Pintar(vista, fuera.Id, estribo, null);
-    }
-
-    /// <summary>
-    /// Ancho y alto con cotas de Revit, ligadas a las caras de la viga. El recubrimiento va en texto, como <c>0.04 · 0.17 ·
-    /// 0.04</c>: Revit ignora la referencia del estribo en una cota (probado el 30-oct, la cadena salió de un solo tramo).
+    /// Ancho y alto con cotas de Revit, ligadas a las caras de la viga. El recubrimiento va en una cota en cadena contra
+    /// planos de referencia (<see cref="CadenaPorPlanos"/>, #313): Revit ignora la referencia del estribo en una cota
+    /// (probado el 30-oct, la cadena salió de un solo tramo). Si la cadena no se puede, va en texto como antes.
     /// </summary>
     private static void Acotar(Document doc, View vista, VigaContinua viga, Rebar? estribo, XYZ corte, XYZ derecha, double centroZ, TiposPropios tipos)
     {
@@ -1090,9 +1316,10 @@ internal static class GeneradorPrevia
             if (!Intentar(nombre, "con las caras de la viga", caras, desde, hacia) && !Intentar(nombre, "con planos de referencia", () => Planos(desde, hacia), desde, hacia))
                 Registro.Paso($"sección: la cota {nombre} queda sin crear");
         }
-        XYZ bajo = esquina - XYZ.BasisZ * CotaAnchoSeccion;
+        // Primero (más cerca) la cadena del recubrimiento y más afuera la total, como en la columna (#282, #313).
+        XYZ bajo = esquina - XYZ.BasisZ * TotalSeccion;
         Cota("del ancho", () => { List<PlanarFace> l = Lados(); return [l[0].Reference, l[^1].Reference]; }, bajo, bajo + derecha * ancho);
-        XYZ alLado = esquina - derecha * CotaAltoSeccion;
+        XYZ alLado = esquina - derecha * TotalSeccion;
         Cota("del alto", () => { List<PlanarFace> t = Tapas(); return [t[0].Reference, t[^1].Reference]; }, alLado, alLado + XYZ.BasisZ * alto);
 
         if (estribo is null)
@@ -1105,13 +1332,60 @@ internal static class GeneradorPrevia
         List<XYZ> puntos = (esquinas.Count > 0 ? esquinas : tramos).SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
         double desdeEje = puntos.Min(p => p.DotProduct(derecha)) - d / 2, hastaEje = puntos.Max(p => p.DotProduct(derecha)) + d / 2;
         double bajoEje = puntos.Min(p => p.Z) - d / 2, altoEje = puntos.Max(p => p.Z) + d / 2;
-        XYZ medioAncho = esquina + derecha * (ancho / 2);
-        TextNote.Create(doc, vista.Id, medioAncho - XYZ.BasisZ * TextoAnchoSeccion,
-            Cadena(desdeEje - cara, hastaEje - desdeEje, cara + ancho - hastaEje), tipos.Nota(HorizontalTextAlignment.Center));
-        TextNoteOptions vertical = tipos.Nota(HorizontalTextAlignment.Center);
-        vertical.Rotation = Math.PI / 2;
-        TextNote.Create(doc, vista.Id, new XYZ(esquina.X, esquina.Y, centroZ) - derecha * TextoAltoSeccion,
-            Cadena(bajoEje - zAbajo, altoEje - bajoEje, zArriba - altoEje), vertical);
+        // La cadena como cota de Revit (#313: "acotar las medidas de recubrimiento"), contra planos de referencia en blanco: la
+        // referencia del estribo no sirve (30-oct). Si Revit no la acepta, queda el texto de antes en su lugar.
+        XYZ cadenaAbajo = esquina - XYZ.BasisZ * CadenaSeccion;
+        if (!CadenaPorPlanos(doc, vista, "sección: cadena del ancho", cadenaAbajo, derecha, [0, desdeEje - cara, hastaEje - cara, ancho], tipos.Cota))
+            TextNote.Create(doc, vista.Id, cadenaAbajo + derecha * (ancho / 2),
+                Cadena(desdeEje - cara, hastaEje - desdeEje, cara + ancho - hastaEje), tipos.Nota(HorizontalTextAlignment.Center));
+        XYZ cadenaLado = esquina - derecha * CadenaSeccion;
+        if (!CadenaPorPlanos(doc, vista, "sección: cadena del alto", cadenaLado, XYZ.BasisZ, [0, bajoEje - zAbajo, altoEje - zAbajo, alto], tipos.Cota))
+        {
+            TextNoteOptions vertical = tipos.Nota(HorizontalTextAlignment.Center);
+            vertical.Rotation = Math.PI / 2;
+            TextNote.Create(doc, vista.Id, new XYZ(cadenaLado.X, cadenaLado.Y, centroZ), Cadena(bajoEje - zAbajo, altoEje - bajoEje, zArriba - altoEje), vertical);
+        }
+    }
+
+    /// <summary>
+    /// Una cota en cadena de Revit contra planos de referencia en blanco, uno en cada posición de
+    /// <paramref name="posiciones"/> (en pies, sobre <paramref name="eje"/> desde <paramref name="origen"/>). Sirve donde
+    /// no hay caras que acotar, como la cara exterior del estribo (#313). En su SubTransaction: si Revit no la acepta se
+    /// deshace solo eso y devuelve false.
+    /// </summary>
+    internal static bool CadenaPorPlanos(Document doc, View vista, string nombre, XYZ origen, XYZ eje, IReadOnlyList<double> posiciones, DimensionType? tipo)
+    {
+        using var intento = new SubTransaction(doc);
+        intento.Start();
+        try
+        {
+            XYZ tramo = eje.CrossProduct(vista.ViewDirection).Normalize() * 0.05 * M;
+            var blanco = new OverrideGraphicSettings();
+            blanco.SetProjectionLineColor(new Color(255, 255, 255));
+            var lista = new ReferenceArray();
+            foreach (double posicion in posiciones)
+            {
+                XYZ p = origen + eje * posicion;
+                ReferencePlane plano = doc.Create.NewReferencePlane(p - tramo, p + tramo, vista.ViewDirection, vista);
+                vista.SetElementOverrides(plano.Id, blanco);
+                lista.Append(plano.GetReference());
+            }
+            doc.Regenerate();
+            Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(origen + eje * posiciones[0], origen + eje * posiciones[^1]), lista);
+            if (tipo is not null)
+                cota.DimensionType = tipo;
+            doc.Regenerate();
+            intento.Commit();
+            Registro.Paso($"{nombre}: cota en cadena de {cota.NumberOfSegments} tramos: "
+                + string.Join(" | ", cota.Segments.Cast<DimensionSegment>().Select(s => s.ValueString)));
+            return true;
+        }
+        catch (Exception e)
+        {
+            intento.RollBack();
+            Registro.Paso($"{nombre}: cota en cadena no se pudo: {e.Message}");
+            return false;
+        }
     }
 
     internal static string Cadena(params double[] pies) => string.Join(" · ", pies.Select(p => (p * 0.3048).ToString("0.00", CultureInfo.InvariantCulture)));
@@ -1132,24 +1406,128 @@ internal static class GeneradorPrevia
     internal static IList<Curve> Curvas(Rebar b, bool sinGanchos) => b.GetCenterlineCurves(false, sinGanchos, false, MultiplanarOption.IncludeOnlyPlanarCurves, 0);
 
     /// <summary>
-    /// Dónde cortar la primera viga: lo más cerca de su centro sin caer en un traslapo, donde las barras salen dobles y la
-    /// sección dejaría de parecerse a la del plano. Se evitan los extremos, que están sobre los apoyos.
+    /// Dónde cortar la viga: en una luz libre (fuera de las columnas y lejos de sus caras), sin caer en un traslapo, donde
+    /// las barras salen dobles y la sección dejaría de parecerse a la del plano, y lo más cerca del centro de la primera
+    /// luz. Antes se buscaba en la primera viga sin mirar las columnas, y el corte cayó a 0.075 m del extremo, dentro de la
+    /// columna: la viga salía de canto, como un cuadro negro (#314, decisión 21 del plan de #317).
     /// </summary>
-    private static double PuntoDeCorte(Document doc, VigaContinua viga, List<Rebar> barras, XYZ dir)
+    private static double PuntoDeCorte(Document doc, VigaContinua viga, List<Rebar> barras, XYZ dir, XYZ min, XYZ max)
     {
-        Curve eje = ((LocationCurve)doc.GetElement(viga.Vigas[0]).Location).Curve;
-        double centro = eje.Evaluate(0.5, true).DotProduct(dir);
-        List<(double Desde, double Hasta, int Cantidad)> corridas = barras.Where(b => EsLongitudinal(b, dir) && !MarcaVigas.EsBaston(b)).Select(b =>
+        // Por el concreto, no por la caja de Revit: en la viga de cimentación (V C, 09-nov) la caja sale más larga que el
+        // concreto, y la "primera luz" quedaba fuera de la viga (decisión 28 del plan de #317).
+        double a = Extremo(doc, viga, dir), b = -Extremo(doc, viga, dir.Negate());
+        double cajaA = Math.Min(min.DotProduct(dir), max.DotProduct(dir)), cajaB = Math.Max(min.DotProduct(dir), max.DotProduct(dir));
+        // Si los sólidos no se pudieron leer bien (menos de la mitad del largo de la caja), la caja.
+        if (b - a < (cajaB - cajaA) / 2)
         {
-            Curve mayor = Mayor(b);
-            double a = mayor.GetEndPoint(0).DotProduct(dir), e = mayor.GetEndPoint(1).DotProduct(dir);
-            return (Math.Min(a, e), Math.Max(a, e), b.Quantity);
+            Registro.Paso($"sección: el concreto mide {(b - a) * 0.3048:0.00} y la caja {(cajaB - cajaA) * 0.3048:0.00}; se usa la caja");
+            (a, b) = (cajaA, cajaB);
+        }
+        List<(double Desde, double Hasta)> columnas = Apoyos(doc, viga, dir, min, max).Select(c => c.get_BoundingBox(null)).Where(c => c is not null)
+            .Select(c => (Math.Min(c.Min.DotProduct(dir), c.Max.DotProduct(dir)), Math.Max(c.Min.DotProduct(dir), c.Max.DotProduct(dir)))).ToList();
+        List<TramoViga> luces = TramosViga.Calcular(a, b, columnas).Where(t => !t.EsColumna && t.Hasta - t.Desde > 2 * LejosDeLaColumna).ToList();
+        if (luces.Count == 0)
+            luces = [new TramoViga(a, b, false)];
+        // Donde hay concreto de verdad, por una línea al medio de la viga: en la de cimentación las zapatas le cortan
+        // tramos enteros y el corte caía en uno de ellos (viga "mocha", decisión 33 del plan de #317).
+        // Cinco líneas: el centro y cerca de cada borde de la sección. En la viga de cimentación la zapata le come parte del
+        // ancho, y con solo el centro la sección salía con una franja cortada y el resto de fondo (13:10, decisión 36).
+        XYZ medio = (min + max) / 2, ancho = dir.CrossProduct(XYZ.BasisZ).Normalize();
+        double medioAncho = Math.Abs((max - min).DotProduct(ancho)) / 2 * 0.7, medioAlto = (max.Z - min.Z) / 2 * 0.7;
+        List<(double Desde, double Hasta)> concreto = new[] { XYZ.Zero, ancho * medioAncho, -ancho * medioAncho, XYZ.BasisZ * medioAlto, -XYZ.BasisZ * medioAlto }
+            .Select(d => ConcretoAlMedio(doc, viga, dir, medio + d, a, b)).Aggregate(Interseccion);
+        bool HayConcreto(double p) => concreto.Count == 0 || concreto.Any(c => p >= c.Desde + LejosDeLaColumna && p <= c.Hasta - LejosDeLaColumna);
+        double centro = (luces[0].Desde + luces[0].Hasta) / 2;
+        List<(double Desde, double Hasta, int Cantidad)> corridas = barras.Where(x => EsLongitudinal(x, dir) && !MarcaVigas.EsBaston(x)).Select(x =>
+        {
+            Curve mayor = Mayor(x);
+            double p0 = mayor.GetEndPoint(0).DotProduct(dir), p1 = mayor.GetEndPoint(1).DotProduct(dir);
+            return (Math.Min(p0, p1), Math.Max(p0, p1), x.Quantity);
         }).ToList();
-        return Enumerable.Range(10, 81).Select(i => eje.Evaluate(i / 100.0, true).DotProduct(dir))
+        double margen(TramoViga t) => Math.Min(LejosDeLaColumna, (t.Hasta - t.Desde) / 4);
+        List<double> candidatos = luces.SelectMany(t => Enumerable.Range(0, 41).Select(i => t.Desde + margen(t) + (t.Hasta - t.Desde - 2 * margen(t)) * i / 40.0)).ToList();
+        if (candidatos.Any(HayConcreto))
+            candidatos = candidatos.Where(HayConcreto).ToList();
+        else
+            Registro.Paso("sección: ningún punto de las luces cae en concreto entero; se corta igual");
+        Registro.Paso("sección: concreto al medio " + string.Join(", ", concreto.Select(c => $"{(c.Desde - a) * 0.3048:0.00}-{(c.Hasta - a) * 0.3048:0.00}")));
+        // Con un estribo a la vista: la sección mira 0.30 m hacia un lado (Seccion), y si ahí no hay estribo salen sin él la
+        // cadena del recubrimiento y el estribo aparte (V C, 13:10, decisión 35 del plan de #317).
+        XYZ haciaAtras = dir.CrossProduct(XYZ.BasisZ).Negate().CrossProduct(XYZ.BasisZ).Negate();
+        double sentido = Math.Sign(haciaAtras.DotProduct(dir));
+        List<double> estribos = barras.Where(x => !EsLongitudinal(x, dir)).SelectMany(x => Enumerable.Range(0, x.NumberOfBarPositions).Select(i =>
+            x.GetTransformedCenterlineCurves(false, false, false, MultiplanarOption.IncludeOnlyPlanarCurves, i).SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) })
+                .Select(q => q.DotProduct(dir)).DefaultIfEmpty(double.NaN).Average())).Where(q => !double.IsNaN(q)).ToList();
+        bool VeEstribo(double p) => estribos.Any(q => (q - p) * sentido is var d && d >= 0.01 * M && d <= FondoSeccion - 0.02 * M);
+        if (candidatos.Any(VeEstribo))
+            candidatos = candidatos.Where(VeEstribo).ToList();
+        else
+            Registro.Paso($"sección: ningún punto ve un estribo ({estribos.Count} estribos)");
+        double elegido = candidatos
             .OrderBy(p => corridas.Where(c => p >= c.Desde && p <= c.Hasta).Sum(c => c.Cantidad))
             .ThenBy(p => Math.Abs(p - centro))
             .First();
+        Registro.Paso($"sección: concreto de {a * 0.3048:0.00} a {b * 0.3048:0.00} (caja {Math.Min(min.DotProduct(dir), max.DotProduct(dir)) * 0.3048:0.00} a {Math.Max(min.DotProduct(dir), max.DotProduct(dir)) * 0.3048:0.00}); luces " + string.Join(", ", luces.Select(t => $"{(t.Desde - a) * 0.3048:0.00}-{(t.Hasta - a) * 0.3048:0.00}")) + $"; corte a {(elegido - a) * 0.3048:0.00} del extremo");
+        return elegido;
     }
+
+    /// <summary>
+    /// Los tramos de la viga continua donde una línea por el medio de su sección atraviesa concreto, sobre
+    /// <paramref name="dir"/>. Con <c>Solid.IntersectWithCurve</c> (API pública). Vacío si Revit no lo pudo calcular.
+    /// </summary>
+    private static List<(double Desde, double Hasta)> ConcretoAlMedio(Document doc, VigaContinua viga, XYZ dir, XYZ medio, double a, double b)
+    {
+        var tramos = new List<(double Desde, double Hasta)>();
+        try
+        {
+            XYZ eje = medio - dir * medio.DotProduct(dir);
+            Line linea = Line.CreateBound(eje + dir * (a - 1 * M), eje + dir * (b + 1 * M));
+            foreach (Element e in viga.Vigas.Select(doc.GetElement))
+                foreach (GeometryObject g in e.get_Geometry(new Options()))
+                {
+                    IEnumerable<Solid> solidos = g is GeometryInstance i ? i.GetInstanceGeometry().OfType<Solid>() : g is Solid s ? [s] : [];
+                    foreach (Solid solido in solidos.Where(x => x.Volume > 0))
+                    {
+                        SolidCurveIntersection cruce = solido.IntersectWithCurve(linea, new SolidCurveIntersectionOptions());
+                        for (int k = 0; k < cruce.SegmentCount; k++)
+                        {
+                            Curve c = cruce.GetCurveSegment(k);
+                            double p0 = c.GetEndPoint(0).DotProduct(dir), p1 = c.GetEndPoint(1).DotProduct(dir);
+                            tramos.Add((Math.Min(p0, p1), Math.Max(p0, p1)));
+                        }
+                    }
+                }
+        }
+        catch (Exception e)
+        {
+            Registro.Paso("sección: no se pudo medir el concreto al medio: " + e.Message);
+            tramos.Clear();
+        }
+        return tramos.OrderBy(t => t.Desde).ToList();
+    }
+
+    /// <summary>
+    /// Donde empieza a la izquierda el dibujo de la vista larga y su cota del largo total: lo primero entre la caja de la viga
+    /// y sus columnas, como en <see cref="CotarColumnas"/>.
+    /// </summary>
+    private static double InicioDelDibujo(Document doc, VigaContinua viga, XYZ derecha, XYZ min, XYZ max)
+    {
+        double a = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), b = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
+        List<(double Desde, double Hasta)> columnas = Apoyos(doc, viga, derecha, min, max).Select(c => c.get_BoundingBox(null)).Where(c => c is not null)
+            .Select(c => (Math.Min(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)), Math.Max(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)))).ToList();
+        return TramosViga.Calcular(a, b, columnas)[0].Desde;
+    }
+
+    /// <summary>Los tramos comunes a dos listas de tramos; si una está vacía (no se pudo medir), la otra.</summary>
+    private static List<(double Desde, double Hasta)> Interseccion(List<(double Desde, double Hasta)> uno, List<(double Desde, double Hasta)> otro) =>
+        uno.Count == 0 ? otro : otro.Count == 0 ? uno
+        : uno.SelectMany(x => otro.Select(y => (Desde: Math.Max(x.Desde, y.Desde), Hasta: Math.Min(x.Hasta, y.Hasta)))).Where(t => t.Hasta > t.Desde).OrderBy(t => t.Desde).ToList();
+
+    /// <summary>Lo que la sección de la viga ve detrás del corte: alcanza para un estribo.</summary>
+    private const double FondoSeccion = 0.3 * M;
+
+    /// <summary>El corte de la sección queda por lo menos así de lejos de las caras de las columnas (decisión 21).</summary>
+    private const double LejosDeLaColumna = 0.15 * M;
 
     internal static ViewSection Preparar(Document doc, ViewFamilyType tipo, BoundingBoxXYZ caja, string prefijo, int escala)
     {
@@ -1196,18 +1574,73 @@ internal static class GeneradorPrevia
     }
 
     /// <summary>
-    /// Las columnas de los nudos, solo con su contorno en negro: sin relleno y con la superficie transparente, para que no
-    /// tapen el acero de la viga (#262, decisiones 9 y 11 del plan de #266).
+    /// La viga con su contorno entero aunque algo le corte el concreto (Luciano, 09-nov: en la de cimentación las zapatas
+    /// la dejaban en pedazos grises; "que el borde saliera como si estuviera completa la viga", decisión 40 del plan de
+    /// #317). La viga de Revit no se dibuja (líneas en blanco, sin relleno) y va su contorno en líneas de detalle negras:
+    /// arriba y abajo en cada luz entre columnas, y los extremos que no caen en una columna.
+    /// </summary>
+    private static void ContornoCompleto(Document doc, View vista, VigaContinua viga, XYZ derecha, XYZ enPlano, XYZ min, XYZ max, List<ElementId> apoyos)
+    {
+        try
+        {
+            var invisible = new OverrideGraphicSettings();
+            invisible.SetProjectionLineColor(new Color(255, 255, 255));
+            invisible.SetCutLineColor(new Color(255, 255, 255));
+            invisible.SetSurfaceForegroundPatternVisible(false);
+            invisible.SetSurfaceBackgroundPatternVisible(false);
+            invisible.SetCutForegroundPatternVisible(false);
+            invisible.SetCutBackgroundPatternVisible(false);
+            invisible.SetSurfaceTransparency(100);
+            foreach (ElementId id in viga.Vigas)
+                vista.SetElementOverrides(id, invisible);
+
+            double a = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), b = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
+            List<(double Desde, double Hasta)> columnas = apoyos.Select(id => doc.GetElement(id).get_BoundingBox(null)).Where(c => c is not null)
+                .Select(c => (Math.Min(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)), Math.Max(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)))).ToList();
+            IReadOnlyList<TramoViga> tramos = TramosViga.Calcular(a, b, columnas);
+            XYZ En(double x, double z) => new XYZ(enPlano.X, enPlano.Y, z) + derecha * (x - enPlano.DotProduct(derecha));
+            var lineas = new List<Line>();
+            foreach (TramoViga t in tramos.Where(t => !t.EsColumna && t.Hasta - t.Desde > doc.Application.ShortCurveTolerance))
+            {
+                double desde = Math.Max(t.Desde, a), hasta = Math.Min(t.Hasta, b);
+                if (hasta - desde <= doc.Application.ShortCurveTolerance)
+                    continue;
+                lineas.Add(Line.CreateBound(En(desde, max.Z), En(hasta, max.Z)));
+                lineas.Add(Line.CreateBound(En(desde, min.Z), En(hasta, min.Z)));
+            }
+            // Los extremos de la viga que no quedan dentro de una columna.
+            foreach (double x in new[] { a, b }.Where(x => !columnas.Any(c => x >= c.Desde - 0.01 * M && x <= c.Hasta + 0.01 * M)))
+                lineas.Add(Line.CreateBound(En(x, min.Z), En(x, max.Z)));
+            var negro = new OverrideGraphicSettings();
+            negro.SetProjectionLineColor(new Color(0, 0, 0));
+            negro.SetProjectionLineWeight(3);
+            foreach (Line l in lineas)
+                vista.SetElementOverrides(doc.Create.NewDetailCurve(vista, l).Id, negro);
+            Registro.Paso($"longitudinal: contorno de la viga con {lineas.Count} líneas");
+        }
+        catch (Exception e)
+        {
+            Registro.Paso("longitudinal: contorno de la viga no se pudo: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Las columnas de los nudos con un relleno gris liso y su contorno en negro, sin rayados ni texturas (punto 12 de
+    /// Santiago, decisión 26 del plan de #317; antes iban solo con el contorno, decisión 9 del plan de #266). El acero de la
+    /// viga se sigue viendo porque se dibuja por encima (SetUnobscuredInView en Colorear).
     /// </summary>
     private static void SoloContorno(View vista, List<ElementId> elementos)
     {
+        ElementId solido = Solido(vista.Document);
+        var gris = new Color(205, 205, 205);
         var contorno = new OverrideGraphicSettings();
         contorno.SetProjectionLineColor(new Color(0, 0, 0));
         contorno.SetCutLineColor(new Color(0, 0, 0));
-        contorno.SetSurfaceTransparency(100);
-        contorno.SetSurfaceForegroundPatternVisible(false);
+        contorno.SetSurfaceForegroundPatternId(solido);
+        contorno.SetSurfaceForegroundPatternColor(gris);
         contorno.SetSurfaceBackgroundPatternVisible(false);
-        contorno.SetCutForegroundPatternVisible(false);
+        contorno.SetCutForegroundPatternId(solido);
+        contorno.SetCutForegroundPatternColor(gris);
         contorno.SetCutBackgroundPatternVisible(false);
         foreach (ElementId id in elementos)
             vista.SetElementOverrides(id, contorno);
@@ -1327,13 +1760,15 @@ internal sealed class TiposPropios
         RebarBendingDetailType original = todos.FirstOrDefault(t => !TieneEtiqueta(doc, t)) ?? todos.First();
         string nombreBarra = Nombre("CQ Despiece sin etiqueta");
         var barra = todos.FirstOrDefault(t => t.Name == nombreBarra) ?? (RebarBendingDetailType)original.Duplicate(nombreBarra);
-        // Desplegado, como dibuja el estribo Juan (31-oct): en "Estándar" los dos ganchos de 135° quedan encimados en la
-        // esquina y no se ve la forma. Se fija siempre: los proyectos que ya traen este tipo lo tienen en "Estándar".
-        barra.SegmentsRepresentation = BendingDetailSegmentsRepresentation.Unfold;
+        // Cerrado, como lo dibuja Revit por defecto (#313, Santiago 09-nov): el desplegado del 31-oct (Juan) sacaba el gancho
+        // para afuera. Se fija siempre: los tipos que ya están en un proyecto pueden haber quedado en "Desplegado".
+        barra.SegmentsRepresentation = BendingDetailSegmentsRepresentation.Standard;
         // Sin la medida de los ganchos en el detalle: con el número legible se encimaban sobre los ganchos. Su largo va en
-        // texto aparte (EtiquetarGancho), como ya se hacía en la viga, donde el detalle no los mostraba (hallazgo 36 del plan
-        // de columnas).
+        // el encabezado del estribo, G= (ApilarEstribos, #313).
         barra.SegmentLengthDimensionsForHooksEnabled = false;
+        // Sin ninguna medida: el detalle va en el color de su diámetro y sus medidas en negro, puestas aparte (decisión 14 del
+        // plan de #317).
+        barra.SegmentLengthDimensionsEnabled = false;
         DimensionType? metros = null;
         foreach (Parameter p in barra.Parameters)
         {
