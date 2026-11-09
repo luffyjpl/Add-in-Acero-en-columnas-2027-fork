@@ -81,6 +81,10 @@ public class ManejadorVistaPrevia3D : IExternalEventHandler
                 _documentoSimulado = doc;
             }
 
+            // Después de generar la armadura queda visible en la vista del
+            // add-in (plan del 07-nov, decisión 8): para la vista previa se oculta.
+            Vista3DColumna.OcultarArmadura(doc);
+
             List<Tubos3D.Tubo> tubos = Filtro.Aplicar(_barras).Select(Tubo).ToList();
             Bitacora3D.Anotar($"mostrar {tubos.Count} tubos");
             Tubos3D.Mostrar(doc, tubos);
