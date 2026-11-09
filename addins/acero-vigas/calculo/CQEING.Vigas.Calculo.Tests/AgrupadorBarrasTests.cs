@@ -113,16 +113,15 @@ public class AgrupadorBarrasTests
     }
 
     [Fact]
-    public void FilaDosConGanchosAnidados_LasDeEsquinaVanAparte()
+    public void FilaDosConGanchos_VanJuntasHastaElRecubrimiento()
     {
-        // 4 #5 en la fila 1 y 3 #5 en la fila 2: las de esquina de la fila 2 van debajo de un gancho de la fila 1 y
-        // terminan antes (AnidarGanchos); la del medio no tiene gancho encima y llega hasta la punta.
+        // 4 #5 en la fila 1 y 3 #5 en la fila 2: las de la fila 2 llegan al recubrimiento como la fila 1, aunque sus
+        // patas se crucen (Juan, 09-nov). Todas terminan en la misma punta: un solo conjunto.
         var o = OpcionesTablero.PorDefecto with { Superior = [new GrupoBarras(4, 5), new GrupoBarras(3, 5, 2)] };
         PlanAcero plan = PlanificadorAcero.Planificar("Pórtico 1", PlanificadorAceroTests.Portico(), o, Reglas.Generales)!;
 
         List<ConjuntoBarras> fila2 = AgrupadorBarras.Agrupar(plan.Barras).Where(x => x.Primera.Pieza == "S1" && x.Primera.Fila == 2).ToList();
 
-        Assert.Equal([1, 2], fila2.Select(x => x.Piezas.Count).Order());
-        Assert.NotEqual(fila2[0].Primera.Desde, fila2[1].Primera.Desde);
+        Assert.Equal([3], fila2.Select(x => x.Piezas.Count));
     }
 }

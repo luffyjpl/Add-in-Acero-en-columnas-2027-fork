@@ -73,9 +73,9 @@ public static class PlanificadorAcero
         // un bastón que llega al borde va hasta el límite, por la línea del gancho de las barras, y su gancho baja con el
         // de ellas (Juan, 06-nov: quedaba metido por dentro del gancho)
         bool AlLimite(int i, bool alInicio) => i >= corridas && !PuedeCrecer(i, alInicio);
-        List<PiezaLongitudinal> anidadas = AnidarGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
-        barras = anidadas.Take(barras.Count).ToList();
-        bastones = anidadas.Skip(barras.Count).ToList();
+        List<PiezaLongitudinal> ajustadas = RectasFueraDeLosGanchos(barras.Concat(bastones).ToList(), r, PuedeCrecer, AlLimite);
+        barras = ajustadas.Take(barras.Count).ToList();
+        bastones = ajustadas.Skip(barras.Count).ToList();
         barras.AddRange(PiezasDePiel(c, u, r));
 
         List<GrupoEstribos> estribos = Estribos(c, p.Portico, o.Estribos, r, u);
@@ -123,18 +123,16 @@ public static class PlanificadorAcero
     }
 
     /// <summary>
-    /// Carlos (21-oct, min 01:03:07): "son elementos sólidos que no se pueden traslapar". Una barra que va debajo de otra
-    /// (arriba; encima, abajo) y llega a la misma punta que ese gancho lo atraviesa: termina antes, con todo su gancho por
-    /// dentro del arranque del de afuera (un radio de doblado más un diámetro), y su largo baja lo mismo. Una recta termina
-    /// donde acaba el doblez de afuera. Se recorren de la cara hacia adentro, así una tercera fila se mete dentro de la
-    /// segunda ya corrida.
+    /// Una barra recta (un bastón, Vigueta 1 del 26-oct) que va debajo de un gancho (arriba; encima, abajo) y llega a la
+    /// misma punta termina donde acaba el doblez de afuera: llegaba a la cara de la pata y se metía en ella. Las que tienen
+    /// gancho no se corren: todas las filas llegan al recubrimiento como la fila 1, aunque sus patas se crucen (Juan,
+    /// 09-nov: "debe estar pegado al recubrimiento como el otro… no me importa si se cruza").
     /// Si la otra punta puede crecer (<paramref name="puedeCrecer"/>: índice de la pieza y si es la del inicio), sale por
-    /// ahí lo que se corrió y conserva su largo, en múltiplo del módulo (Juan, 29-oct: la #5 de la fila 2 quedaba de 3.436
-    /// en vez de 3.50, y un bastón con gancho de 1.246).
+    /// ahí lo que se corrió y conserva su largo, en múltiplo del módulo (Juan, 29-oct: un bastón con gancho de 1.246).
     /// </summary>
     /// <param name="alLimite">Índice de la pieza y si es la punta del inicio: un bastón en el borde no se corre, queda en el límite.</param>
-    private static List<PiezaLongitudinal> AnidarGanchos(List<PiezaLongitudinal> piezas, Reglas r, Func<int, bool, bool> puedeCrecer,
-        Func<int, bool, bool> alLimite)
+    private static List<PiezaLongitudinal> RectasFueraDeLosGanchos(List<PiezaLongitudinal> piezas, Reglas r,
+        Func<int, bool, bool> puedeCrecer, Func<int, bool, bool> alLimite)
     {
         const double tolerancia = 1e-6;
         PiezaLongitudinal[] p = piezas.ToArray();
@@ -147,36 +145,27 @@ public static class PlanificadorAcero
             int sentido = inicio ? 1 : -1; // hacia adentro de la viga desde esa punta
             TipoGancho Gancho(PiezaLongitudinal x) => inicio ? x.GanchoInicio : x.GanchoFin;
             int Punta(PiezaLongitudinal x) => inicio ? x.Desde : x.Hasta;
-            foreach (int[] capa in Enumerable.Range(0, p.Length).GroupBy(i => p[i].Capa).Select(g => g
-                         .OrderByDescending(i => p[i].Capa == Posicion.Superior ? p[i].YCorte : -p[i].YCorte).ToArray()))
+            for (int i = 0; i < p.Length; i++)
             {
-                for (int k = 0; k < capa.Length; k++)
+                PiezaLongitudinal recta = p[i];
+                if (Gancho(recta) != TipoGancho.Sin || alLimite(i, inicio))
+                    continue;
+                int punta = Punta(recta);
+                foreach (PiezaLongitudinal afuera in p.Where(x => x.Capa == recta.Capa))
                 {
-                    if (alLimite(capa[k], inicio))
-                        continue;
-                    PiezaLongitudinal adentro = p[capa[k]];
-                    int punta = Punta(adentro);
-                    foreach (PiezaLongitudinal afuera in capa.Take(k).Select(i => p[i]))
-                    {
-                        bool debajo = Math.Abs(afuera.XCorte - adentro.XCorte) < (D(afuera) + D(adentro)) / 2 - tolerancia
-                            && Math.Abs(afuera.YCorte - adentro.YCorte) > tolerancia;
-                        double vueltaAfuera = Vuelta(afuera, Gancho(afuera));
-                        if (!debajo || vueltaAfuera == 0 || sentido * (punta - Punta(afuera)) >= vueltaAfuera + Vuelta(adentro, Gancho(adentro)))
-                            continue;
-                        // Con gancho, el suyo va por dentro del de afuera; recta (un bastón, Vigueta 1 del 26-oct), termina
-                        // donde acaba el doblez de afuera: llegaba a la cara de la pata y se metía en ella.
-                        double vuelta = Gancho(adentro) == TipoGancho.Sin ? vueltaAfuera : Vuelta(adentro, Gancho(adentro));
-                        int minima = Punta(afuera) + sentido * (int)Math.Ceiling(vuelta - tolerancia);
-                        if (sentido * (minima - punta) > 0)
-                            punta = minima;
-                    }
-                    int corrida = sentido * (punta - Punta(adentro));
-                    if (corrida <= 0)
-                        continue;
-                    PiezaLongitudinal corta = inicio ? adentro with { Desde = punta } : adentro with { Hasta = punta };
-                    p[capa[k]] = !puedeCrecer(capa[k], !inicio) ? corta with { Largo = adentro.Largo - corrida }
-                        : inicio ? corta with { Hasta = adentro.Hasta + corrida } : corta with { Desde = adentro.Desde - corrida };
+                    double vuelta = Vuelta(afuera, Gancho(afuera));
+                    bool debajo = Math.Abs(afuera.XCorte - recta.XCorte) < (D(afuera) + D(recta)) / 2 - tolerancia
+                        && Math.Abs(afuera.YCorte - recta.YCorte) > tolerancia;
+                    int minima = Punta(afuera) + sentido * (int)Math.Ceiling(vuelta - tolerancia);
+                    if (debajo && vuelta > 0 && sentido * (minima - punta) > 0)
+                        punta = minima;
                 }
+                int corrida = sentido * (punta - Punta(recta));
+                if (corrida <= 0)
+                    continue;
+                PiezaLongitudinal corta = inicio ? recta with { Desde = punta } : recta with { Hasta = punta };
+                p[i] = !puedeCrecer(i, !inicio) ? corta with { Largo = recta.Largo - corrida }
+                    : inicio ? corta with { Hasta = recta.Hasta + corrida } : corta with { Desde = recta.Desde - corrida };
             }
         }
         return p.ToList();
