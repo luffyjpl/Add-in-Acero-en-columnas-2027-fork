@@ -21,16 +21,16 @@ internal static class GeneradorColumna
     private const double Lado = 0.30 * M;
     private const double Holgura = 0.005 * M;
 
-    /// <summary>Del borde derecho del recorte al primer carril de barras sacadas.</summary>
-    private static double InicioSacadas => 0.10 * M * Letra.Papel;
+    /// <summary>De la cara derecha de la columna al primer carril de barras sacadas (decisión 13 del plan de #317).</summary>
+    private static double InicioSacadas => 0.02 * M * Letra.Papel;
 
     /// <summary>Entre dos piezas del mismo carril (una encima de otra) y entre carriles.</summary>
-    // Más pegadas (decisión 25 del plan de #287): a 1:50 los huecos medidos a 1:15 crecen 3.3 veces.
+    // Más pegadas (decisión 25 del plan de #287 y 11 del de #317): a 1:50 los huecos medidos a 1:15 crecen 3.3 veces.
     private static double HuecoEnCarril => 0.05 * M * Letra.Papel;
-    private static double HuecoCarriles => 0.04 * M * Letra.Papel;
+    private static double HuecoCarriles => 0;
 
     /// <summary>Entre el grupo de barras con el gancho a la derecha y el de la izquierda (#277): "un pequeño espacio".</summary>
-    private static double HuecoGrupos => 0.10 * M * Letra.Papel;
+    private static double HuecoGrupos => 0.02 * M * Letra.Papel;
 
     /// <summary>Lo que se corre a un lado la pieza que traslapa con la de abajo, como en la viga.</summary>
     private static double DesfaseTraslapo => 0.05 * M * Letra.Papel;
@@ -49,8 +49,8 @@ internal static class GeneradorColumna
     private static double AireEstribos => 0.05 * M * Letra.Papel;
 
     /// <summary>A la izquierda del recorte: la cadena de elementos y, más afuera, el alto total.</summary>
-    private static double CotaElementos => 0.45 * M * Letra.Factor;
-    private static double CotaTotal => 0.80 * M * Letra.Factor;
+    private static double CotaElementos => 0.42 * M * Letra.Factor;
+    private static double CotaTotal => 0.52 * M * Letra.Factor;
     private const double DentroDelRecorte = 0.03 * M;
 
     /// <summary>Igual altura de dos barras sacadas, al centímetro.</summary>
@@ -255,7 +255,8 @@ internal static class GeneradorColumna
         double bordeIzq = izq - Lado, bordeDer = der + Lado;
         XYZ En(double s, double z) => new XYZ(enPlano.X, enPlano.Y, z) + derecha * (s - enPlano.DotProduct(derecha));
 
-        List<Sacada> sacadas = Sacar(doc, vista, columna, barras, derecha, bordeDer, En, tipos);
+        // Las barras sacadas arrancan desde la cara de la columna, no después de la viga que se deja ver (decisión 13 del plan de #317).
+        List<Sacada> sacadas = Sacar(doc, vista, columna, barras, derecha, der, En, tipos);
         var sueltas = new List<(Rebar Barra, string Clave, TextNote Nota)>();
         EtiquetarEstribos(doc, vista, barras, bordeIzq, En, tipos, sueltas);
 
@@ -372,7 +373,7 @@ internal static class GeneradorColumna
     /// para que se vea el traslapo, con su medida a la izquierda (hallazgo 27); las líneas se reparten en carriles sin
     /// encimarse.
     /// </summary>
-    private static List<Sacada> Sacar(Document doc, View vista, ColumnaLeida columna, List<Rebar> barras, XYZ derecha, double bordeDer,
+    private static List<Sacada> Sacar(Document doc, View vista, ColumnaLeida columna, List<Rebar> barras, XYZ derecha, double caraDer,
         Func<double, double, XYZ> En, TiposPropios tipos)
     {
         var creadas = new List<Sacada>();
@@ -395,7 +396,7 @@ internal static class GeneradorColumna
             (double abajo, double arriba) = LectorColumnas.Alturas(b);
             try
             {
-                XYZ p = En(bordeDer + 3 * M, (abajo + arriba) / 2);
+                XYZ p = En(caraDer + 3 * M, (abajo + arriba) / 2);
                 int cantidad = iguales.Sum(x => x.Quantity);
                 HashSet<ElementId> ids = iguales.Select(x => x.Id).ToHashSet();
                 bool aLaIzquierda = pedido == SentidoGancho.Izquierda;
@@ -453,7 +454,7 @@ internal static class GeneradorColumna
         Registro.Paso("columna: ganchos por línea " + string.Join(", ", sentidos.Select((x, i) => $"{i}:{x}")));
         // Derecha, sin gancho de lado e izquierda, cada grupo junto y con un hueco entre grupos (decisión 24).
         var ubicadas = new List<PiezaUbicada>();
-        double inicioGrupo = bordeDer + InicioSacadas;
+        double inicioGrupo = caraDer + InicioSacadas;
         foreach (IReadOnlyList<int> grupo in GruposGancho.Separar(sentidos).Where(g => g.Count > 0))
         {
             Acomodo acomodo = AcomodadorFilas.Acomodar(grupo.Select(Pieza), inicioGrupo, true, HuecoEnCarril, HuecoCarriles);
@@ -723,10 +724,10 @@ internal static class GeneradorColumna
         var escritas = new List<(Rebar Barra, string Clave, string Texto, double Centro)>();
         // Por forma y largo, no solo por diámetro: a cada altura puede haber estribo y grapa a pocos centímetros, y juntos
         // nunca dan una separación constante (hallazgo 33).
+        var porFormas = new List<(IGrouping<string, Rebar> Forma, List<(Rebar Barra, int Indice, double Z)> Estribos)>();
         foreach (IGrouping<string, Rebar> porForma in barras.Where(b => !LectorColumnas.EsVertical(b))
             .GroupBy(b => $"{b.GetTypeId()}|{b.GetShapeId()}|{Math.Round(LectorDespiece.LargoBarra(b) / AlCentimetro)}"))
         {
-            string tipo = doc.GetElement(porForma.First().GetTypeId()).Name;
             var estribos = new List<(Rebar Barra, int Indice, double Z)>();
             foreach (Rebar b in porForma)
             {
@@ -742,6 +743,17 @@ internal static class GeneradorColumna
                         estribos.Add((b, i, puntos.Average(p => p.Z)));
                 }
             }
+            if (estribos.Count > 0)
+                porFormas.Add((porForma, estribos));
+        }
+        // Sin los textos de los estribos menores (#316, Santiago 09-nov): las grapas y cajas se siguen dibujando, pero a la
+        // izquierda solo van los principales.
+        var principales = new HashSet<string>(EstribosPrincipales.Filtrar(porFormas.Select(f => new FormaEstribo(f.Forma.Key,
+            LectorDespiece.LargoBarra(f.Forma.First()) * 0.3048, f.Estribos.Min(e => e.Z) * 0.3048, f.Estribos.Max(e => e.Z) * 0.3048)).ToList()));
+        Registro.Paso($"columna: estribos principales {principales.Count} de {porFormas.Count} formas");
+        foreach ((IGrouping<string, Rebar> porForma, List<(Rebar Barra, int Indice, double Z)> estribos) in porFormas.Where(f => principales.Contains(f.Forma.Key)))
+        {
+            string tipo = doc.GetElement(porForma.First().GetTypeId()).Name;
             foreach (ZonaEstribos zona in ZonasEstribos.Agrupar(estribos.Select(e => e.Z * 0.3048).ToList()))
             {
                 (Rebar primera, int indice, _) = estribos[zona.Indices.Min()];

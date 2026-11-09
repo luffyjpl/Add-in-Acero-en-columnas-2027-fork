@@ -24,10 +24,16 @@ public class TextosDespieceTests
     public void SinRectoDiceSoloElTotal() => Assert.Equal("3 #5 L= 6.00", TextosDespiece.Barra("#5 CQEING", 3, 6.0));
 
     [Fact]
-    public void ElEstriboDiceCantidadLargoYGancho() => Assert.Equal("46 #3 L= 0.99 G= 0.08", TextosDespiece.Estribo("#3 CQEING", 46, 0.9898, 0.0845));
-
-    [Fact]
     public void SinNumeroEnElTipoUsaElNombreDelTipo() => Assert.Equal("1 16 B 400 S L= 2.00", TextosDespiece.Barra("16 B 400 S", 1, 2.0));
+
+    // #314: dónde se cortó la sección, desde el extremo izquierdo de la viga.
+    [Fact]
+    public void ElCorteDiceSuDistanciaEnMetros() => Assert.Equal("x= 1.50", TextosDespiece.Corte(1.4987));
+
+    // #313: el encabezado del estribo aparte, como la referencia de Santiago, en tres líneas.
+    [Fact]
+    public void ElEncabezadoDelEstriboVaEnTresLineas() =>
+        Assert.Equal("Cantidad: 84\rL= 1.24 m\rG= 0.08", TextosDespiece.EncabezadoEstribo(84, 1.2412, 0.0845));
 
     [Theory]
     [InlineData("#5 CQEING", 5)]

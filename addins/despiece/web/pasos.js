@@ -584,7 +584,23 @@
       const movs = this.movimientos(g), negros = this.state.negros;
       const texto = (t, color, extra) => html`
         <text x=${t.x} y=${t.y} font-size=${altoLetra} font-family="Arial, sans-serif" text-anchor="middle" dominant-baseline="central" fill=${negros ? '#000000' : color} transform=${t.girado ? `rotate(-90 ${t.x} ${t.y})` : null} ...${extra}>${t.texto}</text>`;
-      return piezas.map((p) => {
+      // El «2x piel»: el texto queda quieto y la punta de cada flecha va con su pieza (decisión 27 del plan de #317).
+      const guias = (capa.guias ?? []).map((gu, i) => html`
+        <g key=${'guia' + i} pointer-events="none">
+          ${texto(gu.texto, '#000000')}
+          ${gu.puntas.map((pu) => {
+            const m = movs[pu.pieza] ?? { dz: 0 };
+            const x = pu.x + (m.dx ?? 0) * escala, y = pu.y - m.dz * escala;
+            const [x0, y0] = gu.desde;
+            const largo = Math.hypot(x - x0, y - y0) || 1, ux = (x - x0) / largo, uy = (y - y0) / largo;
+            const punta = altoLetra * 0.8, ancho = altoLetra * 0.3;
+            const flecha = [[x, y], [x - ux * punta - uy * ancho, y - uy * punta + ux * ancho], [x - ux * punta + uy * ancho, y - uy * punta - ux * ancho]];
+            return html`
+              <line x1=${x0} y1=${y0} x2=${x} y2=${y} stroke="#000000" stroke-width=${altoLetra * 0.08}></line>
+              <polygon points=${flecha.map((q) => q.join(',')).join(' ')} fill="#000000"></polygon>`;
+          })}
+        </g>`);
+      return guias.concat(piezas.map((p) => {
         const m = movs[p.id] ?? { dz: 0, tx: 0, tz: 0 };
         const puntos = p.puntos.map((q) => q.join(',')).join(' ');
         const alBarra = (e) => this.arrastrar(e, g, p.id, true, escala, horizontal);
@@ -598,7 +614,7 @@
               ${texto(p.etiqueta, p.color, { style: 'cursor: move', onPointerDown: (e) => this.arrastrar(e, g, p.id, false, escala) })}
             </g>
           </g>`;
-      });
+      }));
     }
 
     grupoElegido() {
