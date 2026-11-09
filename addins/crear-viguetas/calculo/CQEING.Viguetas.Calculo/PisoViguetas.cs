@@ -24,7 +24,7 @@ public sealed record PiezaModelo(string Id, string Elemento, double Desde, doubl
 /// <summary>Una columna del piso como su caja en planta, en mm.</summary>
 public sealed record ColumnaPiso(string Id, Punto Min, Punto Max);
 
-/// <summary>Lo que se puede crear en otro piso (decisión 34): las líneas y cuántas se omitieron por falta de apoyo o por estar ocupadas.</summary>
+/// <summary>Lo que se crea en otro piso (decisión 34): las líneas, cuántas de ellas tienen una punta sin apoyo y cuántas se omitieron por estar ocupadas.</summary>
 public sealed record CopiaEnPiso(IReadOnlyList<(Punto Desde, Punto Hasta)> Lineas, int SinApoyo, int Ocupadas);
 
 /// <summary>Un suelo del nivel (#954): sus contornos en planta, en mm (el primero es el de afuera).</summary>
@@ -308,15 +308,16 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     private const double ApoyoEnLinea = 100;
 
     /// <summary>
-    /// Decisión 34: cuáles de las <paramref name="lineas"/> de otro piso se pueden crear en este. Se descartan las que ya
+    /// Decisión 34: cuáles de las <paramref name="lineas"/> de otro piso se crean en este. Solo se descartan las que ya
     /// tienen otra vigueta a menos de medio eje a eje (sin contar lo que se va con <paramref name="recortes"/>, de
-    /// <see cref="RecortesDeCopia"/>) y las que tienen una punta sin viga, vigueta u otra línea nueva donde apoyar.
+    /// <see cref="RecortesDeCopia"/>). Las que tienen una punta sin viga, vigueta u otra línea nueva donde apoyar se crean
+    /// igual y se cuentan, para avisar.
     /// </summary>
     public CopiaEnPiso Copiar(IReadOnlyList<(Punto Desde, Punto Hasta)> lineas,
         IEnumerable<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> recortes, double ejeAEje)
     {
-        Dictionary<string, List<(double Desde, double Hasta)>> quedan0 = recortes.ToDictionary(x => x.Vigueta.Id, x => x.Restos);
-        List<(double Cota, double Desde, double Hasta)> enX = LineasSin(Direccion.X, quedan0), enY = LineasSin(Direccion.Y, quedan0);
+        Dictionary<string, List<(double Desde, double Hasta)>> restos = recortes.ToDictionary(x => x.Vigueta.Id, x => x.Restos);
+        List<(double Cota, double Desde, double Hasta)> enX = LineasSin(Direccion.X, restos), enY = LineasSin(Direccion.Y, restos);
         bool Ocupada((Punto Desde, Punto Hasta) l)
         {
             bool horizontal = Math.Abs(l.Hasta.X - l.Desde.X) >= Math.Abs(l.Hasta.Y - l.Desde.Y);
@@ -327,18 +328,9 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         }
         List<(Punto Desde, Punto Hasta)> libres = lineas.Where(l => !Ocupada(l)).ToList();
         bool EnArmazon(Punto p) => Piso.Armazon.Any(x => !x.Creada && Proyeccion(x.Desde, x.Hasta, p) is (_, double d) && d <= x.Ancho / 2 + SobreElEje);
-        // Una vigueta de borde nueva puede apoyar en otra nueva; si esa se descarta, hay que volver a mirar.
-        List<(Punto Desde, Punto Hasta)> quedan = libres;
-        while (true)
-        {
-            List<(Punto Desde, Punto Hasta)> actuales = quedan;
-            bool Apoya(Punto p, (Punto Desde, Punto Hasta) propia) => EnArmazon(p)
-                || actuales.Any(o => o != propia && Proyeccion(o.Desde, o.Hasta, p) is (_, double d) && d <= ApoyoEnLinea);
-            quedan = actuales.Where(l => Apoya(l.Desde, l) && Apoya(l.Hasta, l)).ToList();
-            if (quedan.Count == actuales.Count)
-                break;
-        }
-        return new CopiaEnPiso(quedan, libres.Count - quedan.Count, lineas.Count - libres.Count);
+        bool Apoya(Punto p, (Punto Desde, Punto Hasta) propia) => EnArmazon(p)
+            || libres.Any(o => o != propia && Proyeccion(o.Desde, o.Hasta, p) is (_, double d) && d <= ApoyoEnLinea);
+        return new CopiaEnPiso(libres, libres.Count(l => !Apoya(l.Desde, l) || !Apoya(l.Hasta, l)), lineas.Count - libres.Count);
     }
 
     /// <summary>

@@ -1206,7 +1206,7 @@ public class ViguetasTests
     }
 
     [Fact]
-    public void EnOtroPisoSoloSeCopianLasViguetasConApoyoYLugar()
+    public void EnOtroPisoSeCopianLasViguetasYSeCuentanLasQueNoTienenApoyo()
     {
         // Decisión 34: la propuesta del piso abierto se lleva a otro piso con las mismas vigas, menos una, y viguetas ya puestas.
         PisoViguetas abierto = ColumnaDeTres();
@@ -1230,13 +1230,13 @@ public class ViguetasTests
 
         CopiaEnPiso copia = otro.Copiar(lineas, otro.RecortesDeCopia([arriba], [], []), 800);
 
-        // La de 1,00 tiene lugar; la de 3,00 reemplaza a la creada; la de 2,00 choca con la del modelo; la de 3,50 no tiene viga abajo.
-        Assert.Equal([1000.0, 3000.0], copia.Lineas.Select(l => l.Desde.X));
+        // La de 1,00 tiene lugar; la de 3,00 reemplaza a la creada; la de 2,00 choca con la del modelo; la de 3,50 no tiene viga abajo, pero se crea igual.
+        Assert.Equal([1000.0, 3000.0, 3500.0], copia.Lineas.Select(l => l.Desde.X));
         Assert.Equal(1, copia.Ocupadas);
         Assert.Equal(1, copia.SinApoyo);
         // Si la del modelo estaba marcada para quitar en el piso abierto, ya no estorba.
         CopiaEnPiso sinModelo = otro.Copiar(lineas, otro.RecortesDeCopia([arriba], [], [(new(2000, 6000), new(2000, 9000))]), 800);
-        Assert.Equal([1000.0, 2000.0, 3000.0], sinModelo.Lineas.Select(l => l.Desde.X));
+        Assert.Equal([1000.0, 2000.0, 3000.0, 3500.0], sinModelo.Lineas.Select(l => l.Desde.X));
     }
 
     [Fact]

@@ -307,9 +307,14 @@
     - los paneles vueltos vacíos con un clic (decisión 30) cortan ahí las viguetas de ese mismo lugar, sean creadas o del
       modelo. Por eso «Crear» también se enciende con solo vacíos marcados y más de un piso, aunque no haya propuesta;
     - las viguetas del modelo marcadas para quitar en el piso abierto se recortan en el mismo lugar, en las de esa línea;
-    - no se crea una vigueta si alguna punta queda sin viga, vigueta de borde u otra vigueta nueva donde apoyar (a medio
-      ancho + 3 cm), ni si ya hay otra a menos de medio eje a eje en ese tramo. El aviso final dice cuántas se omitieron y
-      en qué piso. Si en un piso no se puede crear ninguna, de ese piso solo se cortan los vacíos.
+    - no se crea una vigueta solo si ya hay otra a menos de medio eje a eje en ese tramo; el aviso dice cuántas se
+      omitieron y en qué piso. Si en un piso no se puede crear ninguna, de ese piso solo se cortan los vacíos;
+    - una vigueta con una punta sin viga, vigueta de borde u otra vigueta nueva donde apoyar (a medio ancho + 3 cm) **se
+      crea igual** y el aviso dice cuántas hay que revisar. Hallazgo en Revit real (09-nov, PROY_JULIO_BETO): al principio
+      se descartaban; las 7 viguetas de P1 terminaban todas en la vigueta de borde del voladizo y, en el otro piso, no se
+      creaba ninguna. El usuario pidió que se cree lo mismo en todos los pisos marcados. Medido después en Revit con un
+      registro temporal, ya retirado: 7 viguetas en N+3.70 y 7 en N+6.70, cada grupo con su nivel de referencia, a la
+      cota de su piso (3700 y 6700 mm) y sin desfases.
     «Quitar creadas» sigue siendo solo del piso abierto: no es parte de crear. `PisoViguetas.Copiar` y
     `RecortesDeCopia`, `CreadorViguetas.Crear` (`TrabajoViguetas`), campos `pisos` y `vaciados` del mensaje `crear`.
 

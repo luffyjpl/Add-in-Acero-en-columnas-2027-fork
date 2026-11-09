@@ -114,6 +114,7 @@ internal sealed class PuenteViguetas
         List<(Punto Desde, Punto Hasta)> lineas = propuesta?.Lineas(c.Propuesta.Continuas) ?? [];
         var trabajos = new List<TrabajoViguetas>();
         var omitidas = new List<string>();
+        var revisar = new List<string>();
         // Decisión 34: en el piso abierto, lo que se ve; en los demás se repite todo: viguetas, vacíos y recortes.
         foreach (string idPiso in (c.Pisos is { Count: > 0 } ? c.Pisos : [piso.Piso.Id]).Distinct())
         {
@@ -133,10 +134,13 @@ internal sealed class PuenteViguetas
                 quitar = otro.RecortesDeCopia([], c.LosVaciados, []);
             if (copia.Lineas.Count > 0 || quitar.Count > 0)
                 trabajos.Add(new TrabajoViguetas(destino, copia.Lineas, [], ConIds(quitar)));
-            if (copia.SinApoyo + copia.Ocupadas > 0)
-                omitidas.Add($"{destino.Name}: {copia.SinApoyo + copia.Ocupadas} sin apoyo o donde ya hay viguetas");
+            if (copia.Ocupadas > 0)
+                omitidas.Add($"{destino.Name}: {copia.Ocupadas} donde ya hay viguetas");
+            if (copia.SinApoyo > 0)
+                revisar.Add($"{destino.Name}: {copia.SinApoyo} sin viga en alguna punta");
         }
-        string detalle = omitidas.Count > 0 ? $" Omitidas en {string.Join("; ", omitidas)}." : "";
+        string detalle = (omitidas.Count > 0 ? $" Omitidas en {string.Join("; ", omitidas)}." : "")
+            + (revisar.Count > 0 ? $" Revisar en {string.Join("; ", revisar)}." : "");
         if (trabajos.Count == 0)
         {
             ventana.Enviar(ProtocoloViguetas.Aviso($"No hubo nada que crear ni cortar en esos pisos.{detalle}"));
@@ -152,7 +156,7 @@ internal sealed class PuenteViguetas
         string hecho = total > 0
             ? $"Se crearon {total} viguetas en {donde}{delModeloTexto}."
             : $"Se llevaron los vacíos a {string.Join(", ", trabajos.Select(t => t.Nivel.Name))}.";
-        ventana.Enviar(ProtocoloViguetas.Aviso($"{hecho}{detalle} Ctrl+Z en Revit lo deshace.", bien: omitidas.Count == 0));
+        ventana.Enviar(ProtocoloViguetas.Aviso($"{hecho}{detalle} Ctrl+Z en Revit lo deshace.", bien: omitidas.Count + revisar.Count == 0));
     }
 
     /// <summary>Decisión 30: el panel queda vacío: se cortan en Revit las viguetas que lo cruzan.</summary>
