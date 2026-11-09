@@ -46,7 +46,8 @@ public static class ChoquesSeccion
     /// medido con uno). Lo usan la vista previa, estribos menores y Generar.
     /// </summary>
     public static string NotaSinRevisar(int varillas) =>
-        $"Zona de traslapo no revisada en {varillas} varilla(s): llevan más de un traslapo.";
+        $"{varillas} varilla(s) llevan más de un traslapo: en la vista previa no se revisa si sus piezas de traslapo " +
+        "chocan con otras barras. Al generar, el add-in avisa si alguna queda tocando el estribo; revísalas en el modelo.";
 
     /// <summary>
     /// Distancia libre mínima (borde a borde) entre dos longitudinales: la de

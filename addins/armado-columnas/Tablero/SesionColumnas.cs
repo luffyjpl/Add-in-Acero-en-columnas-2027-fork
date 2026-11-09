@@ -120,6 +120,7 @@ public sealed class SesionColumnas
         ColumnaContexto? columna = activa is null ? null : Leer(activa);
         OpcionesColumna opciones = activa is null ? _actuales : OpcionesDe(activa);
         (List<string> compatibles, List<string> descartadas) = Compatibles();
+        HashSet<string> paraGenerar = ParaGenerar();
 
         ColumnaVista? vistaColumna = null;
         if (activa is not null && columna is not null)
@@ -146,7 +147,7 @@ public sealed class SesionColumnas
                 _choques.ToList(), _pendiente,
                 _resultado is null ? null : new ResultadoVista(_resultado.ToList(), _avisosResultado.ToList(), _nadaArmado),
                 _error,
-                _columnas.Where(c => _listas.Contains(c.Id)).Select(c => c.Marca).ToList()),
+                _columnas.Where(c => paraGenerar.Contains(c.Id)).Select(c => c.Marca).ToList()),
             new Vista3DVista(
                 _abierta3D,
                 new Filtro3DVista(
@@ -556,13 +557,14 @@ public sealed class SesionColumnas
     // ------------------------------------------------------------- generar
 
     /// <summary>
-    /// El plan de las columnas listas, con los estribos traducidos a tramos
+    /// El plan de las columnas a generar (<see cref="ParaGenerar"/>), con los estribos traducidos a tramos
     /// (<see cref="ConfigEstribosColumna.ATramos"/>). null si no hay ninguna.
     /// </summary>
     public OpcionesArmado? OpcionesParaGenerar(bool borrarAjeno)
     {
         var plan = new PlanArmado();
-        foreach (ColumnaResumen resumen in _columnas.Where(c => _listas.Contains(c.Id)))
+        HashSet<string> paraGenerar = ParaGenerar();
+        foreach (ColumnaResumen resumen in _columnas.Where(c => paraGenerar.Contains(c.Id)))
         {
             ColumnaContexto columna = Leer(resumen.Id);
             OpcionesColumna o = OpcionesDe(resumen.Id);
@@ -728,6 +730,20 @@ public sealed class SesionColumnas
             Estribos = ConfigEstribosColumna.DesdeTramos(columna, generada.Tramos, ValoresPorDefecto.Tramo(_tipos)),
             Recubrimiento = generada.Recubrimiento,
         };
+    }
+
+    /// <summary>
+    /// Lo que genera «Generar en Revit» (decisión 2 del plan del 09-nov): las
+    /// listas y, además, las elegidas compatibles con la activa que todavía no
+    /// se generaron, con lo que muestra el panel. Las ya generadas solo vuelven
+    /// a generarse si se les cambia algo (entonces están en la lista).
+    /// </summary>
+    private HashSet<string> ParaGenerar()
+    {
+        var ids = new HashSet<string>(_listas);
+        foreach (string id in Compatibles().Compatibles)
+            if (!_generadas.ContainsKey(id)) ids.Add(id);
+        return ids;
     }
 
     private string Estado(string id) =>
