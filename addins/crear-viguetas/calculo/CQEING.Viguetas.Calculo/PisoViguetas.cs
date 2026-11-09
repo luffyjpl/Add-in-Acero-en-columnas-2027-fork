@@ -24,6 +24,9 @@ public sealed record PiezaModelo(string Id, string Elemento, double Desde, doubl
 /// <summary>Una columna del piso como su caja en planta, en mm.</summary>
 public sealed record ColumnaPiso(string Id, Punto Min, Punto Max);
 
+/// <summary>Lo que se puede crear en otro piso (decisión 34): las líneas y cuántas se omitieron por falta de apoyo o por estar ocupadas.</summary>
+public sealed record CopiaEnPiso(IReadOnlyList<(Punto Desde, Punto Hasta)> Lineas, int SinApoyo, int Ocupadas);
+
 /// <summary>Un suelo del nivel (#954): sus contornos en planta, en mm (el primero es el de afuera).</summary>
 public sealed record SueloPiso(string Id, IReadOnlyList<IReadOnlyList<Punto>> Contornos);
 
@@ -65,6 +68,18 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     public IReadOnlyList<Panel> Paneles { get; } = DetectorPaneles.Detectar(piso.Armazon
         .Where(a => !a.Creada && (viguetasComoBorde || !a.EsVigueta))
         .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)));
+
+    /// <summary>
+    /// Decisión 31: las caras que cierran las viguetas de borde del modelo fuera de todo panel. Solo sirven para que las
+    /// viguetas lleguen hasta ahí; no se eligen.
+    /// </summary>
+    public IReadOnlyList<Panel> Voladizos => voladizos ??= DetectorPaneles.Detectar(Piso.Armazon
+            .Where(a => !a.Creada)
+            .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)))
+        .Where(v => !Paneles.Any(p => Geometria.Dentro(p.Eje, Geometria.Centro(v.Libre))))
+        .Select((v, i) => v with { Id = $"V{i + 1}" }).ToList();
+
+    private IReadOnlyList<Panel>? voladizos;
 
     public Panel? Panel(string id) =>
         Paneles.FirstOrDefault(p => p.Id == id) ?? perimetros.FirstOrDefault(p => p.Id == id) ?? zonas.FirstOrDefault(p => p.Id == id);
@@ -166,7 +181,10 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     public List<Panel> ConVacios(IEnumerable<Panel> paneles, IReadOnlyList<IReadOnlyList<Punto>> vacios, double ancho)
     {
         List<IReadOnlyList<Punto>> validos = vacios.Where(v => v.Count >= 3).ToList();
-        return paneles.Select(p =>
+        // Decisión 30: un vacío que ocupa todo el panel lo deja sin nada que repartir.
+        bool Tapa(Panel p, IReadOnlyList<Punto> v) =>
+            Geometria.Dentro(p.Eje, Geometria.Centro(v)) && Math.Abs(Geometria.Area(v)) >= 0.99 * Math.Abs(Geometria.Area(p.Eje));
+        return paneles.Where(p => !validos.Any(v => Tapa(p, v))).Select(p =>
         {
             List<IReadOnlyList<Punto>> suyos = validos.Where(v => Geometria.Dentro(p.Eje, Geometria.Centro(v))).ToList();
             return suyos.Count == 0 ? p : ConHuecos(p with { Apoyos = [p.Eje], HuecosEje = [], HuecosLibre = [], BordesVacios = [] }, suyos, ancho);
@@ -266,19 +284,61 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         double menor = double.MaxValue;
         foreach (ArmazonPiso x in Piso.Armazon.Where(x => !x.Creada))
         {
-            double largo = Geometria.Distancia(x.Desde, x.Hasta);
-            if (largo < 1)
-                continue;
-            (double ux, double uy) = ((x.Hasta.X - x.Desde.X) / largo, (x.Hasta.Y - x.Desde.Y) / largo);
-            double a = (p.X - x.Desde.X) * ux + (p.Y - x.Desde.Y) * uy;
-            if (a < -SobreElEje || a > largo + SobreElEje)
-                continue;
-            var q = new Punto(x.Desde.X + a * ux, x.Desde.Y + a * uy);
-            double d = Geometria.Distancia(p, q);
-            if (d <= x.Ancho / 2 + SobreElEje && d < menor)
+            if (Proyeccion(x.Desde, x.Hasta, p) is (Punto q, double d) && d <= x.Ancho / 2 + SobreElEje && d < menor)
                 (mejor, menor) = (q, d);
         }
         return mejor;
+    }
+
+    /// <summary>El punto del eje desde–hasta más cercano a <paramref name="p"/> y su distancia; null si <paramref name="p"/> cae más allá de sus puntas.</summary>
+    private static (Punto Q, double D)? Proyeccion(Punto desde, Punto hasta, Punto p)
+    {
+        double largo = Geometria.Distancia(desde, hasta);
+        if (largo < 1)
+            return null;
+        (double ux, double uy) = ((hasta.X - desde.X) / largo, (hasta.Y - desde.Y) / largo);
+        double a = (p.X - desde.X) * ux + (p.Y - desde.Y) * uy;
+        if (a < -SobreElEje || a > largo + SobreElEje)
+            return null;
+        var q = new Punto(desde.X + a * ux, desde.Y + a * uy);
+        return (q, Geometria.Distancia(p, q));
+    }
+
+    /// <summary>A esto (mm) o menos de otra vigueta nueva, una punta se apoya en ella (decisión 34).</summary>
+    private const double ApoyoEnLinea = 100;
+
+    /// <summary>
+    /// Decisión 34: cuáles de las <paramref name="lineas"/> de otro piso se pueden crear en este. Se descartan las que ya
+    /// tienen otra vigueta a menos de medio eje a eje (sin contar lo que se va con <paramref name="recortes"/>, de
+    /// <see cref="RecortesDeCopia"/>) y las que tienen una punta sin viga, vigueta u otra línea nueva donde apoyar.
+    /// </summary>
+    public CopiaEnPiso Copiar(IReadOnlyList<(Punto Desde, Punto Hasta)> lineas,
+        IEnumerable<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> recortes, double ejeAEje)
+    {
+        Dictionary<string, List<(double Desde, double Hasta)>> quedan0 = recortes.ToDictionary(x => x.Vigueta.Id, x => x.Restos);
+        List<(double Cota, double Desde, double Hasta)> enX = LineasSin(Direccion.X, quedan0), enY = LineasSin(Direccion.Y, quedan0);
+        bool Ocupada((Punto Desde, Punto Hasta) l)
+        {
+            bool horizontal = Math.Abs(l.Hasta.X - l.Desde.X) >= Math.Abs(l.Hasta.Y - l.Desde.Y);
+            (double cota, double d, double h) = horizontal
+                ? (l.Desde.Y, Math.Min(l.Desde.X, l.Hasta.X), Math.Max(l.Desde.X, l.Hasta.X))
+                : (l.Desde.X, Math.Min(l.Desde.Y, l.Hasta.Y), Math.Max(l.Desde.Y, l.Hasta.Y));
+            return (horizontal ? enX : enY).Any(o => Math.Min(o.Hasta, h) - Math.Max(o.Desde, d) > RestoMinimo && Math.Abs(o.Cota - cota) < ejeAEje / 2);
+        }
+        List<(Punto Desde, Punto Hasta)> libres = lineas.Where(l => !Ocupada(l)).ToList();
+        bool EnArmazon(Punto p) => Piso.Armazon.Any(x => !x.Creada && Proyeccion(x.Desde, x.Hasta, p) is (_, double d) && d <= x.Ancho / 2 + SobreElEje);
+        // Una vigueta de borde nueva puede apoyar en otra nueva; si esa se descarta, hay que volver a mirar.
+        List<(Punto Desde, Punto Hasta)> quedan = libres;
+        while (true)
+        {
+            List<(Punto Desde, Punto Hasta)> actuales = quedan;
+            bool Apoya(Punto p, (Punto Desde, Punto Hasta) propia) => EnArmazon(p)
+                || actuales.Any(o => o != propia && Proyeccion(o.Desde, o.Hasta, p) is (_, double d) && d <= ApoyoEnLinea);
+            quedan = actuales.Where(l => Apoya(l.Desde, l) && Apoya(l.Hasta, l)).ToList();
+            if (quedan.Count == actuales.Count)
+                break;
+        }
+        return new CopiaEnPiso(quedan, libres.Count - quedan.Count, lineas.Count - libres.Count);
     }
 
     /// <summary>
@@ -381,8 +441,10 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     public List<double> Guias(Direccion direccion, IEnumerable<Panel>? elegidos = null)
     {
         bool enX = direccion == Direccion.X;
-        List<Panel> reemplazo = elegidos?.ToList() ?? [];
-        bool SeReemplaza(ArmazonPiso a) => a.Creada && reemplazo.Any(p => Geometria.Dentro(p.Eje, a.En(0.5)));
+        Dictionary<string, List<(double Desde, double Hasta)>> recortes = CreadasARecortar(elegidos ?? [])
+            .ToDictionary(x => x.Vigueta.Id, x => x.Restos);
+        // Decisión 32: solo se va la que queda entera dentro de lo elegido; la que sigue afuera todavía marca la línea.
+        bool SeReemplaza(ArmazonPiso a) => recortes.TryGetValue(a.Id, out List<(double Desde, double Hasta)>? restos) && restos.Count == 0;
         List<double> cotas = Piso.Armazon
             .Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX) && !SeReemplaza(a))
             .Select(a => enX ? a.En(0.5).Y : a.En(0.5).X)
@@ -395,17 +457,34 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     }
 
     /// <summary>
-    /// Decisión 28: las viguetas que ya están, paralelas a <paramref name="direccion"/>: su cota y su tramo a lo largo. No
-    /// cuentan las creadas que pasan por <paramref name="elegidos"/>, porque «Crear» las va a reemplazar.
+    /// Decisión 28: las viguetas que ya están, paralelas a <paramref name="direccion"/>: su cota y su tramo a lo largo. De
+    /// las creadas que pasan por <paramref name="elegidos"/> solo cuenta lo que «Crear» deja afuera (decisión 32).
     /// </summary>
-    public List<(double Cota, double Desde, double Hasta)> LineasExistentes(Direccion direccion, IEnumerable<Panel> elegidos)
+    public List<(double Cota, double Desde, double Hasta)> LineasExistentes(Direccion direccion, IEnumerable<Panel> elegidos) =>
+        LineasSin(direccion, CreadasARecortar(elegidos).ToDictionary(x => x.Vigueta.Id, x => x.Restos));
+
+    /// <summary>Las viguetas paralelas a <paramref name="direccion"/>; de las que están en <paramref name="recortes"/>, solo lo que queda.</summary>
+    private List<(double Cota, double Desde, double Hasta)> LineasSin(Direccion direccion, Dictionary<string, List<(double Desde, double Hasta)>> recortes)
     {
         bool enX = direccion == Direccion.X;
-        HashSet<string> reemplazo = elegidos.SelectMany(CreadasEn).Select(a => a.Id).ToHashSet();
-        return Piso.Armazon.Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX) && !reemplazo.Contains(a.Id))
-            .Select(a => enX
-                ? (a.En(0.5).Y, Math.Min(a.Desde.X, a.Hasta.X), Math.Max(a.Desde.X, a.Hasta.X))
-                : (a.En(0.5).X, Math.Min(a.Desde.Y, a.Hasta.Y), Math.Max(a.Desde.Y, a.Hasta.Y)))
+        return Piso.Armazon.Where(a => (a.EsVigueta || a.Creada) && Paralela(a, enX))
+            .SelectMany(a => (recortes.TryGetValue(a.Id, out List<(double Desde, double Hasta)>? restos) ? restos : [(0.0, 1.0)]).Select(t =>
+            {
+                (Punto d, Punto h) = (a.En(t.Desde), a.En(t.Hasta));
+                return enX ? (d.Y, Math.Min(d.X, h.X), Math.Max(d.X, h.X)) : (d.X, Math.Min(d.Y, h.Y), Math.Max(d.Y, h.Y));
+            }))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Decisión 32: lo que queda de cada vigueta creada por el add-in que pasa por <paramref name="paneles"/>, al quitarle
+    /// el tramo dentro de ellos, por ejes: fracciones de su largo. Sin restos, estaba toda dentro y se borra.
+    /// </summary>
+    public List<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> CreadasARecortar(IEnumerable<Panel> paneles)
+    {
+        List<Panel> lista = paneles.ToList();
+        return lista.SelectMany(CreadasEn).DistinctBy(a => a.Id)
+            .Select(a => (a, Restos(a, lista.SelectMany(p => Geometria.TramosDentro(a.Desde, a.Hasta, p.Eje)))))
             .ToList();
     }
 
@@ -437,6 +516,81 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
             }
         }
         return piezas;
+    }
+
+    /// <summary>
+    /// Decisión 30: lo que queda de cada vigueta (creada por el add-in o del modelo) que cruza <paramref name="panel"/> al
+    /// volverlo vacío: fracciones de su largo, sin el tramo dentro del panel, por ejes. Las que van por el borde del panel
+    /// no se tocan. Sin restos, la vigueta entera estaba dentro.
+    /// </summary>
+    public List<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> TramosEnPanel(Panel panel)
+    {
+        var cortes = new List<(ArmazonPiso, List<(double, double)>)>();
+        foreach (ArmazonPiso a in Piso.Armazon.Where(a => a.EsVigueta || a.Creada))
+        {
+            List<(double Desde, double Hasta)> dentro = TramosAVaciar(a, panel.Eje);
+            if (dentro.Count > 0)
+                cortes.Add((a, Restos(a, dentro)));
+        }
+        return cortes;
+    }
+
+    /// <summary>El tramo de <paramref name="a"/> dentro del anillo <paramref name="eje"/>, sin contar el que va por su borde (decisión 30).</summary>
+    private List<(double Desde, double Hasta)> TramosAVaciar(ArmazonPiso a, IReadOnlyList<Punto> eje)
+    {
+        double largo = Geometria.Distancia(a.Desde, a.Hasta);
+        return Geometria.TramosDentro(a.Desde, a.Hasta, eje)
+            .Where(t => (t.Hasta - t.Desde) * largo >= RestoMinimo
+                && Geometria.DistanciaAlBorde(eje, a.En((t.Desde + t.Hasta) / 2)) > a.Ancho / 2 + SobreElEje).ToList();
+    }
+
+    /// <summary>
+    /// Decisión 34: lo que queda de cada vigueta de este piso al repetir lo hecho en otro: las creadas dentro de
+    /// <paramref name="paneles"/>, los tramos en los paneles <paramref name="vaciados"/> y las piezas del modelo marcadas
+    /// (<paramref name="delModelo"/>, por sus puntos). Va todo junto porque una misma vigueta se recorta una sola vez.
+    /// </summary>
+    public List<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> RecortesDeCopia(IEnumerable<Panel> paneles,
+        IReadOnlyList<IReadOnlyList<Punto>> vaciados, IEnumerable<(Punto Inicio, Punto Fin)> delModelo)
+    {
+        var quitar = new Dictionary<string, List<(double Desde, double Hasta)>>();
+        void Sumar(ArmazonPiso a, List<(double Desde, double Hasta)> tramos)
+        {
+            if (tramos.Count == 0)
+                return;
+            if (!quitar.TryGetValue(a.Id, out List<(double Desde, double Hasta)>? lista))
+                quitar[a.Id] = lista = [];
+            lista.AddRange(tramos);
+        }
+        foreach (Panel p in paneles)
+            foreach (ArmazonPiso a in CreadasEn(p))
+                Sumar(a, Geometria.TramosDentro(a.Desde, a.Hasta, p.Eje));
+        foreach (IReadOnlyList<Punto> eje in vaciados)
+            foreach (ArmazonPiso a in Piso.Armazon.Where(a => a.EsVigueta || a.Creada))
+                Sumar(a, TramosAVaciar(a, eje));
+        foreach ((Punto inicio, Punto fin) in delModelo)
+            foreach (ArmazonPiso a in Piso.Armazon.Where(a => a.EsVigueta && !a.Creada))
+                if (TramoSobre(a, inicio, fin) is (double, double) tramo)
+                    Sumar(a, [tramo]);
+        return quitar.Select(x =>
+        {
+            ArmazonPiso a = Elemento(x.Key)!;
+            return (a, Restos(a, x.Value));
+        }).ToList();
+    }
+
+    /// <summary>La parte de <paramref name="a"/> sobre la pieza inicio–fin, en fracciones de su largo; null si la pieza no va por su línea.</summary>
+    private static (double Desde, double Hasta)? TramoSobre(ArmazonPiso a, Punto inicio, Punto fin)
+    {
+        double largo = Geometria.Distancia(a.Desde, a.Hasta);
+        if (largo < 1)
+            return null;
+        (double ux, double uy) = ((a.Hasta.X - a.Desde.X) / largo, (a.Hasta.Y - a.Desde.Y) / largo);
+        double AlLado(Punto p) => Math.Abs(-(p.X - a.Desde.X) * uy + (p.Y - a.Desde.Y) * ux);
+        double Fraccion(Punto p) => ((p.X - a.Desde.X) * ux + (p.Y - a.Desde.Y) * uy) / largo;
+        if (AlLado(inicio) > a.Ancho / 2 + SobreElEje || AlLado(fin) > a.Ancho / 2 + SobreElEje)
+            return null;
+        double d = Math.Max(0, Math.Min(Fraccion(inicio), Fraccion(fin))), h = Math.Min(1, Math.Max(Fraccion(inicio), Fraccion(fin)));
+        return (h - d) * largo >= RestoMinimo ? (d, h) : null;
     }
 
     /// <summary>El elemento al que pertenece el id de una pieza (<c>123456#2</c> → <c>123456</c>).</summary>

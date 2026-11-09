@@ -133,6 +133,8 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
 .suelo{fill:#E8EEF4;fill-opacity:.11;fill-rule:evenodd;stroke:#E8EEF4;stroke-opacity:.35;stroke-width:1;pointer-events:none}
 .zeje{fill:none;stroke:var(--ok);stroke-width:1;stroke-dasharray:6 4;pointer-events:none}
 .hueco{fill:rgba(18,26,36,.6);stroke:#FF8C83;stroke-width:1.5;stroke-dasharray:5 3;pointer-events:none}
+/* Decisión 30: con «＋ Vacío» el clic llega al panel aunque encima estén el perímetro verde o las viguetas. */
+.vaciando .pn.sel:not([data-panel]),.vaciando .vg,.vaciando .existente,.vaciando .creada{pointer-events:none}
 .trazo{fill:none;stroke:var(--warn);stroke-width:2.5;pointer-events:none}
 .trazo.cierre{stroke-dasharray:6 5;stroke-width:1.5}
 .trazo.vac{stroke:#FF8C83}
@@ -198,6 +200,9 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
 .piso:hover{border-color:var(--w-acc);background:var(--w-acc-soft)}
 .piso .lv{font:600 14px var(--mono);color:var(--w-acc)}
 .piso .pc{font:500 11.5px var(--mono);color:var(--w-ink3)}
+.piso.marca{grid-template-columns:auto auto 1fr auto}
+.piso.marca input{accent-color:var(--w-acc);margin:0}
+.acc{display:flex;justify-content:flex-end;gap:8px}
 .toast{position:fixed;left:50%;bottom:70px;transform:translate(-50%,8px);background:#0B1118;border:1px solid #2B394B;color:#fff;font-size:13px;padding:9px 16px;border-radius:6px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:900px;text-align:center;z-index:6}
 .toast.bien{border-color:rgba(61,214,140,.5)}
 .toast.show{opacity:1;transform:translate(-50%,0)}
@@ -238,6 +243,13 @@ select.sel{height:34px;border:1px solid var(--w-line);border-radius:6px;backgrou
   <h2 id="m-t">¿En qué piso vas a crear viguetas?</h2>
   <p>Se muestran los niveles del modelo que tienen vigas.</p>
   <div class="pisos" id="m-pisos"></div>
+</div></div>
+<div class="modal" id="m-crear" hidden><div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mc-t">
+  <h2 id="mc-t">¿En qué pisos quieres crear esto?</h2>
+  <p>En cada piso marcado se repite lo que hiciste en esta planta: viguetas, vacíos y recortes.</p>
+  <label class="chk"><input type="checkbox" id="mc-todos">Todos los pisos</label>
+  <div class="pisos" id="mc-pisos"></div>
+  <div class="acc"><button class="btn" id="mc-cancelar">Cancelar</button><button class="btn pri" id="mc-crear">Crear</button></div>
 </div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <!-- Fuera de Revit, viguetas.js carga viguetas-demo.js con un piso de ejemplo. -->
