@@ -29,6 +29,8 @@ window.DEMO_VIGUETAS = () => {
   sumar([9070 - 40, 6280 + 40], 'viga');
   suelos[0].contornos[0].forEach((p) => sumar(p, 'suelo'));
   const piso = { tipo: 'piso', id: '1', nombre: 'N+3.70', cota: 3700, viguetasComoBorde: false, armazon, columnas, paneles, suelos, puntos };
+  const pisos = [{ id: '1', nombre: 'N+3.70', cota: 3700 }, { id: '2', nombre: 'N+6.70', cota: 6700 }, { id: '3', nombre: 'N+9.70', cota: 9700 }];
+  let abierto = piso;
 
   /**
    * Copia simple de PisoViguetas.Zonas para el ejemplo: un lado que va sobre una viga se corre 150 mm y uno libre, un
@@ -115,8 +117,8 @@ window.DEMO_VIGUETAS = () => {
   }
 
   return (m) => {
-    if (m.tipo === 'listo') return [{ tipo: 'pisos', documento: 'Ejemplo (fuera de Revit)', pisos: [{ id: '1', nombre: 'N+3.70', cota: 3700, armazon: armazon.length }], tipos: [{ id: '10', nombre: 'Vigueta : VT_10X35', sugerido: true }] }];
-    if (m.tipo === 'piso') return [piso];
+    if (m.tipo === 'listo') return [{ tipo: 'pisos', documento: 'Ejemplo (fuera de Revit)', pisos: pisos.map((p) => ({ ...p, armazon: armazon.length })), tipos: [{ id: '10', nombre: 'Vigueta : VT_10X35', sugerido: true }] }];
+    if (m.tipo === 'piso') { abierto = { ...piso, ...pisos.find((p) => p.id === m.id) }; return [abierto]; }
     if (m.tipo === 'propuesta') return [propuesta(m)];
     if (m.tipo === 'zonas') return [zonas(m)];
     if (m.tipo === 'perimetro') {
@@ -130,8 +132,15 @@ window.DEMO_VIGUETAS = () => {
       perimetros = [z];
       return [{ tipo: 'perimetro', ids: m.ids, paneles: [z] }];
     }
+    if (m.tipo === 'vaciar') {
+      // En el ejemplo, las viguetas del modelo van dentro de un solo panel: cortarlas es quitarlas enteras.
+      const pan = paneles.find((p) => p.id === m.id);
+      const cortadas = armazon.filter((a) => a.esVigueta && dentro(pan, [(a.desde[0] + a.hasta[0]) / 2, (a.desde[1] + a.hasta[1]) / 2]));
+      cortadas.forEach((a) => armazon.splice(armazon.indexOf(a), 1));
+      return [abierto, { tipo: 'aviso', texto: cortadas.length ? `${m.id} queda como vacío: se cortaron ${cortadas.length} viguetas.` : `${m.id} queda como vacío: no tenía viguetas.`, bien: true }];
+    }
     // Como en Revit, al crear se vuelve a mandar el piso (y la página vuelve a armar sus zonas).
-    if (m.tipo === 'crear') return [piso, { tipo: 'aviso', texto: 'Ejemplo: en Revit aquí se crearían las viguetas.', bien: true }];
+    if (m.tipo === 'crear') return [abierto, { tipo: 'aviso', texto: `Ejemplo: en Revit aquí se repetiría en ${m.pisos.length} piso(s), con ${m.vaciados.length} panel(es) vacío(s).`, bien: true }];
     return [];
   };
 };

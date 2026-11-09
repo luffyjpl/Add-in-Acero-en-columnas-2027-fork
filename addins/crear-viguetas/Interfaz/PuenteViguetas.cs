@@ -76,6 +76,9 @@ internal sealed class PuenteViguetas
             case QuitarCreadas q:
                 Quitar(q.Paneles);
                 break;
+            case VaciarPanel v:
+                Vaciar(v.Id);
+                break;
         }
     }
 
@@ -91,7 +94,11 @@ internal sealed class PuenteViguetas
 
     private void Crear(CrearViguetas c)
     {
-        if (piso is null || Propuesta(c.Propuesta).Propuesta is not PropuestaViguetas propuesta)
+        if (piso is null)
+            return;
+        // Decisión 34: con solo vacíos marcados no hay propuesta; se llevan a los otros pisos igual.
+        PropuestaViguetas? propuesta = c.Propuesta.Paneles.Count > 0 ? Propuesta(c.Propuesta).Propuesta : null;
+        if (propuesta is null && c.LosVaciados.Count == 0)
             return;
         if (Nivel(piso.Piso.Id) is not Level nivel || doc.GetElement(Id(c.Tipo)) is not FamilySymbol tipo)
         {
@@ -100,13 +107,69 @@ internal sealed class PuenteViguetas
         }
         List<Panel> paneles = piso.PanelesDe(c.Propuesta.Paneles);
         HashSet<string> marcadas = c.Propuesta.DelModelo.ToHashSet();
-        var recortes = piso.PiezasDelModelo(paneles).Where(x => marcadas.Contains(x.Id)).GroupBy(x => x.Elemento)
+        List<PiezaModelo> piezas = piso.PiezasDelModelo(paneles).Where(x => marcadas.Contains(x.Id)).ToList();
+        var recortes = piezas.GroupBy(x => x.Elemento)
             .Select(g => (Id(g.Key), PisoViguetas.Restos(piso.Elemento(g.Key)!, g.Select(x => (x.Desde, x.Hasta))))).ToList();
-        (int creadas, int recortadas) = CreadorViguetas.Crear(doc, nivel, tipo, propuesta.Lineas(c.Propuesta.Continuas),
-            Ids(paneles.SelectMany(piso.CreadasEn)), recortes);
+        List<(Punto Inicio, Punto Fin)> delModelo = piezas.Select(x => (x.Inicio, x.Fin)).ToList();
+        List<(Punto Desde, Punto Hasta)> lineas = propuesta?.Lineas(c.Propuesta.Continuas) ?? [];
+        var trabajos = new List<TrabajoViguetas>();
+        var omitidas = new List<string>();
+        var revisar = new List<string>();
+        // Decisión 34: en el piso abierto, lo que se ve; en los demás se repite todo: viguetas, vacíos y recortes.
+        foreach (string idPiso in (c.Pisos is { Count: > 0 } ? c.Pisos : [piso.Piso.Id]).Distinct())
+        {
+            if (Nivel(idPiso) is not Level destino)
+                continue;
+            if (idPiso == piso.Piso.Id)
+            {
+                if (lineas.Count > 0)
+                    trabajos.Add(new TrabajoViguetas(destino, lineas, ConIds(piso.CreadasARecortar(paneles)), recortes));
+                continue;
+            }
+            var otro = new PisoViguetas(LectorPiso.Leer(doc, destino), piso.ViguetasComoBorde);
+            var quitar = otro.RecortesDeCopia(paneles, c.LosVaciados, delModelo);
+            CopiaEnPiso copia = otro.Copiar(lineas, quitar, c.Propuesta.EjeAEje);
+            // Si ahí no se puede crear ninguna, de ese piso solo se cortan los vacíos.
+            if (copia.Lineas.Count == 0)
+                quitar = otro.RecortesDeCopia([], c.LosVaciados, []);
+            if (copia.Lineas.Count > 0 || quitar.Count > 0)
+                trabajos.Add(new TrabajoViguetas(destino, copia.Lineas, [], ConIds(quitar)));
+            if (copia.Ocupadas > 0)
+                omitidas.Add($"{destino.Name}: {copia.Ocupadas} donde ya hay viguetas");
+            if (copia.SinApoyo > 0)
+                revisar.Add($"{destino.Name}: {copia.SinApoyo} sin viga en alguna punta");
+        }
+        string detalle = (omitidas.Count > 0 ? $" Omitidas en {string.Join("; ", omitidas)}." : "")
+            + (revisar.Count > 0 ? $" Revisar en {string.Join("; ", revisar)}." : "");
+        if (trabajos.Count == 0)
+        {
+            ventana.Enviar(ProtocoloViguetas.Aviso($"No hubo nada que crear ni cortar en esos pisos.{detalle}"));
+            return;
+        }
+        List<(int Creadas, int Recortadas)> resultados = CreadorViguetas.Crear(doc, tipo, trabajos);
         Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
-        string delModelo = recortadas > 0 ? $" y se quitó de {recortadas} viguetas del modelo el tramo dentro del panel" : "";
-        ventana.Enviar(ProtocoloViguetas.Aviso($"Se crearon {creadas} viguetas en {Nombres(paneles)}{delModelo}. Ctrl+Z en Revit lo deshace.", bien: true));
+        int total = resultados.Sum(r => r.Creadas);
+        int recortadas = trabajos.Zip(resultados).Where(x => x.First.Nivel.Id == nivel.Id).Sum(x => x.Second.Recortadas);
+        string delModeloTexto = recortadas > 0 ? $" y se quitó de {recortadas} viguetas del modelo el tramo dentro del panel" : "";
+        bool soloEste = trabajos.Count == 1 && trabajos[0].Nivel.Id == nivel.Id;
+        string donde = soloEste ? Nombres(paneles) : string.Join(", ", trabajos.Zip(resultados, (t, r) => $"{t.Nivel.Name} ({r.Creadas})"));
+        string hecho = total > 0
+            ? $"Se crearon {total} viguetas en {donde}{delModeloTexto}."
+            : $"Se llevaron los vacíos a {string.Join(", ", trabajos.Select(t => t.Nivel.Name))}.";
+        ventana.Enviar(ProtocoloViguetas.Aviso($"{hecho}{detalle} Ctrl+Z en Revit lo deshace.", bien: omitidas.Count + revisar.Count == 0));
+    }
+
+    /// <summary>Decisión 30: el panel queda vacío: se cortan en Revit las viguetas que lo cruzan.</summary>
+    private void Vaciar(string id)
+    {
+        if (piso is null || piso.Panel(id) is not Panel panel)
+            return;
+        var recortes = ConIds(piso.TramosEnPanel(panel));
+        int cortadas = recortes.Count == 0 ? 0 : CreadorViguetas.Vaciar(doc, recortes);
+        Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
+        ventana.Enviar(ProtocoloViguetas.Aviso(cortadas == 0
+            ? $"{id} queda como vacío: no tenía viguetas."
+            : $"{id} queda como vacío: se cortaron {cortadas} viguetas. Ctrl+Z en Revit lo deshace.", bien: true));
     }
 
     private void Quitar(IReadOnlyList<string> ids)
@@ -114,7 +177,7 @@ internal sealed class PuenteViguetas
         if (piso is null)
             return;
         List<Panel> paneles = piso.PanelesDe(ids);
-        int quitadas = CreadorViguetas.Quitar(doc, Ids(paneles.SelectMany(piso.CreadasEn)));
+        int quitadas = CreadorViguetas.Quitar(doc, ConIds(piso.CreadasARecortar(paneles)));
         Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
         ventana.Enviar(ProtocoloViguetas.Aviso($"Se quitaron {quitadas} viguetas de {Nombres(paneles)}.", bien: true));
     }
@@ -129,13 +192,20 @@ internal sealed class PuenteViguetas
             return (null, false);
         List<Panel> paneles = piso.ConVacios(piso.PanelesDe(p.Paneles), p.LosVacios, p.Ancho);
         HashSet<string> borradas = p.Borradas.ToHashSet();
+        bool EnVacio(Panel q) => p.LosVacios.Any(v => Geometria.Dentro(q.Eje, Geometria.Centro(v)));
         // Donde ya hay una vigueta del modelo, quitada o no, no se propone otra (decisión 28).
         List<(Punto Desde, Punto Hasta)> ocupadas = piso.PiezasDelModelo(paneles).Select(x => (x.Inicio, x.Fin)).ToList();
         // #954, decisión 28: en Paneles, cada vigueta sigue por su línea por los paneles no elegidos.
-        List<Panel>? resto = p.Prolongar ? piso.Paneles.Where(q => !p.Paneles.Contains(q.Id)).ToList() : null;
+        List<Panel>? resto = p.Prolongar
+            ? piso.Paneles.Where(q => !p.Paneles.Contains(q.Id) && !EnVacio(q)).ToList()
+            : null;
+        // Decisión 31: también hasta los voladizos.
+        List<Panel>? voladizos = p.Prolongar ? piso.Voladizos.Where(q => !EnVacio(q)).ToList() : null;
+        // Decisión 33: un vacío solo quita su panel; la línea sigue del otro lado.
+        List<Panel>? saltar = p.Prolongar ? piso.Paneles.Concat(piso.Voladizos).Where(q => !p.Paneles.Contains(q.Id) && EnVacio(q)).ToList() : null;
         List<(double Cota, double Desde, double Hasta)>? lineas = p.Prolongar ? piso.LineasExistentes(p.Direccion, paneles) : null;
         PropuestaViguetas? Con(IReadOnlyList<double>? guias) =>
-            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas, resto, lineas);
+            PlanificadorViguetas.Planificar(paneles, p.Direccion, p.EjeAEje, p.Ancho, borradas, piso.Cruces, guias, ocupadas, piso.Vigas, resto, lineas, voladizos, saltar);
         PropuestaViguetas? siguiendo = Con(piso.Guias(p.Direccion, paneles));
         bool hay = siguiendo?.Paneles.Any(r => r.Origen == OrigenReparto.Existentes) == true;
         return (p.Seguir || !hay ? siguiendo : Con(null), hay);
@@ -156,5 +226,6 @@ internal sealed class PuenteViguetas
 
     private static ElementId Id(string id) => long.TryParse(id, out long n) ? new ElementId(n) : ElementId.InvalidElementId;
 
-    private static IEnumerable<ElementId> Ids(IEnumerable<ArmazonPiso> armazon) => armazon.Select(a => Id(a.Id)).Distinct().ToList();
+    private static List<(ElementId Id, List<(double Desde, double Hasta)> Restos)> ConIds(IEnumerable<(ArmazonPiso Vigueta, List<(double Desde, double Hasta)> Restos)> recortes) =>
+        recortes.Select(x => (Id(x.Vigueta.Id), x.Restos)).ToList();
 }

@@ -30,6 +30,8 @@
     zonas: [], zonasArm: [], trazo: [], conVacio: false,
     // Vacíos marcados en Por vigas o Paneles (decisión 29).
     vaciosPanel: [],
+    // Paneles vueltos vacíos con un clic (decisión 30): { id, eje }.
+    panelesVacios: [],
     dir: 'X', sep: '0,80', anc: '0,10', tipo: '', continuas: true, seguir: true, borradas: [], quitar: [], editar: false, propuesta: null, vista: null,
   };
   try {
@@ -111,6 +113,19 @@
     }
     lateral(); pintar(); armarZonas();
   }
+  /** Todos los vacíos de Por vigas y Paneles: los marcados con puntos (decisión 29) y los paneles vaciados (decisión 30). */
+  const vaciosFueraDePuntos = () => (porPuntos() ? [] : [...S.vaciosPanel, ...S.panelesVacios.map((x) => x.eje)]);
+  /** Decisión 30: con «＋ Vacío», un clic en un panel lo vuelve vacío; C# corta en Revit las viguetas que lo cruzan y relee el piso. */
+  function vaciarPanel(id) {
+    S.conVacio = false;
+    if (S.panelesVacios.some((x) => x.id === id)) { aviso(`${id} ya está marcado como vacío.`); lateral(); pintar(); return; }
+    S.panelesVacios = [...S.panelesVacios, { id, eje: S.piso.paneles.find((p) => p.id === id).eje }];
+    enviar({ tipo: 'vaciar', id });
+    aviso(`Volviendo vacío ${id}…`);
+    // Un panel vacío ya no se reparte: si estaba elegido, deja de estarlo.
+    if (S.paneles.includes(id)) return elegir(S.paneles.filter((x) => x !== id));
+    lateral(); pintar();
+  }
   function quitarZona(id, vacio) {
     if (vacio === undefined) S.zonas = S.zonas.filter((z) => z.id !== id);
     else S.zonas.find((z) => z.id === id)?.vacios.splice(vacio, 1);
@@ -146,7 +161,7 @@
     const V = valores();
     return { paneles: S.paneles, direccion: S.dir, ejeAEje: V.s, ancho: V.b, borradas: S.borradas, continuas: S.continuas, seguir: S.seguir, quitarModelo: S.quitar,
       // Decisión 28: en Paneles las viguetas siguen por su línea, salvo con «Solo P…». Decisión 29: vacíos fuera de Puntos.
-      prolongar: S.modo === 'uno' && S.paneles.length === 1 && S.sinAviso !== S.paneles[0], vacios: porPuntos() ? [] : S.vaciosPanel };
+      prolongar: S.modo === 'uno' && S.paneles.length === 1 && S.sinAviso !== S.paneles[0], vacios: vaciosFueraDePuntos() };
   }
   function abrirPiso(id) { enviar({ tipo: 'piso', id, viguetasComoBorde: S.comoBorde }); }
 
@@ -159,7 +174,7 @@
     } else if (m.tipo === 'piso') {
       const mismo = S.piso && S.piso.id === m.id;
       S.piso = m; S.comoBorde = m.viguetasComoBorde;
-      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.seguir = true; S.vaciosPanel = []; }
+      if (!mismo) { S.vista = null; S.paneles = []; S.bordes = []; S.perimetro = []; S.zonas = []; S.zonasArm = []; S.trazo = []; S.conVacio = false; S.seguir = true; S.vaciosPanel = []; S.panelesVacios = []; }
       // Al crear o quitar, C# vuelve a leer el piso y olvida las zonas: se mandan de nuevo, como el perímetro.
       if (porPuntos()) {
         $('modal').hidden = true;
@@ -210,6 +225,36 @@
   }
   $('m-pisos').addEventListener('click', (e) => { const b = e.target.closest('[data-piso]'); if (b) abrirPiso(b.dataset.piso); });
 
+  /* ---------- en qué pisos se crea (decisión 34) ---------- */
+  const ejesVaciados = () => (porPuntos() ? [] : S.panelesVacios.map((x) => x.eje));
+  /** Sin propuesta, pero con paneles vueltos vacíos que se pueden llevar a otros pisos. */
+  const soloVacios = () => !S.propuesta && ejesVaciados().length > 0 && S.pisos.length > 1;
+  function crearEn(pisos) {
+    enviar({ tipo: 'crear', ...pedido(), tipoVigueta: S.tipo, pisos, vaciados: ejesVaciados() });
+    aviso(pisos.length > 1 ? `Creando en ${pisos.length} pisos…` : 'Creando las viguetas en Revit…');
+  }
+  function marcasCrear() {
+    const n = S.pisosCrear.length;
+    $('mc-pisos').querySelectorAll('input').forEach((c) => { c.checked = S.pisosCrear.includes(c.dataset.p); });
+    $('mc-todos').checked = n === S.pisos.length;
+    $('mc-crear').disabled = !n;
+    $('mc-crear').textContent = n > 1 ? `Crear en ${n} pisos` : n ? 'Crear en 1 piso' : 'Elige un piso';
+  }
+  function abrirCrear() {
+    S.pisosCrear = [S.piso.id];
+    $('mc-pisos').innerHTML = S.pisos.map((p) => `<label class="piso marca"><input type="checkbox" data-p="${esc(p.id)}"><span class="lv">${esc(p.nombre)}</span><span>${fmt(p.cota)} m</span><span class="pc">${p.id === S.piso.id ? 'piso abierto' : `${p.armazon} vigas y viguetas`}</span></label>`).join('');
+    marcasCrear();
+    $('m-crear').hidden = false;
+  }
+  $('mc-pisos').addEventListener('change', (e) => {
+    const id = e.target.dataset.p;
+    S.pisosCrear = S.pisos.map((p) => p.id).filter((x) => (x === id ? e.target.checked : S.pisosCrear.includes(x)));
+    marcasCrear();
+  });
+  $('mc-todos').addEventListener('change', (e) => { S.pisosCrear = e.target.checked ? S.pisos.map((p) => p.id) : []; marcasCrear(); });
+  $('mc-cancelar').addEventListener('click', () => { $('m-crear').hidden = true; });
+  $('mc-crear').addEventListener('click', () => { $('m-crear').hidden = true; crearEn(S.pisosCrear); });
+
   /* ---------- barra lateral ---------- */
   function lateral() {
     const sel = elegidos(), pan = principal(), V = valores();
@@ -236,9 +281,10 @@
         + (creadas() ? `<span class="info">Ya tiene${sel.length > 1 ? 'n' : ''} <b>${creadas()}</b> viguetas creadas por CQEING.</span>` : '');
     }
     if (!porPuntos() && S.piso) {
-      // Decisión 29: ＋ Vacío también en Por vigas y Paneles.
-      const filas = S.vaciosPanel.map((v, i) => `<li><span>vacío ${i + 1} · ${v.length} puntos</span><button class="x" data-act="sin-vacio" data-i="${i}" title="Quitar el vacío ${i + 1}" aria-label="Quitar el vacío ${i + 1}">×</button></li>`).join('');
-      infoPanel += `${filas ? `<ul class="zonas">${filas}</ul>` : ''}<button class="ib ${S.conVacio ? 'vac' : ''}" data-act="vacio" ${sel.length ? '' : 'disabled'} aria-pressed="${S.conVacio}" title="Marca los puntos de un vacío dentro de lo elegido: las viguetas paran en él">＋ Vacío${S.conVacio ? '<span class="k">marcando</span>' : ''}</button>`;
+      // Decisiones 29 y 30: ＋ Vacío también en Por vigas y Paneles, con puntos o con un clic en un panel.
+      const marcados = S.panelesVacios.map((x, i) => `<li><span><b>${esc(x.id)}</b> · vacío</span><button class="x" data-act="sin-panel-vacio" data-i="${i}" title="Quitar la marca de ${esc(x.id)}. Lo cortado se recupera con Ctrl+Z en Revit" aria-label="Quitar la marca de ${esc(x.id)}">×</button></li>`).join('');
+      const filas = marcados + S.vaciosPanel.map((v, i) => `<li><span>vacío ${i + 1} · ${v.length} puntos</span><button class="x" data-act="sin-vacio" data-i="${i}" title="Quitar el vacío ${i + 1}" aria-label="Quitar el vacío ${i + 1}">×</button></li>`).join('');
+      infoPanel += `${filas ? `<ul class="zonas">${filas}</ul>` : ''}<button class="ib ${S.conVacio ? 'vac' : ''}" data-act="vacio" aria-pressed="${S.conVacio}" title="Haz clic en un panel para volverlo vacío o marca los puntos de un vacío dentro de lo elegido: las viguetas paran en él">＋ Vacío${S.conVacio ? '<span class="k">marcando</span>' : ''}</button>`;
     }
     $('side').innerHTML = `
       <div class="sec"><div class="sh">${n(1, !!S.piso)}Piso</div>
@@ -299,6 +345,7 @@
     if (b.dataset.act === 'editar') { S.editar = !S.editar; lateral(); pintar(); return; }
     if (b.dataset.act === 'vacio') { S.conVacio = !S.conVacio; S.trazo = []; lateral(); pintar(); return; }
     if (b.dataset.act === 'sin-vacio') { S.vaciosPanel = S.vaciosPanel.filter((_, i) => i !== Number(b.dataset.i)); S.borradas = []; lateral(); pintar(); pedir(); return; }
+    if (b.dataset.act === 'sin-panel-vacio') { S.panelesVacios = S.panelesVacios.filter((_, i) => i !== Number(b.dataset.i)); S.borradas = []; lateral(); pintar(); pedir(); return; }
     if (b.dataset.act === 'sin-zona') return quitarZona(b.dataset.z, b.dataset.vacio === undefined ? undefined : Number(b.dataset.vacio));
     if (b.dataset.act === 'seguir') { S.seguir = v === 'true'; S.borradas = []; guardar(); ubicacion(); pedir(); return; }
     if (b.dataset.act === 'modo' && S.modo !== v) {
@@ -361,7 +408,7 @@
     if (!S.vista) S.vista = encuadre(cajaPiso(), 0.1);
     const v = S.vista, fs = v.w / 80, pan = principal(), p = S.propuesta;
     const ns = 'vector-effect="non-scaling-stroke"';
-    let h = `<svg viewBox="${v.x} ${v.y} ${v.w} ${v.h}" class="${S.editar ? 'editando' : ''} ${porPuntos() ? 'puntos' : ''}" role="img" aria-label="Planta del piso">`;
+    let h = `<svg viewBox="${v.x} ${v.y} ${v.w} ${v.h}" class="${S.editar ? 'editando' : ''} ${porPuntos() ? 'puntos' : ''} ${!porPuntos() && S.conVacio && !S.editar ? 'vaciando' : ''}" role="img" aria-label="Planta del piso">`;
 
     S.piso.paneles.forEach((x) => {
       const sel = S.paneles.includes(x.id), mudo = porPuntos();
@@ -374,7 +421,7 @@
     S.zonasArm.forEach((x) => {
       h += `<path class="pn sel zona" d="${anillos([x.libre, ...x.huecosLibre])}" ${ns}><title>${esc(x.id)}</title></path>`;
     });
-    S.vaciosPanel.forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
+    vaciosFueraDePuntos().forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
     S.zonas.forEach((z) => {
       h += `<polygon class="zeje" points="${z.contorno.map(pt).join(' ')}" ${ns}/>`;
       z.vacios.forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
@@ -568,6 +615,7 @@
     } else if (!S.editar && (porPuntos() || S.conVacio)) {
       const q = e.target.closest('[data-pt]');
       if (q) clicPunto(Number(q.dataset.pt));
+      else if (S.conVacio && !S.trazo.length && pn) vaciarPanel(pn.dataset.panel);
     } else if (!S.editar && perimetral()) {
       const b = e.target.closest('[data-b]');
       if (!b) return;
@@ -585,6 +633,7 @@
   pv.addEventListener('contextmenu', (e) => { if (puedeCerrar()) { e.preventDefault(); cerrarTrazo(); } });
   pv.addEventListener('dblclick', () => { if (puedeCerrar()) cerrarTrazo(); });
   window.addEventListener('keydown', (e) => {
+    if (!$('m-crear').hidden) { if (e.key === 'Escape') $('m-crear').hidden = true; return; }
     if (e.key === 'Enter' && puedeCerrar()) { e.preventDefault(); cerrarTrazo(); return; }
     if (e.key !== 'Escape') return;
     if (S.editar) S.editar = false;
@@ -614,7 +663,7 @@
     const avisoPuntos = (porPuntos() || S.conVacio) && !S.editar && S.piso
       ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${n
         ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${cierra ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : n >= 3 ? 'Para cerrar en cuadrado, marca un punto en línea con el primero.' : 'Sigue marcando puntos en línea (sin diagonales).'}`
-        : S.conVacio ? `Marca los puntos del <b>vacío</b>, dentro de ${porPuntos() ? 'una zona' : 'lo elegido'}: las viguetas paran en él.`
+        : S.conVacio ? (porPuntos() ? 'Marca los puntos del <b>vacío</b>, dentro de una zona: las viguetas paran en él.' : 'Haz clic en un <b>panel</b> o marca sus puntos.')
           : S.zonas.length ? `<b>${esc(lista(S.zonas.map((z) => z.id)))}</b> armada${S.zonas.length > 1 ? 's' : ''}. Marca otra zona, separada o no, o un <b>＋ Vacío</b>.`
             : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${cierra ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
       : '';
@@ -686,17 +735,17 @@
     if ($('b-editar')) $('b-editar').disabled = !S.propuesta;
     $('b-quitar').disabled = !n;
     $('b-quitar').textContent = n ? `Quitar creadas (${n})` : 'Quitar creadas';
-    $('b-crear').disabled = !(S.propuesta && (vivas().length || S.quitar.length) && S.tipo);
-    $('b-crear').textContent = n ? 'Reemplazar viguetas' : 'Crear viguetas';
+    $('b-crear').disabled = !((S.propuesta && (vivas().length || S.quitar.length) || soloVacios()) && S.tipo);
+    $('b-crear').textContent = soloVacios() ? 'Llevar vacíos a otros pisos' : n ? 'Reemplazar viguetas' : 'Crear viguetas';
   }
-  $('b-crear').addEventListener('click', () => { enviar({ tipo: 'crear', ...pedido(), tipoVigueta: S.tipo }); aviso('Creando las viguetas en Revit…'); });
+  $('b-crear').addEventListener('click', () => { if (S.pisos.length > 1) abrirCrear(); else crearEn([S.piso.id]); });
   $('b-quitar').addEventListener('click', () => { enviar({ tipo: 'quitar', paneles: S.paneles }); aviso('Quitando las viguetas creadas…'); });
   $('b-cerrar').addEventListener('click', () => enviar({ tipo: 'cerrar' }));
 
   let tAviso;
   function aviso(texto, bien) {
     const t = $('toast'); t.textContent = texto; t.classList.toggle('bien', !!bien); t.classList.add('show');
-    clearTimeout(tAviso); tAviso = setTimeout(() => t.classList.remove('show'), 3200);
+    clearTimeout(tAviso); tAviso = setTimeout(() => t.classList.remove('show'), Math.max(3200, texto.length * 65));
   }
 
   function pintar() { dibujo(); franjas(); pie(); if ($('sum')) resumen(); if ($('ubic')) ubicacion(); }

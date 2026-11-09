@@ -154,7 +154,8 @@ public static class PlanificadorViguetas
     public static PropuestaViguetas? Planificar(IEnumerable<Panel> paneles, Direccion direccion, double ejeAEje, double ancho,
         IReadOnlySet<string> borradas, IEnumerable<BordePanel>? cruces = null, IReadOnlyList<double>? guias = null,
         IEnumerable<(Punto Desde, Punto Hasta)>? ocupadas = null, IEnumerable<BordePanel>? divisiones = null,
-        IEnumerable<Panel>? prolongarPor = null, IEnumerable<(double Cota, double Desde, double Hasta)>? lineasExistentes = null)
+        IEnumerable<Panel>? prolongarPor = null, IEnumerable<(double Cota, double Desde, double Hasta)>? lineasExistentes = null,
+        IEnumerable<Panel>? voladizos = null, IEnumerable<Panel>? saltar = null)
     {
         bool repartoEnY = direccion == Direccion.X;
         List<BordePanel> vigas = cruces?.ToList() ?? [];
@@ -230,7 +231,7 @@ public static class PlanificadorViguetas
         if (repartos.Count == 0)
             return null;
         if (prolongarPor is not null)
-            piezas.AddRange(Prolongar(piezas, prolongarPor.ToList(), lineasExistentes?.ToList() ?? [], repartoEnY, ejeAEje, vigas, borradas, ancho));
+            piezas.AddRange(Prolongar(piezas, prolongarPor.ToList(), voladizos?.ToList() ?? [], saltar?.ToList() ?? [], lineasExistentes?.ToList() ?? [], repartoEnY, ejeAEje, vigas, borradas, ancho));
         List<ViguetaBorde> bordes = todos.SelectMany(p => deBorde[p.Id]).ToList();
         (List<Vigueta> conTipo, List<TipoVigueta> tipos) = Tipificar(piezas);
         return new PropuestaViguetas(direccion, ancho, repartos, conTipo, tipos, bordes);
@@ -239,29 +240,52 @@ public static class PlanificadorViguetas
     /// <summary>
     /// Decisión 28: cada vigueta propuesta sigue por su línea, de los dos lados, por los paneles de
     /// <paramref name="resto"/> que la continúan a través de una viga. Para donde ya hay una vigueta en esa línea o donde
-    /// quedaría a menos de medio eje a eje de otra (<paramref name="existentes"/>), o si la pieza se eliminó.
+    /// quedaría a menos de medio eje a eje de otra (<paramref name="existentes"/>), o si la pieza se eliminó. Decisión 31:
+    /// también sigue por los <paramref name="voladizos"/>, y a ellos llega aunque por el camino ya haya viguetas en su línea.
+    /// Decisión 33: los paneles de <paramref name="saltar"/> (vacíos) no llevan vigueta, pero la línea sigue del otro lado.
     /// </summary>
-    private static List<Vigueta> Prolongar(List<Vigueta> piezas, List<Panel> resto, List<(double Cota, double Desde, double Hasta)> existentes,
+    private static List<Vigueta> Prolongar(List<Vigueta> piezas, List<Panel> resto, List<Panel> voladizos, List<Panel> saltar, List<(double Cota, double Desde, double Hasta)> existentes,
         bool repartoEnY, double ejeAEje, List<BordePanel> vigas, IReadOnlySet<string> borradas, double ancho)
     {
         var nuevas = new List<Vigueta>();
-        bool Libre(double cota, double d, double h) => !existentes.Any(o =>
+        IEnumerable<(double Cota, double Desde, double Hasta)> Cerca(double cota, double d, double h) => existentes.Where(o =>
             Math.Min(o.Hasta, h) - Math.Max(o.Desde, d) > PiezaMinima && Math.Abs(o.Cota - cota) < ejeAEje / 2);
+        List<Panel> camino = [.. resto, .. voladizos, .. saltar];
         foreach (List<Vigueta> cadena in PropuestaViguetas.Cadenas(piezas.Where(v => !v.Borrada)))
         {
             double cota = cadena[0].Cota;
             var usados = new HashSet<string>();
             void Avanzar(double extremo, bool haciaArriba)
             {
+                bool pasandoDeLargo = false;
                 while (true)
                 {
                     Panel? siguiente = null;
                     (double D, double H) tramo = default;
-                    foreach (Panel q in resto.Where(q => !usados.Contains(q.Id)))
+                    foreach (Panel q in camino.Where(q => !usados.Contains(q.Id)))
                         foreach ((double d, double h) in Geometria.CortesAnillos(q.AnillosEje, repartoEnY, cota))
                             if (Math.Abs((haciaArriba ? d : h) - extremo) <= MismaLinea)
                                 (siguiente, tramo) = (q, (d, h));
-                    if (siguiente is null || !Libre(cota, tramo.D, tramo.H))
+                    if (siguiente is null)
+                        return;
+                    if (saltar.Contains(siguiente))
+                    {
+                        usados.Add(siguiente.Id);
+                        extremo = haciaArriba ? tramo.H : tramo.D;
+                        continue;
+                    }
+                    List<(double Cota, double Desde, double Hasta)> cerca = Cerca(cota, tramo.D, tramo.H).ToList();
+                    if (cerca.Count > 0)
+                    {
+                        // Decisión 31: la que ya sigue en esta misma línea no corta el camino hacia el voladizo.
+                        if (cerca.Any(o => Math.Abs(o.Cota - cota) > MismaLinea))
+                            return;
+                        usados.Add(siguiente.Id);
+                        pasandoDeLargo = true;
+                        extremo = haciaArriba ? tramo.H : tramo.D;
+                        continue;
+                    }
+                    if (pasandoDeLargo && !voladizos.Contains(siguiente))
                         return;
                     usados.Add(siguiente.Id);
                     string id = $"{siguiente.Id}:L{Math.Round(cota)}";
