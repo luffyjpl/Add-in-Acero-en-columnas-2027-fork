@@ -27,7 +27,15 @@ public sealed record PedirPropuesta(IReadOnlyList<string> Paneles, Direccion Dir
     public IReadOnlyList<IReadOnlyList<Punto>> LosVacios => Vacios ?? [];
 }
 
-public sealed record CrearViguetas(PedirPropuesta Propuesta, string Tipo) : MensajeViguetas;
+/// <summary>
+/// Crea la propuesta (decisión 34). <paramref name="Pisos"/>: ids de los niveles donde crearla; sin ellos, el piso abierto.
+/// <paramref name="Vaciados"/>: ejes de los paneles vueltos vacíos con un clic, para cortar lo mismo en los otros pisos.
+/// </summary>
+public sealed record CrearViguetas(PedirPropuesta Propuesta, string Tipo, IReadOnlyList<string>? Pisos = null,
+    IReadOnlyList<IReadOnlyList<Punto>>? Vaciados = null) : MensajeViguetas
+{
+    public IReadOnlyList<IReadOnlyList<Punto>> LosVaciados => Vaciados ?? [];
+}
 
 public sealed record QuitarCreadas(IReadOnlyList<string> Paneles) : MensajeViguetas;
 
@@ -39,6 +47,9 @@ public sealed record ArmarPerimetro(IReadOnlyList<string> Ids) : MensajeViguetas
 /// anteriores. <paramref name="Ancho"/> es el de vigueta, en mm: el de las viguetas de borde de los lados libres.
 /// </summary>
 public sealed record ArmarZonas(IReadOnlyList<ZonaPuntos> Zonas, double Ancho) : MensajeViguetas;
+
+/// <summary>Decisión 30: volver vacío el panel <paramref name="Id"/>: corta en Revit las viguetas que lo cruzan.</summary>
+public sealed record VaciarPanel(string Id) : MensajeViguetas;
 
 public sealed record CerrarViguetas : MensajeViguetas;
 
@@ -81,11 +92,13 @@ public static class ProtocoloViguetas
             "listo" => new ListoViguetas(),
             "piso" when e.Id is not null => new ElegirPiso(e.Id, e.ViguetasComoBorde ?? false),
             "propuesta" when paneles.Count > 0 => Pedido(),
-            "crear" when paneles.Count > 0 && e.TipoVigueta is not null => new CrearViguetas(Pedido(), e.TipoVigueta),
+            "crear" when (paneles.Count > 0 || e.Vaciados is { Count: > 0 }) && e.TipoVigueta is not null =>
+                new CrearViguetas(Pedido(), e.TipoVigueta, e.Pisos, (e.Vaciados ?? []).Select(Puntos).ToList()),
             "quitar" when paneles.Count > 0 => new QuitarCreadas(paneles),
             "perimetro" => new ArmarPerimetro(e.Ids ?? []),
             "zonas" => new ArmarZonas((e.Zonas ?? []).Where(z => z.Id is not null)
                 .Select(z => new ZonaPuntos(z.Id!, Puntos(z.Contorno), (z.Vacios ?? []).Select(Puntos).ToList())).ToList(), e.Ancho ?? 0),
+            "vaciar" when e.Id is not null => new VaciarPanel(e.Id),
             "cerrar" => new CerrarViguetas(),
             _ => new DesconocidoViguetas(),
         };
@@ -198,6 +211,8 @@ public static class ProtocoloViguetas
         public List<ZonaEntrada>? Zonas { get; set; }
         public bool? Prolongar { get; set; }
         public List<List<double[]>>? Vacios { get; set; }
+        public List<string>? Pisos { get; set; }
+        public List<List<double[]>>? Vaciados { get; set; }
     }
 
     private sealed class ZonaEntrada

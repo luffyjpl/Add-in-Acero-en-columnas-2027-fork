@@ -270,6 +270,53 @@
     panel o perímetro elegido que contiene su centro, con las mismas reglas de las decisiones 5, 11, 18, 22 y 25. La
     página los manda en cada pedido (`vacios`) y C# los aplica con `PisoViguetas.ConVacios`. Se quitan con su ×; al
     cambiar de modo o de piso se borran.
+30. **Con ＋ Vacío, un clic en un panel lo vuelve vacío** (usuario, 09-nov, en Paneles y Por vigas, con viguetas ya creadas).
+    «＋ Vacío» se puede activar sin tener nada elegido. Con él activo, un clic en un panel corta en Revit, en una sola
+    transacción («CQEING: vacío en panel», Ctrl+Z en Revit la deshace), el tramo dentro de ese panel de las viguetas que
+    lo cruzan, creadas por el add-in o del modelo: lo que queda llega al eje de las vigas del panel. No toca las vigas ni
+    las viguetas que van por el borde del panel (las viguetas de borde del modelo). El panel queda marcado como vacío
+    en la lista, con su ×: las viguetas nuevas no se proponen dentro de él (decisión 33) y, si queda dentro de un
+    perímetro, se reparte como cualquier vacío (decisión 29). Si el panel estaba elegido, deja de estarlo; si el vacío tapa todo un perímetro elegido, no se le propone nada
+    (`PisoViguetas.ConVacios`). La lista se
+    borra al cambiar de piso y no se aplica en el modo Puntos. La × solo quita la marca; lo cortado vuelve con Ctrl+Z en
+    Revit. Marcar con puntos sigue igual. `PisoViguetas.TramosEnPanel`, `CreadorViguetas.Vaciar`, mensaje `vaciar`.
+31. **En Paneles, la vigueta también llega a los voladizos** (usuario, 09-nov, con captura: las líneas paraban en la última
+    viga). Un voladizo no es un panel porque lo cierra una vigueta de borde del modelo, y esas no arman paneles si no
+    está marcado «Usar las viguetas del modelo como borde». `PisoViguetas.Voladizos` son las caras que aparecen al contar
+    también esas viguetas y quedan fuera de todo panel; la prolongación de la decisión 28 pasa por ellas. Además, una
+    vigueta que ya sigue en la misma línea (a 3 cm o menos) ya no corta el camino hacia el voladizo: se pasa de largo por
+    esos paneles sin proponer nada y solo se completan los voladizos que haya después, no otros paneles. Un voladizo sin
+    vigueta de borde no tiene dónde terminar y no se llena. `PlanificadorViguetas.Prolongar`, parámetro `voladizos`.
+32. **Quitar o reemplazar en un panel solo toca ese panel** (usuario, 09-nov: «si le doy clic a un solo panel, solo debe
+    quitar ese»). Una vigueta creada continua cruza varios paneles y se borraba entera. Ahora, en cualquier modo,
+    «Quitar creadas» y «Reemplazar viguetas» cortan solo el tramo dentro de lo elegido, por ejes, como el vacío (decisión
+    30); lo de afuera se queda y sigue contando como vigueta existente y como guía. Si estaba toda dentro, se borra.
+    `PisoViguetas.CreadasARecortar`, `CreadorViguetas.Crear` y `Quitar`.
+33. **Un vacío solo quita su panel: la vigueta sigue del otro lado** (usuario, 09-nov: al volver vacío P4, también se iba
+    P6). La prolongación de la decisión 28 paraba en el panel vacío, así que todos los paneles que venían después se
+    quedaban sin vigueta. Ahora, en Paneles, la línea salta el panel vacío y sigue en el siguiente, igual que un vacío
+    dentro de un perímetro en Por vigas: quedan dos viguetas, una a cada lado, cada una hasta el eje de la viga del
+    vacío. `PlanificadorViguetas.Prolongar`, parámetro `saltar`.
+34. **Crear en varios pisos** (usuario, 09-nov: al darle a crear, una ventana como la del inicio para elegir los pisos, y
+    que se creen en todos esos). Si el proyecto tiene más de un piso, «Crear viguetas» abre la ventana: viene marcado el
+    piso abierto y hay «Todos los pisos». El usuario aclaró: **todo lo que se hizo en un piso se repite en los marcados:
+    viguetas, vacíos y recortes**. En cada piso marcado se crean las mismas viguetas que se ven en la planta, en las
+    mismas coordenadas y a la altura de las vigas de ese piso; no se vuelve a calcular el reparto. Todo va en una sola
+    transacción: un Ctrl+Z en Revit deshace todos los pisos. En los otros pisos:
+    - se reemplazan las creadas por el add-in dentro de lo elegido, igual que en el piso abierto (decisión 32);
+    - los paneles vueltos vacíos con un clic (decisión 30) cortan ahí las viguetas de ese mismo lugar, sean creadas o del
+      modelo. Por eso «Crear» también se enciende con solo vacíos marcados y más de un piso, aunque no haya propuesta;
+    - las viguetas del modelo marcadas para quitar en el piso abierto se recortan en el mismo lugar, en las de esa línea;
+    - no se crea una vigueta solo si ya hay otra a menos de medio eje a eje en ese tramo; el aviso dice cuántas se
+      omitieron y en qué piso. Si en un piso no se puede crear ninguna, de ese piso solo se cortan los vacíos;
+    - una vigueta con una punta sin viga, vigueta de borde u otra vigueta nueva donde apoyar (a medio ancho + 3 cm) **se
+      crea igual** y el aviso dice cuántas hay que revisar. Hallazgo en Revit real (09-nov, PROY_JULIO_BETO): al principio
+      se descartaban; las 7 viguetas de P1 terminaban todas en la vigueta de borde del voladizo y, en el otro piso, no se
+      creaba ninguna. El usuario pidió que se cree lo mismo en todos los pisos marcados. Medido después en Revit con un
+      registro temporal, ya retirado: 7 viguetas en N+3.70 y 7 en N+6.70, cada grupo con su nivel de referencia, a la
+      cota de su piso (3700 y 6700 mm) y sin desfases.
+    «Quitar creadas» sigue siendo solo del piso abierto: no es parte de crear. `PisoViguetas.Copiar` y
+    `RecortesDeCopia`, `CreadorViguetas.Crear` (`TrabajoViguetas`), campos `pisos` y `vaciados` del mensaje `crear`.
 
 ## Plan paso a paso
 

@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using CQEING.Vigas.Calculo.Estribos;
 using CQEING.Vigas.Calculo.Generacion;
 using CQEING.Vigas.Calculo.Modelo;
 using CQEING.Vigas.Calculo.Porticos;
@@ -107,7 +110,7 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
                 (opciones[id], actual) = (o, id);
                 // un sistema de viguetas lleva el mismo acero en todas (Carlos; planta, 27-oct)
                 foreach (string otra in Miembros(id).Where(m => m != id))
-                    opciones[otra] = o;
+                    opciones[otra] = OpcionesEn(o, id, otra);
                 // la vista previa 3D sigue el cambio si está en el pórtico o en otra del sistema
                 return en3d is not null && Miembros(id).Contains(en3d) ? [Vista(), Previa3d(en3d)] : [Vista()];
             case Previsualizar(string id, OpcionesTablero o, PedidoEdicion pedido):
@@ -158,13 +161,13 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
             case Generar(IReadOnlyList<string> ids, var estadosPagina, bool forzar, bool mismoAcero):
                 // Con varios elegidos (Ctrl), todos llevan el acero del abierto: el que se está armando, no el que cada uno
                 // tenía de antes (6-nov). Igual la misma viga en los pisos elegidos al generar (punto 14 de Santiago),
-                // aunque el piso del abierto no se genere.
+                // aunque el piso del abierto no se genere. También la página del abierto, para que al abrirlos se vean igual
+                // (09-nov: con Ctrl cada uno guardaba la suya y la vigueta abierta después mostraba otros estribos).
                 if (actual is not null && (mismoAcero || (elegidos is not null && ids.Contains(actual))))
                 {
                     foreach (string otra in ids.Where(i => i != actual && Buscar(i) is not null))
-                        opciones[otra] = Opciones(actual);
-                    if (mismoAcero)
-                        estadosPagina = ConElEstadoDelAbierto(ids, estadosPagina);
+                        opciones[otra] = OpcionesEn(Opciones(actual), actual, otra);
+                    estadosPagina = ConElEstadoDelAbierto(ids, estadosPagina);
                 }
                 AGenerar generar = AGenerar(ConSusSistemas(ids), EstadosDelSistema(ids, estadosPagina));
                 // Decisión 8 del plan de choques: avisa los choques de todos los que se generan, no solo del abierto. No
@@ -254,7 +257,7 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
             if (fuente is null)
                 continue;
             foreach (string m in miembros.Where(m => !estadosPagina.ContainsKey(m)))
-                todos[m] = estadosPagina[fuente];
+                todos[m] = EstadoEn(estadosPagina[fuente], fuente, m);
         }
         return todos;
     }
@@ -269,9 +272,54 @@ public sealed class SesionTablero(Func<ResultadoLectura> leer, AlmacenReglas alm
             return estadosPagina;
         var todos = new Dictionary<string, string>(estadosPagina);
         foreach (string id in ids)
-            todos[id] = delAbierto;
+            todos[id] = EstadoEn(delAbierto, actual, id);
         return todos;
     }
+
+    /// <summary>Las opciones de <paramref name="desde"/> para <paramref name="hacia"/>, con sus tramos marcados (<see cref="TramosEn"/>).</summary>
+    private OpcionesTablero OpcionesEn(OpcionesTablero o, string desde, string hacia) =>
+        o.TramosMarcados.Count == 0 ? o : o with { TramosMarcados = TramosEn(o.TramosMarcados, desde, hacia) };
+
+    /// <summary>
+    /// El estado de la página de <paramref name="desde"/> para <paramref name="hacia"/>: el mismo, con los tramos marcados
+    /// (<c>tramosSel</c>) con los nombres de los de <paramref name="hacia"/>. Si no se entiende, queda como viene.
+    /// </summary>
+    private string EstadoEn(string estado, string desde, string hacia)
+    {
+        try
+        {
+            if (JsonNode.Parse(estado) is not JsonObject pagina || pagina["tramosSel"] is not JsonArray { Count: > 0 } sel)
+                return estado;
+            List<string> marcados = sel.Select(t => t?.GetValue<string>()).OfType<string>().ToList();
+            IReadOnlyList<string> en = TramosEn(marcados, desde, hacia);
+            if (en.SequenceEqual(marcados))
+                return estado;
+            pagina["tramosSel"] = new JsonArray(en.Select(t => (JsonNode?)JsonValue.Create(t)).ToArray());
+            return pagina.ToJsonString();
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
+        {
+            return estado;
+        }
+    }
+
+    /// <summary>
+    /// Los tramos marcados de <paramref name="desde"/> con los nombres de los de <paramref name="hacia"/>. El tramo se
+    /// nombra por sus ejes ("A-B"), y la misma vigueta en otro lugar o la misma viga en otro piso puede estar entre otros
+    /// ("1-2"): con el nombre no encontraba ninguno y sus estribos marcados se perdían (09-nov). Van por su lugar, de
+    /// izquierda a derecha; si estaban marcados todos, quedan todos los de <paramref name="hacia"/>.
+    /// </summary>
+    private IReadOnlyList<string> TramosEn(IReadOnlyList<string> marcados, string desde, string hacia)
+    {
+        if (desde == hacia || Buscar(desde) is not { Portico.Apoyos.Count: > 0 } de || Buscar(hacia) is not { Portico.Apoyos.Count: > 0 } en)
+            return marcados;
+        List<string> origen = NombresDeTramos(de), destino = NombresDeTramos(en);
+        if (origen.All(marcados.Contains))
+            return destino;
+        return marcados.Select(t => origen.IndexOf(t)).Where(i => i >= 0 && i < destino.Count).Select(i => destino[i]).Distinct().ToList();
+    }
+
+    private static List<string> NombresDeTramos(PorticoLeido p) => DistribuidorEstribos.Tramos(p.Portico).Select(t => t.Nombre).ToList();
 
     /// <summary>Los pórticos de <paramref name="generar"/> con choques, con cuántos puntos tiene cada uno, en su orden.</summary>
     private List<PorticoConChoques> ConChoques(AGenerar generar)

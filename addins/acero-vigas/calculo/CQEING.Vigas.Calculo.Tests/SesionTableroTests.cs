@@ -794,6 +794,64 @@ public sealed class SesionTableroTests : IDisposable
         Assert.Equal([4, 3], g.Porticos.Select(p => p.Plan.Barras.Count(b => b.Pieza == "S1")));
     }
 
+    // Los estribos de los tramos marcados (09-nov): el mismo acero en otro pórtico, entre otros ejes, los lleva en los
+    // tramos del mismo lugar; antes se perdían porque el tramo se busca por su nombre ("A-B" no existe entre 1 y 4).
+
+    /// <summary>
+    /// "Pórtico 1" y "Pórtico 2" iguales, el segundo en el Piso 3 y entre los ejes 1, 2, 3…; el 1 abierto con estribos
+    /// #4 en su primera luz. Devuelve el nombre de esa luz en cada uno.
+    /// </summary>
+    private SesionTablero EntreOtrosEjes(out string luzDel1, out string luzDel2)
+    {
+        PorticoLeido p = PlanificadorAceroTests.Portico();
+        PorticoLeido otro = p with
+        {
+            Nombre = "Pórtico 2",
+            Nivel = "Piso 3",
+            Vigas = ["301", "302", "303", "304"],
+            Portico = p.Portico with { Apoyos = p.Portico.Apoyos.Select((a, i) => a with { Eje = $"{i + 1}" }).ToList() },
+        };
+        lectura = new([p, otro], []);
+        SesionTablero s = Sesion();
+        s.Manejar(new Listo());
+        IReadOnlyList<Apoyo> ejes = p.Portico.Apoyos;
+        (luzDel1, luzDel2) = ($"{ejes[0].Eje}-{ejes[1].Eje}", "1-2");
+        s.Manejar(new Calcular("Pórtico 1", OpcionesTablero.PorDefecto with
+        {
+            TramosMarcados = [luzDel1],
+            EstribosMarcados = OpcionesTablero.PorDefecto.Estribos with { Diametro = 4 },
+        }));
+        return s;
+    }
+
+    private static List<string> TramosCon4(PorticoAGenerar p) =>
+        p.Plan.Estribos.Where(e => e.Diametro == 4).Select(e => e.Tramo).Distinct().ToList();
+
+    [Fact]
+    public void ConVariosElegidos_LosEstribosDeLosTramosMarcadosPasanAlOtroEntreOtrosEjes()
+    {
+        SesionTablero s = EntreOtrosEjes(out string luz1, out string luz2);
+        s.Manejar(new ElegirVarios(["Pórtico 1", "Pórtico 2"], "Pórtico 1"));
+        string estado = $$"""{"tramosSel":["{{luz1}}"]}""";
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 1", "Pórtico 2"],
+            new Dictionary<string, string> { ["Pórtico 1"] = estado }, Forzar: true)).OfType<AGenerar>());
+
+        Assert.Equal([[luz1], [luz2]], g.Porticos.Select(TramosCon4));
+        // y al abrir el otro, la página marca su tramo: el estado del abierto con sus nombres
+        Assert.Equal($$"""{"tramosSel":["{{luz2}}"]}""", ConfiguracionGuardada.Leer(g.Porticos[1].Configuracion)!.Value.Estado);
+    }
+
+    [Fact]
+    public void ConMismoAcero_LosEstribosDeLosTramosMarcadosPasanAlOtroPiso()
+    {
+        SesionTablero s = EntreOtrosEjes(out _, out string luz2);
+
+        AGenerar g = Assert.Single(s.Manejar(new Generar(["Pórtico 2"], Forzar: true, MismoAcero: true)).OfType<AGenerar>());
+
+        Assert.Equal([luz2], TramosCon4(Assert.Single(g.Porticos)));
+    }
+
     /// <summary>Punto 14 de Santiago: el nivel queda construido cuando sus cuatro pórticos están terminados.</summary>
     [Fact]
     public void LaPlantaDiceCuantosPorticosDelNivelEstanTerminados()

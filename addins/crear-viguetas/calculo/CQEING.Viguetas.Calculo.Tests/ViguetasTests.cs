@@ -1072,6 +1072,238 @@ public class ViguetasTests
     }
 
     [Fact]
+    public void AlVolverVacioUnPanelSeCortanLasViguetasQueLoCruzanYNoLasDeSuBorde()
+    {
+        // Decisión 30 (como las capturas del 09-nov): una creada y una del modelo cruzan los tres paneles; otra del modelo va
+        // solo por el del medio; y una vigueta de borde del modelo va justo por el borde de abajo del panel del medio.
+        PisoViguetas piso = ColumnaDeTres();
+        var con = new PisoViguetas(piso.Piso with
+        {
+            Armazon =
+            [
+                .. piso.Piso.Armazon,
+                new ArmazonPiso("creada", new(1000, 0), new(1000, 9000), 100, "VT_10X35", true),
+                new ArmazonPiso("modelo", new(2000, 0), new(2000, 9000), 100, "VT_10X35", false),
+                new ArmazonPiso("sola", new(3000, 3000), new(3000, 6000), 100, "VT_10X35", false),
+                new ArmazonPiso("borde", new(0, 3000), new(4000, 3000), 100, "VB_10X35", false),
+            ],
+        }, false);
+        Panel medio = con.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+
+        var cortes = con.TramosEnPanel(medio);
+
+        Assert.Equal(["creada", "modelo", "sola"], cortes.Select(c => c.Vigueta.Id).Order());
+        // Las que siguen quedan de 0 a 3,00 m y de 6,00 a 9,00 m, hasta el eje de las vigas; la que iba solo ahí se borra.
+        (ArmazonPiso creada, List<(double Desde, double Hasta)> restos) = cortes.Single(c => c.Vigueta.Id == "creada");
+        Assert.Equal([(0.0, 3000.0), (6000.0, 9000.0)], restos.Select(t => (Math.Round(creada.En(t.Desde).Y), Math.Round(creada.En(t.Hasta).Y))));
+        Assert.Empty(cortes.Single(c => c.Vigueta.Id == "sola").Restos);
+    }
+
+    [Fact]
+    public void UnPanelVacioDentroDeUnPerimetroParteLasViguetas()
+    {
+        // Decisión 30: el panel del medio, marcado como vacío, dentro del perímetro de la columna entera.
+        PisoViguetas piso = ColumnaDeTres();
+        Panel medio = piso.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+        Panel z = Assert.Single(piso.Perimetro(["izq", "der", "h0", "h9000"]));
+
+        Panel conVacio = Assert.Single(piso.ConVacios([z], [medio.Eje], 100));
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([conVacio], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        Assert.Empty(conVacio.ViguetasDeBorde);
+        Assert.DoesNotContain(p.Viguetas, v => v.Desde < 6000 && v.Hasta > 3000);
+        List<(Punto Desde, Punto Hasta)> lineas = p.Lineas(continuas: true);
+        Assert.Equal(4, lineas.Count(l => Math.Round(l.Desde.Y) == 0 && Math.Round(l.Hasta.Y) == 3000));
+        Assert.Equal(4, lineas.Count(l => Math.Round(l.Desde.Y) == 6000 && Math.Round(l.Hasta.Y) == 9000));
+    }
+
+    [Fact]
+    public void UnVacioQueOcupaTodoLoElegidoNoDejaViguetas()
+    {
+        // Decisión 30: en Por vigas, el perímetro puede ser justo el panel que se vuelve vacío.
+        PisoViguetas piso = ColumnaDeTres();
+        Panel medio = piso.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+
+        List<Panel> quedan = piso.ConVacios([medio], [medio.Eje], 100);
+
+        Assert.Empty(quedan);
+        Assert.Null(PlanificadorViguetas.Planificar(quedan, Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, piso.Guias(Direccion.Y, quedan), piso.PiezasDelModelo(quedan).Select(x => (x.Inicio, x.Fin)), piso.Vigas));
+    }
+
+    /// <summary>La columna de tres paneles con un voladizo arriba y otro abajo, cerrados por viguetas de borde del modelo.</summary>
+    private static PisoViguetas ColumnaConVoladizos()
+    {
+        List<ArmazonPiso> armazon =
+        [
+            new("izq", new(0, -1500), new(0, 10500), 300, "V30X40", false),
+            new("der", new(4000, -1500), new(4000, 10500), 300, "V30X40", false),
+            new("borde-abajo", new(0, -1500), new(4000, -1500), 100, "VT_10X35", false),
+            new("borde-arriba", new(0, 10500), new(4000, 10500), 100, "VT_10X35", false),
+        ];
+        armazon.AddRange(new[] { 0, 3000, 6000, 9000 }.Select(y => new ArmazonPiso($"h{y}", new(0, y), new(4000, y), 300, "V30X40", false)));
+        return new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
+    }
+
+    private static PropuestaViguetas ProlongarDesde(PisoViguetas piso, Panel elegido) =>
+        PlanificadorViguetas.Planificar([elegido], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas,
+            prolongarPor: piso.Paneles.Where(q => q != elegido), lineasExistentes: piso.LineasExistentes(Direccion.Y, [elegido]), voladizos: piso.Voladizos)!;
+
+    [Fact]
+    public void LaViguetaDeUnPanelLlegaHastaLosVoladizos()
+    {
+        // Decisión 31 (captura del 09-nov): los voladizos los cierran viguetas de borde, no son paneles.
+        PisoViguetas piso = ColumnaConVoladizos();
+        Panel arriba = piso.Paneles.Single(p => Geometria.Centro(p.Libre).Y is > 6000 and < 9000);
+
+        Assert.Equal(3, piso.Paneles.Count);
+        Assert.Equal(2, piso.Voladizos.Count);
+        Assert.Empty(new PisoViguetas(piso.Piso, true).Voladizos);
+
+        PropuestaViguetas p = ProlongarDesde(piso, arriba);
+
+        Assert.Equal(p.Paneles[0].Reparto.Cantidad, p.Lineas(continuas: true).Count(l =>
+            Math.Round(Math.Min(l.Desde.Y, l.Hasta.Y)) == -1500 && Math.Round(Math.Max(l.Desde.Y, l.Hasta.Y)) == 10500));
+    }
+
+    [Fact]
+    public void UnaViguetaQueYaSiguePorSuLineaNoImpideLlegarAlVoladizo()
+    {
+        // Decisión 31: la creada va por los dos paneles de abajo; no se repite ahí, pero el voladizo de abajo sí se completa.
+        PisoViguetas sinCreada = ColumnaConVoladizos();
+        Panel arriba = sinCreada.Paneles.Single(p => Geometria.Centro(p.Libre).Y is > 6000 and < 9000);
+        double cota = Math.Round(ProlongarDesde(sinCreada, arriba).Lineas(continuas: true)[0].Desde.X, 3);
+        var piso = new PisoViguetas(sinCreada.Piso with
+        {
+            Armazon = [.. sinCreada.Piso.Armazon, new ArmazonPiso("creada", new(cota, 0), new(cota, 6000), 100, "VT_10X35", true)],
+        }, false);
+
+        List<(double Desde, double Hasta)> enLaLinea = ProlongarDesde(piso, arriba).Lineas(continuas: true)
+            .Where(l => Math.Abs(l.Desde.X - cota) < 1)
+            .Select(l => (Math.Round(Math.Min(l.Desde.Y, l.Hasta.Y)), Math.Round(Math.Max(l.Desde.Y, l.Hasta.Y))))
+            .OrderBy(t => t.Item1).ToList();
+
+        Assert.Equal([(-1500.0, 0.0), (6000.0, 10500.0)], enLaLinea);
+    }
+
+    [Fact]
+    public void UnPanelVacioSoloQuitaEsePanelYLaViguetaSigueDelOtroLado()
+    {
+        // Decisión 33: se elige el de arriba y el del medio es el vacío; el de abajo y su voladizo conservan la vigueta.
+        PisoViguetas piso = ColumnaConVoladizos();
+        Panel arriba = piso.Paneles.Single(p => Geometria.Centro(p.Libre).Y is > 6000 and < 9000);
+        Panel vacio = piso.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([arriba], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas,
+            prolongarPor: piso.Paneles.Where(q => q != arriba && q != vacio), lineasExistentes: piso.LineasExistentes(Direccion.Y, [arriba]),
+            voladizos: piso.Voladizos, saltar: [vacio])!;
+
+        List<(double Desde, double Hasta)> tramos = p.Lineas(continuas: true)
+            .Select(l => (Math.Round(Math.Min(l.Desde.Y, l.Hasta.Y)), Math.Round(Math.Max(l.Desde.Y, l.Hasta.Y)))).ToList();
+        int n = p.Paneles[0].Reparto.Cantidad;
+        Assert.Equal(2 * n, tramos.Count);
+        Assert.Equal(n, tramos.Count(t => t == (6000.0, 10500.0)));
+        Assert.Equal(n, tramos.Count(t => t == (-1500.0, 3000.0)));
+    }
+
+    [Fact]
+    public void EnOtroPisoSeCopianLasViguetasYSeCuentanLasQueNoTienenApoyo()
+    {
+        // Decisión 34: la propuesta del piso abierto se lleva a otro piso con las mismas vigas, menos una, y viguetas ya puestas.
+        PisoViguetas abierto = ColumnaDeTres();
+        Panel arriba = abierto.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+        var otro = new PisoViguetas(abierto.Piso with
+        {
+            Armazon =
+            [
+                .. abierto.Piso.Armazon.Where(a => a.Id != "h0"),
+                new ArmazonPiso("modelo", new(2000, 6000), new(2000, 9000), 100, "VT_10X35", false),
+                new ArmazonPiso("anterior", new(3000, 6000), new(3000, 9000), 100, "VT_10X35", true),
+            ],
+        }, false);
+        (Punto Desde, Punto Hasta)[] lineas =
+        [
+            (new(1000, 6000), new(1000, 9000)),
+            (new(2000, 6000), new(2000, 9000)),
+            (new(3000, 6000), new(3000, 9000)),
+            (new(3500, 0), new(3500, 3000)),
+        ];
+
+        CopiaEnPiso copia = otro.Copiar(lineas, otro.RecortesDeCopia([arriba], [], []), 800);
+
+        // La de 1,00 tiene lugar; la de 3,00 reemplaza a la creada; la de 2,00 choca con la del modelo; la de 3,50 no tiene viga abajo, pero se crea igual.
+        Assert.Equal([1000.0, 3000.0, 3500.0], copia.Lineas.Select(l => l.Desde.X));
+        Assert.Equal(1, copia.Ocupadas);
+        Assert.Equal(1, copia.SinApoyo);
+        // Si la del modelo estaba marcada para quitar en el piso abierto, ya no estorba.
+        CopiaEnPiso sinModelo = otro.Copiar(lineas, otro.RecortesDeCopia([arriba], [], [(new(2000, 6000), new(2000, 9000))]), 800);
+        Assert.Equal([1000.0, 2000.0, 3000.0, 3500.0], sinModelo.Lineas.Select(l => l.Desde.X));
+    }
+
+    [Fact]
+    public void EnOtroPisoElVacioCortaLoMismoYUnaViguetaSeRecortaUnaSolaVez()
+    {
+        // Decisión 34: la creada cruza los tres paneles; se reemplaza el de arriba y el del medio es un vacío.
+        PisoViguetas columna = ColumnaDeTres();
+        var piso = new PisoViguetas(columna.Piso with
+        {
+            Armazon =
+            [
+                .. columna.Piso.Armazon,
+                new ArmazonPiso("creada", new(1000, 0), new(1000, 9000), 100, "VT_10X35", true),
+                new ArmazonPiso("modelo", new(2000, 3000), new(2000, 6000), 100, "VT_10X35", false),
+            ],
+        }, false);
+        Panel arriba = piso.Paneles.Single(p => Geometria.Centro(p.Libre).Y > 6000);
+        Panel medio = piso.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+
+        var recortes = piso.RecortesDeCopia([arriba], [medio.Eje], []);
+
+        (ArmazonPiso creada, List<(double Desde, double Hasta)> restos) = recortes.Single(x => x.Vigueta.Id == "creada");
+        Assert.Equal([(0.0, 3000.0)], restos.Select(t => (Math.Round(creada.En(t.Desde).Y), Math.Round(creada.En(t.Hasta).Y))));
+        Assert.Empty(recortes.Single(x => x.Vigueta.Id == "modelo").Restos);
+    }
+
+    [Fact]
+    public void ElMensajeDeCrearTraeLosPisosYLosVaciados()
+    {
+        CrearViguetas c = Assert.IsType<CrearViguetas>(ProtocoloViguetas.Leer(
+            """{"tipo":"crear","paneles":["P2"],"direccion":"Y","ejeAEje":800,"ancho":100,"tipoVigueta":"123","pisos":["1","2"],"vaciados":[[[0,0],[0,10],[10,10],[10,0]]]}"""));
+        Assert.Equal(new[] { "1", "2" }, c.Pisos);
+        Assert.Equal(4, Assert.Single(c.LosVaciados).Count);
+        // Con solo vacíos marcados, sin paneles elegidos, también vale.
+        Assert.IsType<CrearViguetas>(ProtocoloViguetas.Leer("""{"tipo":"crear","tipoVigueta":"123","pisos":["2"],"vaciados":[[[0,0],[0,10],[10,10],[10,0]]]}"""));
+    }
+
+    [Fact]
+    public void QuitarEnUnPanelSoloCortaElTramoDeEsePanel()
+    {
+        // Decisión 32: la larga cruza los tres paneles y sigue afuera; la corta está toda dentro del panel del medio.
+        PisoViguetas base0 = ColumnaDeTres();
+        var piso = new PisoViguetas(base0.Piso with
+        {
+            Armazon =
+            [
+                .. base0.Piso.Armazon,
+                new ArmazonPiso("larga", new(1000, 0), new(1000, 9000), 100, "VT_10X35", true),
+                new ArmazonPiso("corta", new(2000, 3000), new(2000, 6000), 100, "VT_10X35", true),
+            ],
+        }, false);
+        Panel medio = piso.Paneles.Single(p => Math.Abs(Geometria.Centro(p.Libre).Y - 4500) < 1);
+
+        var recortes = piso.CreadasARecortar([medio]);
+
+        List<(double Desde, double Hasta)> larga = recortes.Single(x => x.Vigueta.Id == "larga").Restos;
+        Assert.Equal(2, larga.Count);
+        Assert.Equal(1.0 / 3, larga[0].Hasta, 3);
+        Assert.Equal(2.0 / 3, larga[1].Desde, 3);
+        Assert.Empty(recortes.Single(x => x.Vigueta.Id == "corta").Restos);
+        // Lo que queda afuera sigue contando; lo que se quita, no.
+        Assert.Equal([1000.0], piso.Guias(Direccion.Y, [medio]));
+        Assert.Equal([0.0, 6000.0], piso.LineasExistentes(Direccion.Y, [medio]).Where(l => Math.Abs(l.Cota - 1000) < 1).Select(l => Math.Round(l.Desde)).OrderBy(d => d));
+        Assert.DoesNotContain(piso.LineasExistentes(Direccion.Y, [medio]), l => Math.Abs(l.Cota - 2000) < 1);
+    }
+
+    [Fact]
     public void LasCreadasDentroDeLoElegidoNoSonGuia()
     {
         // Reunión del 05-nov: al reemplazar, las nuevas seguían a las que se iban a borrar (decisión 21).
@@ -1159,6 +1391,7 @@ public class ViguetasTests
         Assert.True(c.Propuesta.Seguir);
         Assert.Empty(c.Propuesta.DelModelo);
         Assert.IsType<DesconocidoViguetas>(ProtocoloViguetas.Leer("{roto"));
+        Assert.Equal("P4", Assert.IsType<VaciarPanel>(ProtocoloViguetas.Leer("""{"tipo":"vaciar","id":"P4"}""")).Id);
         // #954, decisiones 28 y 29: prolongar y vacíos en el pedido.
         PedirPropuesta conTodo = Assert.IsType<PedirPropuesta>(ProtocoloViguetas.Leer(
             """{"tipo":"propuesta","paneles":["P1"],"direccion":"Y","ejeAEje":800,"ancho":100,"prolongar":true,"vacios":[[[0,0],[0,10],[10,10],[10,0]]]}"""));
