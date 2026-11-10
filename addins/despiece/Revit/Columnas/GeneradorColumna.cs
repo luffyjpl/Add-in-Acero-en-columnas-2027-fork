@@ -263,12 +263,12 @@ internal static class GeneradorColumna
         GeneradorPrevia.Recortar(vista, centro, centro.DotProduct(derecha) - bordeIzq, bordeDer - centro.DotProduct(derecha),
             centro.Z - min.Z + Holgura, max.Z - centro.Z + Holgura);
         doc.Regenerate();
-        Cotar(doc, vista, columna, bordeIzq, En, tipos);
+        CotasCreadas cotas = Cotar(doc, vista, columna, bordeIzq, En, tipos, movible);
         vista.DisplayStyle = DisplayStyle.FlatColors;
         AplicarMovimientos(doc, vista, sacadas, sueltas, movible, derecha);
         AbrirParaGiradas(doc, vista, sacadas, min, max, derecha, centro, En, izq, der, bordeIzq, bordeDer);
         if (movible.Separar)
-            Separar(doc, vista, sacadas, sueltas, movible, derecha, enPlano, bordeIzq, bordeDer, min.Z, max.Z);
+            Separar(doc, vista, sacadas, sueltas, movible, derecha, enPlano, bordeIzq, bordeDer, min.Z, max.Z, cotas);
         return vista;
     }
 
@@ -452,19 +452,33 @@ internal static class GeneradorColumna
         // alguna; si no había, no se fuerza (Luciano, 06-nov) y la línea va con el lado que tiene.
         List<SentidoGancho> sentidos = lineas.Select(l => GruposGancho.DeLinea(l.SelectMany(s => DireccionGanchos(s.Barra, s.Curvas, derecha)))).ToList();
         Registro.Paso("columna: ganchos por línea " + string.Join(", ", sentidos.Select((x, i) => $"{i}:{x}")));
-        // Derecha, sin gancho de lado e izquierda, cada grupo junto y con un hueco entre grupos (decisión 24).
-        var ubicadas = new List<PiezaUbicada>();
-        double inicioGrupo = caraDer + InicioSacadas;
+        // Las vigas que asoman a la derecha (hasta Lado de la cara): las barras no van encima de ellas, sino justo después,
+        // y solo a su altura; donde no hay viga siguen pegadas a la columna (punto de Luciano del 10-11, paso 8 del plan).
+        List<Rectangulo> vigas = VigasALaDerecha(doc, columna, derecha, caraDer)
+            .Select(v => new Rectangulo(v.Abajo, v.Arriba, 0, Lado + InicioSacadas)).ToList();
+        Registro.Paso("columna: vigas a la derecha " + string.Join(", ", vigas.Select(v => $"{v.Desde * 0.3048:0.00} a {v.Hasta * 0.3048:0.00}")));
+        // Derecha, sin gancho de lado e izquierda, cada grupo junto y con un hueco entre grupos (decisión 24). En cada grupo,
+        // cada línea lo más cerca de la columna sin tocar a las otras ni a las vigas (Empacador): una corta puede entrar en
+        // el hueco que dejan las otras.
+        var ubicadas = new List<(int Indice, double Inicio)>();
+        double inicioGrupo = InicioSacadas;
         foreach (IReadOnlyList<int> grupo in GruposGancho.Separar(sentidos).Where(g => g.Count > 0))
         {
-            Acomodo acomodo = AcomodadorFilas.Acomodar(grupo.Select(Pieza), inicioGrupo, true, HuecoEnCarril, HuecoCarriles);
-            ubicadas.AddRange(acomodo.Piezas);
-            inicioGrupo = acomodo.Hasta + HuecoGrupos;
+            List<int> orden = grupo.OrderBy(i => lineas[i].Min(s => s.Abajo)).ToList();
+            List<GrupoEmpacado> empacados = orden.Select(i =>
+            {
+                PiezaFila p = Pieza(i);
+                return new GrupoEmpacado([new Rectangulo(p.Izquierda, p.Derecha, 0, p.Alto)], inicioGrupo);
+            }).ToList();
+            IReadOnlyList<double> inicios = Empacador.Colocar(empacados, inicioGrupo, HuecoEnCarril, HuecoCarriles, obstaculos: vigas);
+            for (int k = 0; k < orden.Count; k++)
+                ubicadas.Add((orden[k], caraDer + inicios[k]));
+            inicioGrupo = orden.Select((i, k) => inicios[k] + Pieza(i).Alto).Max() + HuecoGrupos;
         }
-        foreach (PiezaUbicada u in ubicadas)
+        foreach ((int indice, double piso) in ubicadas)
         {
-            List<Sacada> linea = lineas[u.Pieza.Indice];
-            double inicio = u.Piso + Izquierdo(linea);
+            List<Sacada> linea = lineas[indice];
+            double inicio = piso + Izquierdo(linea);
             for (int j = 0; j < linea.Count; j++)
             {
                 Sacada s = linea[j];
@@ -484,7 +498,36 @@ internal static class GeneradorColumna
             }
         }
         doc.Regenerate();
+        // Cuánto aire queda de verdad entre la cara derecha del tramo recto y la caja de su etiqueta (paso 9 del plan del
+        // 10-11: "textos más cerca de las barras"), para corregir con lo medido y no a ojo.
+        foreach (Sacada s in creadas.Where(x => x.Etiqueta is not null))
+        {
+            if (s.Etiqueta!.get_BoundingBox(vista) is not { } c)
+                continue;
+            double cajaIzq = Math.Min(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha)), cajaDer = Math.Max(c.Min.DotProduct(derecha), c.Max.DotProduct(derecha));
+            Registro.Paso($"columna: etiqueta de {s.Barra.Id}: aire {(cajaIzq - (s.Izquierda + s.Recto)) * 0.3048:0.000} m, caja de {(cajaDer - cajaIzq) * 0.3048:0.000} m"
+                + $" (AireNota {AireNota * 0.3048:0.000}, AnchoNotaGirada {AnchoNotaGirada * 0.3048:0.000})");
+        }
         return creadas;
+    }
+
+    /// <summary>
+    /// Las vigas que tocan la columna y salen hacia su derecha en la vista: entre qué alturas están. Son las que se dejan
+    /// ver hasta <see cref="Lado"/> de la cara (el mismo filtro que <see cref="Limpiar"/>).
+    /// </summary>
+    private static List<(double Abajo, double Arriba)> VigasALaDerecha(Document doc, ColumnaLeida columna, XYZ derecha, double caraDer)
+    {
+        List<BoundingBoxXYZ> cajas = columna.Elementos.Select(id => doc.GetElement(id).get_BoundingBox(null)).Where(c => c is not null).ToList();
+        if (cajas.Count == 0)
+            return [];
+        double holgura = 0.05 * M;
+        var min = new XYZ(cajas.Min(c => c.Min.X) - holgura, cajas.Min(c => c.Min.Y) - holgura, cajas.Min(c => c.Min.Z) - holgura);
+        var max = new XYZ(cajas.Max(c => c.Max.X) + holgura, cajas.Max(c => c.Max.Y) + holgura, cajas.Max(c => c.Max.Z) + holgura);
+        return new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming).WhereElementIsNotElementType()
+            .WherePasses(new BoundingBoxIntersectsFilter(new Outline(min, max)))
+            .Select(v => v.get_BoundingBox(null)).Where(c => c is not null)
+            .Where(c => new[] { c.Min, c.Max, new XYZ(c.Min.X, c.Max.Y, 0), new XYZ(c.Max.X, c.Min.Y, 0) }.Max(p => p.DotProduct(derecha)) > caraDer + 0.01 * M)
+            .Select(c => (c.Min.Z, c.Max.Z)).ToList();
     }
 
     /// <summary>
@@ -780,8 +823,13 @@ internal static class GeneradorColumna
     /// A la izquierda: la cadena de los elementos de la pila (dado, piso 1, piso 2…) y, más afuera, el alto total. Contra
     /// planos de referencia en blanco, como las cotas de columnas de la viga. Si Revit no las acepta, la vista sale sin ellas.
     /// </summary>
-    private static void Cotar(Document doc, View vista, ColumnaLeida columna, double bordeIzq, Func<double, double, XYZ> En, TiposPropios tipos)
+    private static CotasCreadas Cotar(Document doc, View vista, ColumnaLeida columna, double bordeIzq, Func<double, double, XYZ> En, TiposPropios tipos, DespieceMovible movible)
     {
+        // Abajo: la cadena de elementos; Arriba: el alto total (los nombres de CotasCreadas son los de la viga).
+        var cotas = new CotasCreadas();
+        // Cada una donde el usuario la dejó en el paso 2 (paso 10 del plan del 10-11).
+        double xCadena = bordeIzq - CotaElementos + GeneradorPrevia.Corrimiento(movible, ClaveCotaElementos, true);
+        double xTotal = bordeIzq - CotaTotal + GeneradorPrevia.Corrimiento(movible, ClaveCotaTotal, true);
         var marcas = new List<double>();
         foreach (BoundingBoxXYZ c in columna.Elementos.Select(id => doc.GetElement(id).get_BoundingBox(null)).Where(c => c is not null))
             foreach (double z in new[] { c.Min.Z, c.Max.Z })
@@ -789,7 +837,7 @@ internal static class GeneradorColumna
                     marcas.Add(z);
         marcas.Sort();
         if (marcas.Count < 2)
-            return;
+            return cotas;
 
         using var prueba = new SubTransaction(doc);
         prueba.Start();
@@ -799,13 +847,13 @@ internal static class GeneradorColumna
             blanco.SetProjectionLineColor(new Color(255, 255, 255));
             List<Reference> planos = marcas.Select(z =>
             {
-                ReferencePlane plano = doc.Create.NewReferencePlane(En(bordeIzq + DentroDelRecorte, z), En(bordeIzq - CotaTotal - DentroDelRecorte, z), vista.ViewDirection, vista);
+                ReferencePlane plano = doc.Create.NewReferencePlane(En(bordeIzq + DentroDelRecorte, z), En(Math.Min(xCadena, xTotal) - DentroDelRecorte, z), vista.ViewDirection, vista);
                 vista.SetElementOverrides(plano.Id, blanco);
                 return plano.GetReference();
             }).ToList();
             doc.Regenerate();
 
-            void Cota(IEnumerable<Reference> referencias, double x)
+            Dimension Cota(IEnumerable<Reference> referencias, double x)
             {
                 var lista = new ReferenceArray();
                 foreach (Reference r in referencias)
@@ -813,19 +861,26 @@ internal static class GeneradorColumna
                 Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(En(x, marcas[0]), En(x, marcas[^1])), lista);
                 if (tipos.CotaCorta is { } tipo)
                     cota.DimensionType = tipo;
+                return cota;
             }
             // Con un solo elemento la cadena y el total dirían lo mismo.
-            if (marcas.Count > 2)
-                Cota(planos, bordeIzq - CotaElementos);
-            Cota([planos[0], planos[^1]], bordeIzq - CotaTotal);
+            Dimension? cadena = marcas.Count > 2 ? Cota(planos, xCadena) : null;
+            Dimension total = Cota([planos[0], planos[^1]], xTotal);
             prueba.Commit();
+            if (cadena is not null)
+                cotas.Abajo.Add(cadena);
+            cotas.Arriba.Add(total);
         }
         catch (Exception e)
         {
             Registro.Paso("columna: cotas no creadas: " + e.Message);
             prueba.RollBack();
         }
+        return cotas;
     }
+
+    /// <summary>Las claves de las dos cotas de la izquierda, que se arrastran a los lados (paso 10 del plan del 10-11).</summary>
+    private const string ClaveCotaElementos = "cota-elementos", ClaveCotaTotal = "cota-total";
 
     /// <summary>Lo que el usuario movió en el paso 2: la barra a los lados (con su etiqueta y sus ganchos) y los textos libres.</summary>
     private static void AplicarMovimientos(Document doc, View vista, List<Sacada> sacadas, List<(Rebar Barra, string Clave, TextNote Nota)> sueltas, DespieceMovible movible, XYZ derecha)
@@ -851,7 +906,7 @@ internal static class GeneradorColumna
 
     /// <summary>Como en la viga: lo movible se mide, se oculta de la imagen y se entrega para que la página lo dibuje encima.</summary>
     private static void Separar(Document doc, View vista, List<Sacada> sacadas, List<(Rebar Barra, string Clave, TextNote Nota)> sueltas, DespieceMovible movible,
-        XYZ derecha, XYZ enPlano, double bordeIzq, double bordeDer, double zInf, double zSup)
+        XYZ derecha, XYZ enPlano, double bordeIzq, double bordeDer, double zInf, double zSup, CotasCreadas? cotas = null)
     {
         (double A, double B) EnX(BoundingBoxXYZ c)
         {
@@ -860,9 +915,15 @@ internal static class GeneradorColumna
         }
         TextoMovible Texto(TextNote nota)
         {
+            bool girada = Math.Abs(nota.BaseDirection.Z) > 0.5;
+            // Girada, la caja que da Revit es mucho más ancha que el texto (0.40 m con letra de 2.5 mm a 1:50, registro del
+            // 10-11) y su centro dejaba la etiqueta lejos de la barra en la página. Se usa su punto: el texto centrado en él a
+            // lo alto y, a lo ancho, la caja crece hacia la derecha del punto (paso 9 del plan del 10-11).
+            if (girada)
+                return new TextoMovible(nota.Text.Trim(), new PuntoModelo(nota.Coord.DotProduct(derecha) + AnchoNotaGirada / 2, nota.Coord.Z), true);
             BoundingBoxXYZ c = nota.get_BoundingBox(vista);
             (double a, double b) = EnX(c);
-            return new TextoMovible(nota.Text.Trim(), new PuntoModelo((a + b) / 2, (c.Min.Z + c.Max.Z) / 2), Math.Abs(nota.BaseDirection.Z) > 0.5);
+            return new TextoMovible(nota.Text.Trim(), new PuntoModelo((a + b) / 2, (c.Min.Z + c.Max.Z) / 2), false);
         }
         void Ocultar(Element e)
         {
@@ -888,6 +949,21 @@ internal static class GeneradorColumna
         {
             movible.Piezas.Add(new PiezaMovible(clave, LectorDespiece.Color(doc.GetElement(barra.GetTypeId()).Name), [], Texto(nota), []));
             Ocultar(nota);
+        }
+        // Las dos cotas de la izquierda, cada una entera; sus líneas de referencia van hacia la columna.
+        if (cotas is not null)
+        {
+            foreach ((string id, List<Element> elementos) in new[] { (ClaveCotaElementos, cotas.Abajo), (ClaveCotaTotal, cotas.Arriba) })
+            {
+                var cota = new CotaMovible(id, [], [], []);
+                foreach (Dimension d in elementos.OfType<Dimension>())
+                {
+                    GeneradorPrevia.MedirCota(d, cota, derecha, XYZ.BasisZ, derecha * GeneradorPrevia.LineaReferencia, true);
+                    Ocultar(d);
+                }
+                if (cota.Lineas.Count > 0)
+                    movible.Cotas.Add(cota);
+            }
         }
         if (movible.Ocultos.Count > 0)
             vista.HideElements(movible.Ocultos);
