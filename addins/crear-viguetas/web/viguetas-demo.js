@@ -9,6 +9,9 @@ window.DEMO_VIGUETAS = () => {
   armazon.push({ id: 'corta', desde: [2000, 0], hasta: [2000, 1200], ancho: 200, tipo: 'V20X30', esVigueta: false, creada: false });
   // Viguetas del modelo en P1, en ↕ Y: P3, debajo, puede seguirlas.
   [700, 1500, 2300, 3100].forEach((x, i) => armazon.push({ id: `vt${i}`, desde: [x, ys[1]], hasta: [x, ys[2]], ancho: 100, tipo: 'VT_10X35', esVigueta: true, creada: false }));
+  // Una viga en arco sobre el borde de arriba, en tramos como la lee Revit (decisión 38).
+  const verticesArco = Array.from({ length: 11 }, (_, i) => { const t = i / 10; return [xs[2] * t, ys[2] + 1300 * Math.sin(Math.PI * t)]; });
+  verticesArco.slice(0, -1).forEach((p, i) => armazon.push({ id: `arco~${i}`, desde: p, hasta: verticesArco[i + 1], ancho: 300, tipo: 'V30X45', esVigueta: false, creada: false }));
   const columnas = [];
   xs.forEach((x) => ys.forEach((y) => columnas.push({ id: `c${x}-${y}`, min: [x - 200, y - 200], max: [x + 200, y + 200] })));
   const paneles = [];
@@ -45,8 +48,9 @@ window.DEMO_VIGUETAS = () => {
       return comun > Math.abs(c[k] - a[k]) / 2;
     });
     const area = (r) => r.reduce((s, p, i) => s + p[0] * r[(i + 1) % r.length][1] - r[(i + 1) % r.length][0] * p[1], 0) / 2;
-    const correr = (r) => {
-      const bordes = [], d = r.map((p, i) => { const c = r[(i + 1) % r.length]; if (sobreViga(p, c)) return anchoViga / 2; bordes.push([p, c]); return b; });
+    const correr = (r, voladizos = []) => {
+      const mismo = (a, c) => Math.hypot(a[0] - c[0], a[1] - c[1]) < 1;
+      const bordes = [], d = r.map((p, i) => { const c = r[(i + 1) % r.length]; if (sobreViga(p, c)) return anchoViga / 2; if (voladizos.some(([u, v]) => (mismo(u, p) && mismo(v, c)) || (mismo(u, c) && mismo(v, p)))) return 0; bordes.push([p, c]); return b; });
       // Cada lado se corre a su izquierda; los vértices son el cruce de los lados corridos (todos en X o en Y).
       const lados = r.map((p, i) => { const c = r[(i + 1) % r.length], l = Math.hypot(c[0] - p[0], c[1] - p[1]); return [-(c[1] - p[1]) / l * d[i], (c[0] - p[0]) / l * d[i]]; });
       const libre = r.map((p, i) => { const a = lados[(i - 1 + r.length) % r.length], c = lados[i]; return [p[0] + a[0] + c[0], p[1] + a[1] + c[1]]; });
@@ -55,7 +59,7 @@ window.DEMO_VIGUETAS = () => {
     };
     const armadas = m.zonas.filter((z) => z.contorno.length >= 3).map((z) => {
       const eje = area(z.contorno) > 0 ? z.contorno : [...z.contorno].reverse();
-      const fuera = correr(eje), huecos = z.vacios.map((v) => correr(area(v) < 0 ? v : [...v].reverse()));
+      const fuera = correr(eje, z.voladizos), huecos = z.vacios.map((v) => correr(area(v) < 0 ? v : [...v].reverse()));
       return { id: z.id, eje, libre: fuera.libre, creadas: 0, huecosEje: z.vacios, huecosLibre: huecos.map((x) => x.libre), bordes: [...fuera.bordes, ...huecos.flatMap((x) => x.bordes)] };
     });
     perimetros = armadas;

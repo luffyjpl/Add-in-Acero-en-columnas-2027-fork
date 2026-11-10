@@ -28,6 +28,8 @@
     doc: '', pisos: [], tipos: [], piso: null, comoBorde: false, modo: 'puntos', paneles: [], bordes: [], perimetro: [],
     // Modo Puntos: las zonas que armó el usuario (contorno y vacíos, por ejes), las que devolvió C# y el trazo en curso.
     zonas: [], zonasArm: [], trazo: [], conVacio: false,
+    // Decisión 37: los lados del trazo «hasta el voladizo» y si el próximo lo será.
+    trazoVol: [], ladoVol: false,
     // Vacíos marcados en Por vigas o Paneles (decisión 29).
     vaciosPanel: [],
     // Paneles vueltos vacíos con un clic (decisión 30): { id, eje }.
@@ -63,6 +65,9 @@
   };
   const elegidos = () => (S.piso ? S.paneles.map((id) => [...S.piso.paneles, ...S.perimetro, ...S.zonasArm].find((p) => p.id === id)).filter(Boolean) : []);
   const perimetral = () => S.modo === 'perimetro';
+  const elementoDe = (id) => id.split('~')[0];
+  /** Cuántos elementos van en el perímetro: una viga curva cuenta una vez, aunque venga en tramos. */
+  const elementosBorde = () => new Set(S.bordes.map(elementoDe)).size;
   const porPuntos = () => S.modo === 'puntos';
   function armar() { enviar({ tipo: 'perimetro', ids: S.bordes }); }
   /** Manda todas las zonas por puntos (decisión 6): el libre de los lados libres depende del ancho de vigueta. */
@@ -88,11 +93,12 @@
   function cerrarTrazo() {
     const t = S.trazo;
     if (t.length < 3) return;
-    if (!enLineaRecta(t[t.length - 1], t[0])) {
-      aviso('El último punto no queda en línea con el primero: para cerrar en cuadrado, marca la esquina que falta.');
+    if (!S.ladoVol && !enLineaRecta(t[t.length - 1], t[0])) {
+      aviso('El último punto no queda en línea con el primero: marca la esquina que falta o usa «Siguiente lado: hasta voladizo».');
       return;
     }
-    S.trazo = [];
+    const voladizos = [...S.trazoVol, ...(S.ladoVol ? [[t[t.length - 1], t[0]]] : [])];
+    S.trazo = []; S.trazoVol = []; S.ladoVol = false;
     if (S.conVacio) {
       const centro = [t.reduce((s, p) => s + p[0], 0) / t.length, t.reduce((s, p) => s + p[1], 0) / t.length];
       if (!porPuntos()) {
@@ -109,7 +115,7 @@
       z.vacios.push(t);
     } else {
       const n = S.zonas.reduce((m, x) => Math.max(m, Number(x.id.slice(1)) || 0), 0) + 1;
-      S.zonas.push({ id: `Z${n}`, contorno: t, vacios: [] });
+      S.zonas.push({ id: `Z${n}`, contorno: t, vacios: [], voladizos });
     }
     lateral(); pintar(); armarZonas();
   }
@@ -262,7 +268,7 @@
     const sel = elegidos(), pan = principal(), V = valores();
     const n = (k, ok, extra = '') => `<span class="n ${ok ? 'done' : ''}" ${extra}>${ok ? CHK : k}</span>`;
     const campo = (id, k, lab) => `<label class="fld ${V.e[k] ? 'bad' : ''}" id="w-${k}" for="${id}"><span class="fl">${lab}</span><span class="inp"><input id="${id}" inputmode="decimal" autocomplete="off" value="${esc(S[k])}"><em>m</em></span><span class="err" id="e-${k}">${V.e[k] || ''}</span></label>`;
-    let infoPanel = `<span class="info">${porPuntos() ? 'Haz clic en los puntos del contorno y cierra en el primero.' : perimetral() ? (S.bordes.length ? `<b>${S.bordes.length}</b> elementos elegidos · todavía no cierran un perímetro.` : 'Haz clic en las vigas que forman el perímetro.') : 'Haz clic en un panel de la planta.'}</span>`;
+    let infoPanel = `<span class="info">${porPuntos() ? 'Haz clic en los puntos del contorno y cierra en el primero.' : perimetral() ? (S.bordes.length ? `<b>${elementosBorde()}</b> elementos elegidos · todavía no cierran un perímetro.` : 'Haz clic en las vigas que forman el perímetro.') : 'Haz clic en un panel de la planta.'}</span>`;
     if (porPuntos()) {
       // Cada zona y cada vacío se quitan con su ×; las demás siguen (decisión 6).
       const fila = (txt, id, v, t) => `<li><span>${txt}</span><button class="x" data-act="sin-zona" data-z="${esc(id)}" ${v === undefined ? '' : `data-vacio="${v}"`} title="${t}" aria-label="${t}">×</button></li>`;
@@ -425,7 +431,8 @@
     });
     vaciosFueraDePuntos().forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
     S.zonas.forEach((z) => {
-      h += `<polygon class="zeje" points="${z.contorno.map(pt).join(' ')}" ${ns}/>`;
+      // Decisión 38: ya armada, la zona trae su contorno real, que puede seguir una curva.
+      h += `<polygon class="zeje" points="${(S.zonasArm.find((x) => x.id === z.id)?.eje || z.contorno).map(pt).join(' ')}" ${ns}/>`;
       z.vacios.forEach((r) => { h += `<polygon class="hueco" points="${r.map(pt).join(' ')}" ${ns}/>`; });
     });
     // El suelo, en un color muy claro (decisión 3): encima de los paneles (que son opacos) y debajo de todo lo demás.
@@ -513,7 +520,8 @@
     const t = S.trazo, px = S.vista.w / (pv.clientWidth || 1), r = RADIO_PUNTO * px;
     let h = '';
     if (t.length > 1) h += `<polyline class="trazo ${S.conVacio ? 'vac' : ''}" points="${t.map(pt).join(' ')}" ${ns}/>`;
-    if (t.length > 2 && enLineaRecta(t[t.length - 1], t[0])) h += `<line class="trazo cierre ${S.conVacio ? 'vac' : ''}" x1="${t[t.length - 1][0]}" y1="${-t[t.length - 1][1]}" x2="${t[0][0]}" y2="${-t[0][1]}" ${ns}/>`;
+    S.trazoVol.forEach(([a, b]) => { h += `<line class="trazo vol" x1="${a[0]}" y1="${-a[1]}" x2="${b[0]}" y2="${-b[1]}" ${ns}/>`; });
+    if (t.length > 2 && (S.ladoVol || enLineaRecta(t[t.length - 1], t[0]))) h += `<line class="trazo cierre ${S.conVacio ? 'vac' : ''}" x1="${t[t.length - 1][0]}" y1="${-t[t.length - 1][1]}" x2="${t[0][0]}" y2="${-t[0][1]}" ${ns}/>`;
     // Decisión 9: sin acercar no se enciman; a menos de SEPARACION_PUNTOS px se dibuja el de más prioridad (los del trazo
     // siempre). Al acercar aparecen los demás.
     const lejos = SEPARACION_PUNTOS * px, dibujados = [];
@@ -522,7 +530,7 @@
     orden.forEach(({ q, i, k }) => {
       if (k < 0 && dibujados.some((d) => Math.hypot(d[0] - q.xy[0], d[1] - q.xy[1]) < lejos)) return;
       dibujados.push(q.xy);
-      const primero = k === 0 && t.length > 2 && enLineaRecta(t[t.length - 1], t[0]), nombre = (TIPOS_PUNTO.find(([v]) => v === q.tipo) || [])[2] || 'Punto';
+      const primero = k === 0 && t.length > 2 && (S.ladoVol || enLineaRecta(t[t.length - 1], t[0])), nombre = (TIPOS_PUNTO.find(([v]) => v === q.tipo) || [])[2] || 'Punto';
       const titulo = primero ? 'Clic para cerrar el contorno' : k >= 0 ? `Punto ${k + 1} del trazo` : nombre;
       h += `<circle class="pto t-${q.tipo} ${k >= 0 ? 'tr' : ''} ${primero ? 'primero' : ''}" data-pt="${i}" cx="${q.xy[0]}" cy="${-q.xy[1]}" r="${primero ? r * 1.6 : r}" ${ns}><title>${titulo}</title></circle>`;
     });
@@ -533,14 +541,16 @@
   function clicPunto(i) {
     const q = S.piso.puntos[i];
     if (!q) return;
+    if (!S.trazo.length) { S.trazoVol = []; S.ladoVol = false; }
     const k = S.trazo.findIndex((x) => mismoPunto(x, q.xy));
     if (k === 0 && S.trazo.length >= 3) return cerrarTrazo();
     if (k >= 0) return;
     // Decisión 27: sin lados en diagonal. Un punto que no queda en línea con el anterior no se agrega.
-    if (S.trazo.length && !enLineaRecta(S.trazo[S.trazo.length - 1], q.xy)) {
-      aviso('Ese punto no queda en línea con el anterior: las viguetas no van en triángulo. Marca primero la esquina.');
+    if (S.trazo.length && !S.ladoVol && !enLineaRecta(S.trazo[S.trazo.length - 1], q.xy)) {
+      aviso('Ese punto no queda en línea con el anterior. Marca primero la esquina o usa «Siguiente lado: hasta voladizo».');
       return;
     }
+    if (S.trazo.length && S.ladoVol) { S.trazoVol = [...S.trazoVol, [S.trazo[S.trazo.length - 1], q.xy]]; S.ladoVol = false; }
     S.trazo = [...S.trazo, q.xy];
     pintar();
   }
@@ -621,8 +631,9 @@
     } else if (!S.editar && perimetral()) {
       const b = e.target.closest('[data-b]');
       if (!b) return;
-      const id = b.dataset.b;
-      S.bordes = S.bordes.includes(id) ? S.bordes.filter((x) => x !== id) : [...S.bordes, id];
+      // Decisión 38: una viga curva viene en tramos; se elige entera.
+      const id = b.dataset.b, tramos = S.piso.armazon.filter((a) => elementoDe(a.id) === elementoDe(id)).map((a) => a.id);
+      S.bordes = S.bordes.includes(id) ? S.bordes.filter((x) => !tramos.includes(x)) : [...S.bordes, ...tramos];
       armar(); lateral(); pintar();
     } else if (!S.editar && pn) {
       const id = pn.dataset.panel;
@@ -661,16 +672,17 @@
     const vecinos = sel.length === 1 && S.modo === 'uno' && S.sinAviso !== sel[0].id ? enLinea(sel[0].id) : [];
     const n = S.trazo.length, que = S.conVacio ? 'del vacío' : 'del contorno';
     // Decisión 27: se cierra solo en cuadrado (el último en línea con el primero).
-    const cierra = n >= 3 && enLineaRecta(S.trazo[n - 1], S.trazo[0]);
+    const cierra = n >= 3 && (S.ladoVol || enLineaRecta(S.trazo[n - 1], S.trazo[0]));
+    const conLado = n > 0 && porPuntos() && !S.conVacio;
     const avisoPuntos = (porPuntos() || S.conVacio) && !S.editar && S.piso
-      ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${n
+      ? `<div class="banner hint ${S.conVacio ? 'vac' : ''}"><span>${S.ladoVol ? '<b>Lado hasta el voladizo:</b> puede ir en diagonal o por una curva y no crea vigueta de borde. ' : ''}${n
         ? `<b>${n}</b> punto${n > 1 ? 's' : ''} ${que}. ${cierra ? 'Para cerrar: <b>Enter</b>, clic derecho, doble clic, clic en el primero o <b>Cerrar contorno</b>.' : n >= 3 ? 'Para cerrar en cuadrado, marca un punto en línea con el primero.' : 'Sigue marcando puntos en línea (sin diagonales).'}`
         : S.conVacio ? (porPuntos() ? 'Marca los puntos del <b>vacío</b>, dentro de una zona: las viguetas paran en él.' : 'Haz clic en un <b>panel</b> o marca sus puntos.')
           : S.zonas.length ? `<b>${esc(lista(S.zonas.map((z) => z.id)))}</b> armada${S.zonas.length > 1 ? 's' : ''}. Marca otra zona, separada o no, o un <b>＋ Vacío</b>.`
-            : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${cierra ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
+            : 'Haz clic en los <b>puntos</b> del contorno: columnas, extremos, cruces de ejes o vértices del suelo.'}</span>${conLado ? `<button class="bb ${S.ladoVol ? 'azul' : ''}" data-act="lado-vol" aria-pressed="${S.ladoVol}" title="El próximo lado llega hasta el voladizo: se acepta en diagonal y las viguetas siguen hasta él">Siguiente lado: hasta voladizo</button>` : ''}${n ? `<button class="bb" data-act="atras">Quitar el último</button><button class="bb" data-act="cancelar">Cancelar</button><button class="bb azul" data-act="cerrar" ${cierra ? '' : 'disabled'}>Cerrar contorno</button>` : ''}</div>`
       : '';
     const avisoPerimetro = perimetral() && !S.editar && S.piso
-      ? `<div class="banner hint"><span>${sel.length ? `<b>${esc(lista(S.paneles))}</b>: perímetro cerrado con ${S.bordes.length} elementos. Clic en otro elemento para cambiarlo.` : `Haz clic en las <b>vigas, viguetas de borde o voladizos</b> que forman el perímetro${S.bordes.length ? ` · llevas ${S.bordes.length}, todavía no cierran` : ''}.`}</span>${S.bordes.length ? '<button class="bb" data-act="limpiar">Empezar de nuevo</button>' : ''}</div>`
+      ? `<div class="banner hint"><span>${sel.length ? `<b>${esc(lista(S.paneles))}</b>: perímetro cerrado con ${elementosBorde()} elementos. Clic en otro elemento para cambiarlo.` : `Haz clic en las <b>vigas, viguetas de borde o voladizos</b> que forman el perímetro${S.bordes.length ? ` · llevas ${elementosBorde()}, todavía no cierran` : ''}.`}</span>${S.bordes.length ? '<button class="bb" data-act="limpiar">Empezar de nuevo</button>' : ''}</div>`
       : '';
     const enColumna = vecinos.length > 1
       ? `<div class="banner hint"><span><b>${esc(sel[0].id)}</b> está en una ${linea()} con ${esc(lista(vecinos.filter((x) => x !== sel[0].id)))}. Sus viguetas siguen por ella hasta donde lleguen.</span><button class="bb" data-act="solo">Solo ${esc(sel[0].id)}</button><button class="bb azul" data-act="toda">Toda la ${linea()} (${vecinos.length} paneles)</button></div>`
@@ -725,7 +737,8 @@
     if (b.dataset.act === 'solo') { S.sinAviso = S.paneles[0]; S.borradas = []; pintar(); pedir(); return; }
     if (b.dataset.act === 'limpiar') { S.bordes = []; S.perimetro = []; return elegir([]); }
     if (b.dataset.act === 'cerrar') return cerrarTrazo();
-    if (b.dataset.act === 'atras') S.trazo = S.trazo.slice(0, -1);
+    if (b.dataset.act === 'lado-vol') S.ladoVol = !S.ladoVol;
+    if (b.dataset.act === 'atras') { S.trazo = S.trazo.slice(0, -1); S.trazoVol = S.trazoVol.filter(([, q]) => S.trazo.some((x) => mismoPunto(x, q))); }
     if (b.dataset.act === 'cancelar') { S.trazo = []; S.conVacio = false; }
     lateral(); pintar();
   });

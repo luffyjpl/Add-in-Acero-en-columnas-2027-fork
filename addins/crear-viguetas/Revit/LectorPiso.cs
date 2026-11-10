@@ -28,8 +28,9 @@ internal static class LectorPiso
     {
         var armazon = new List<ArmazonPiso>();
         foreach (FamilyInstance f in Armazon(doc).Where(f => NivelDe(f)?.Id == nivel.Id))
-            if (Leer(f) is ArmazonPiso a)
-                armazon.Add(a);
+            armazon.AddRange(f.Location is LocationCurve { Curve: Arc arco } && Math.Abs(arco.Normal.Z) > 0.99
+                ? LeerArco(f, arco)
+                : Leer(f) is ArmazonPiso a ? [a] : []);
 
         double cota = Medidas.Mm(nivel.Elevation);
         var columnas = new List<ColumnaPiso>();
@@ -115,6 +116,32 @@ internal static class LectorPiso
     public static bool EsCreada(Element e) =>
         e.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)?.AsString() == Marca;
 
+    /// <summary>Lo más que abarca (radianes, 6°) cada tramo recto de una viga curva.</summary>
+    private const double AnguloDeTramo = 0.1047;
+
+    /// <summary>
+    /// Decisión 38: una viga en arco horizontal, en tramos rectos. El ancho y el eje se miden en su geometría, como en las
+    /// rectas: de lo más cercano a lo más lejano del centro del arco.
+    /// </summary>
+    private static List<ArmazonPiso> LeerArco(FamilyInstance f, Arc arco)
+    {
+        List<XYZ> puntos = Medidas.Puntos(f);
+        if (puntos.Count == 0)
+            return [];
+        XYZ centro = arco.Center;
+        List<double> radios = puntos.Select(p => new XYZ(p.X - centro.X, p.Y - centro.Y, 0).GetLength()).ToList();
+        (double menor, double mayor) = (radios.Min(), radios.Max());
+        double radio = (menor + mayor) / 2;
+        int n = Math.Max(2, (int)Math.Ceiling(arco.Length / arco.Radius / AnguloDeTramo));
+        List<Punto> vertices = Enumerable.Range(0, n + 1).Select(i =>
+        {
+            XYZ p = arco.Evaluate((double)i / n, true);
+            XYZ radial = new XYZ(p.X - centro.X, p.Y - centro.Y, 0).Normalize();
+            return Planta(centro + radial * radio);
+        }).ToList();
+        return Enumerable.Range(0, n).Select(i => new ArmazonPiso($"{f.Id}{TramosDeCurva.Separador}{i}", vertices[i], vertices[i + 1], Medidas.Mm(mayor - menor), f.Symbol.Name, EsCreada(f))).ToList();
+    }
+
     private static ArmazonPiso? Leer(FamilyInstance f)
     {
         if (f.Location is not LocationCurve { Curve: Line linea })
@@ -134,7 +161,7 @@ internal static class LectorPiso
     }
 
     private static IEnumerable<FamilyInstance> Armazon(Document doc) =>
-        Instancias(doc, BuiltInCategory.OST_StructuralFraming).Where(f => f.Location is LocationCurve { Curve: Line });
+        Instancias(doc, BuiltInCategory.OST_StructuralFraming).Where(f => f.Location is LocationCurve { Curve: Line or Arc });
 
     private static Level? NivelDe(FamilyInstance f) =>
         f.Document.GetElement(f.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM)?.AsElementId() ?? ElementId.InvalidElementId) as Level;

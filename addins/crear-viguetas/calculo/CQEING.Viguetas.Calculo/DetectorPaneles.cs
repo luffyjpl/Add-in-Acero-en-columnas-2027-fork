@@ -1,5 +1,21 @@
 namespace CQEING.Viguetas.Calculo;
 
+/// <summary>
+/// Decisión 38: una viga curva se lee en tramos rectos con id <c>elemento~n</c>, numerados a lo largo de la curva.
+/// </summary>
+public static class TramosDeCurva
+{
+    public const char Separador = '~';
+
+    public static bool Es(string id) => id.Contains(Separador);
+
+    public static string Elemento(string id) => id.Split(Separador)[0];
+
+    public static int Numero(string id) => int.Parse(id.Split(Separador)[1], System.Globalization.CultureInfo.InvariantCulture);
+
+    public static bool Misma(string a, string b) => Es(a) && Es(b) && Elemento(a) == Elemento(b);
+}
+
 /// <summary>Una viga que cierra paneles: su eje en planta y su ancho, en mm.</summary>
 public sealed record BordePanel(string Id, Punto Desde, Punto Hasta, double Ancho);
 
@@ -76,7 +92,7 @@ public static class DetectorPaneles
             double largo = Geometria.Distancia(b.Desde, b.Hasta);
             var cortes = new List<(double S, Punto P)> { (0, b.Desde), (largo, b.Hasta) };
             for (int j = 0; j < lista.Count; j++)
-                if (j != i && Cruce(b, lista[j]) is (double s, Punto p))
+                if (j != i && !TramosDeCurva.Misma(b.Id, lista[j].Id) && Cruce(b, lista[j], lista) is (double s, Punto p))
                     cortes.Add((s, p));
             // De punta a punta, con lo que la viga se estira para llegar a otra (Holgura).
             List<int> puntos = cortes.OrderBy(c => c.S).Select(c => Nudo(c.P)).ToList();
@@ -93,8 +109,12 @@ public static class DetectorPaneles
     }
 
     /// <summary>Dónde cruza <paramref name="b"/> a <paramref name="otra"/>: distancia a lo largo de b y el punto.</summary>
-    private static (double, Punto)? Cruce(BordePanel b, BordePanel otra)
+    private static (double, Punto)? Cruce(BordePanel b, BordePanel otra, List<BordePanel> todas)
     {
+        // Decisión 38: los tramos de una curva solo se estiran en las dos puntas de la curva, no entre ellos.
+        double Estirar(BordePanel x, Punto punta) => !TramosDeCurva.Es(x.Id)
+            || !todas.Any(y => y != x && TramosDeCurva.Misma(x.Id, y.Id) && (Geometria.Distancia(y.Desde, punta) <= Tolerancia || Geometria.Distancia(y.Hasta, punta) <= Tolerancia))
+            ? Holgura : 1;
         (double dx, double dy) = (b.Hasta.X - b.Desde.X, b.Hasta.Y - b.Desde.Y);
         (double ex, double ey) = (otra.Hasta.X - otra.Desde.X, otra.Hasta.Y - otra.Desde.Y);
         double det = dx * ey - dy * ex;
@@ -104,7 +124,7 @@ public static class DetectorPaneles
         (double fx, double fy) = (otra.Desde.X - b.Desde.X, otra.Desde.Y - b.Desde.Y);
         double t = (fx * ey - fy * ex) / det, u = (fx * dy - fy * dx) / det;
         double s = t * la, r = u * lb;
-        if (s < -Holgura || s > la + Holgura || r < -Holgura || r > lb + Holgura)
+        if (s < -Estirar(b, b.Desde) || s > la + Estirar(b, b.Hasta) || r < -Estirar(otra, otra.Desde) || r > lb + Estirar(otra, otra.Hasta))
             return null;
         return (s, new Punto(b.Desde.X + t * dx, b.Desde.Y + t * dy));
     }

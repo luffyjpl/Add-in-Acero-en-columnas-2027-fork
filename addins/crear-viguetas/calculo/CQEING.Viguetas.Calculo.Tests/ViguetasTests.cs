@@ -1308,6 +1308,109 @@ public class ViguetasTests
         Assert.Equal(0, json.RootElement.GetProperty("pisos")[1].GetProperty("creadas").GetInt32());
     }
 
+    /// <summary>Dos vanos entre ejes x = 0, 4000 y 8000, y de y = 0 a 4000, con una viga en arco sobre y = 4000 (flecha 2000 mm).</summary>
+    private static PisoViguetas DosVanosConArco()
+    {
+        List<ArmazonPiso> armazon =
+        [
+            new("x0", new(0, 0), new(0, 4000), 300, "V30X40", false),
+            new("x4", new(4000, 0), new(4000, 4000), 300, "V30X40", false),
+            new("x8", new(8000, 0), new(8000, 4000), 300, "V30X40", false),
+            new("y0", new(0, 0), new(8000, 0), 300, "V30X40", false),
+            new("y4", new(0, 4000), new(8000, 4000), 300, "V30X40", false),
+        ];
+        const int n = 16;
+        double radio = (4000.0 * 4000 + 2000 * 2000) / (2 * 2000), ya = 4000 + 2000 - radio;
+        double angulo = Math.Asin(4000 / radio);
+        List<Punto> arco = Enumerable.Range(0, n + 1).Select(i =>
+        {
+            double t = -angulo + 2 * angulo * i / n;
+            return new Punto(4000 + radio * Math.Sin(t), ya + radio * Math.Cos(t));
+        }).ToList();
+        armazon.AddRange(Enumerable.Range(0, n).Select(i => new ArmazonPiso($"99~{i}", arco[i], arco[i + 1], 300, "V30X45", false)));
+        return new PisoViguetas(new PisoLeido("1", "N+14.00", 14000, armazon, []), false);
+    }
+
+    private static double AlturaArco(double x)
+    {
+        double radio = (4000.0 * 4000 + 2000 * 2000) / (2 * 2000);
+        return 4000 + 2000 - radio + Math.Sqrt(radio * radio - (x - 4000) * (x - 4000));
+    }
+
+    [Fact]
+    public void LaVigaCurvaCierraPanelYLasViguetasLleganHastaElla()
+    {
+        // Decisión 38: dos paneles abajo y el casquete entre la viga recta y el arco.
+        PisoViguetas piso = DosVanosConArco();
+        Panel casquete = Assert.Single(piso.Paneles, p => Geometria.Centro(p.Libre).Y > 4000);
+        Assert.Equal(3, piso.Paneles.Count);
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([casquete], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        Assert.NotEmpty(p.Viguetas);
+        Assert.All(p.Viguetas, v => Assert.InRange(v.EjeHasta, AlturaArco(v.Cota) - 30, AlturaArco(v.Cota) + 30));
+        // La curva da puntos en sus dos puntas, no en cada tramo.
+        Assert.DoesNotContain(piso.Puntos, q => Math.Abs(q.P.Y - AlturaArco(q.P.X)) < 30 && q.P.Y > 4100 && Math.Abs(q.P.X - 4000) > 1);
+    }
+
+    [Fact]
+    public void ConUnaVigaParalelaLasRegionesNoSePartenEnCadaTramoDeCurva()
+    {
+        // Decisión 38: la viga del medio parte el reparto en dos vanos, y la curva no lo parte más.
+        PisoViguetas piso = DosVanosConArco();
+        Panel z = Assert.Single(piso.Perimetro(["x0", "x8", "y0", .. Enumerable.Range(0, 16).Select(i => $"99~{i}")]));
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        Assert.Equal(4, p.Paneles.Count);
+        Assert.All(p.Viguetas.Where(v => v.Desde > 4000), v => Assert.InRange(v.EjeHasta, AlturaArco(v.Cota) - 30, AlturaArco(v.Cota) + 30));
+    }
+
+    [Fact]
+    public void UnLadoHastaElVoladizoNoCreaViguetaDeBordeYLasViguetasLleganAEl()
+    {
+        // Decisión 37: abajo hay viga; a los lados, vigas que siguen; arriba, el lado en diagonal no tiene nada debajo.
+        List<ArmazonPiso> armazon =
+        [
+            new("abajo", new(0, 0), new(4000, 0), 300, "V30X40", false),
+            new("izq", new(0, 0), new(0, 3000), 300, "V30X40", false),
+            new("der", new(4000, 0), new(4000, 4000), 300, "V30X40", false),
+        ];
+        var piso = new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
+        List<Punto> contorno = [new(0, 0), new(4000, 0), new(4000, 4000), new(0, 3000)];
+
+        Panel z = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", contorno, [], [(new(4000, 4000), new(0, 3000))])], 100));
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        Assert.Empty(z.ViguetasDeBorde);
+        Assert.All(p.Viguetas, v => Assert.InRange(v.EjeHasta, 3000 + v.Cota / 4 - 2, 3000 + v.Cota / 4 + 2));
+    }
+
+    [Fact]
+    public void UnLadoHastaElVoladizoEntrePuntosDeLaCurvaLaSigue()
+    {
+        // Decisiones 37 y 38: del punto x0 al x8 el lado marcado va por el arco, no por la viga recta.
+        PisoViguetas piso = DosVanosConArco();
+        List<Punto> contorno = [new(0, 0), new(8000, 0), new(8000, 4000), new(0, 4000)];
+
+        Panel sinMarcar = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", contorno, [])], 100));
+        Panel marcado = Assert.Single(piso.Zonas([new ZonaPuntos("Z1", contorno, [], [(new(8000, 4000), new(0, 4000))])], 100));
+
+        Assert.Equal(4, sinMarcar.Eje.Count);
+        Assert.True(marcado.Eje.Count > 10);
+        Assert.Empty(marcado.ViguetasDeBorde);
+        Assert.Contains(marcado.Eje, q => Math.Abs(q.Y - 6000) < 30);
+    }
+
+    [Fact]
+    public void ElMensajeDeZonasTraeLosLadosHastaElVoladizo()
+    {
+        ArmarZonas z = Assert.IsType<ArmarZonas>(ProtocoloViguetas.Leer(
+            """{"tipo":"zonas","ancho":100,"zonas":[{"id":"Z1","contorno":[[0,0],[10,0],[10,10]],"voladizos":[[[10,10],[0,0]],[[1]]]}]}"""));
+
+        Assert.Equal((new Punto(10, 10), new Punto(0, 0)), Assert.Single(Assert.Single(z.Zonas).Voladizos!));
+    }
+
     [Fact]
     public void QuitarEnUnPanelSoloCortaElTramoDeEsePanel()
     {
