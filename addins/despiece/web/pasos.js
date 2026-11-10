@@ -215,6 +215,10 @@
       texto(p.etiqueta);
       p.anexos.forEach(texto);
     });
+    (capa.cotas ?? []).forEach((c) => {
+      c.lineas.forEach(([xa, ya, xb, yb]) => { sumar(xa, ya); sumar(xb, yb); });
+      c.textos.forEach(texto);
+    });
     return x0 === Infinity ? null : { x0, y0, x1, y1 };
   }
 
@@ -600,7 +604,22 @@
               <polygon points=${flecha.map((q) => q.join(',')).join(' ')} fill="#000000"></polygon>`;
           })}
         </g>`);
-      return guias.concat(piezas.map((p) => {
+      // Las cotas (paso 10 del plan del 10-11): cada una se arrastra entera, con su línea, sus rayitas y sus números, arriba
+      // y abajo en la viga y a los lados en la columna. Van en negro, como en Revit.
+      const cotas = (capa.cotas ?? []).map((c) => {
+        const m = movs[c.id] ?? { dz: 0 };
+        const alCota = (e) => this.arrastrar(e, g, c.id, true, escala, horizontal);
+        const grueso = altoLetra * 0.06, rayita = altoLetra * 0.35;
+        return html`
+          <g key=${c.id} transform="translate(${(m.dx ?? 0) * escala} ${-(m.dz ?? 0) * escala})" style="cursor: ${cursorBarra}" onPointerDown=${alCota}>
+            ${c.lineas.map(([xa, ya, xb, yb]) => html`
+              <line x1=${xa} y1=${ya} x2=${xb} y2=${yb} stroke="#000000" stroke-width=${grueso}></line>
+              <line x1=${xa} y1=${ya} x2=${xb} y2=${yb} stroke="transparent" stroke-width="18" pointer-events="stroke"></line>`)}
+            ${c.marcas.map(([x, y]) => html`<line x1=${x - rayita} y1=${y + rayita} x2=${x + rayita} y2=${y - rayita} stroke="#000000" stroke-width=${grueso * 2}></line>`)}
+            ${c.textos.map((t) => texto(t, '#000000'))}
+          </g>`;
+      });
+      return guias.concat(cotas, piezas.map((p) => {
         const m = movs[p.id] ?? { dz: 0, tx: 0, tz: 0 };
         const puntos = p.puntos.map((q) => q.join(',')).join(' ');
         const alBarra = (e) => this.arrastrar(e, g, p.id, true, escala, horizontal);

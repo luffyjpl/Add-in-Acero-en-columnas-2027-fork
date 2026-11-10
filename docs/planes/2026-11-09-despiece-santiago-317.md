@@ -241,6 +241,23 @@
     etiquetas de estribos salía porque se medían como una etiqueta de barra (`MedioAnchoEtiqueta`); ahora por su texto
     (`MedioAnchoTexto`: 0.55 del alto de la letra por carácter). Y la primera barra vuelve a ir sobre la última fila de
     esas etiquetas (+0.075 × Factor; con −0.05 la línea las cruzaba).
+44. **La sección de columna abarca todo el primer paquete** (2026-11-09, después de publicar la 0.6.0; Luciano: "la
+    vista de sección muestra solo las primeras grapas... al armarlo son 4, unas en caras X y las otras en las Y"). En el
+    armado, el primer nivel es un paquete: el estribo principal y las grapas de las caras X y de las Y, cada una unos
+    centímetros más arriba. El corte iba a 3 cm sobre el estribo y dejaba afuera las de más arriba. Ahora
+    `PrimerPaquete.Calcular` (con pruebas) toma desde el estribo más bajo hasta lo último antes del siguiente estribo
+    principal (máximo 0.15 m), y el corte va 1 cm sobre eso; el fondo sigue 2 cm bajo el primer estribo. La traza anota
+    `sección de columna: primer paquete de … a …`. Rama `despiece/grapas-seccion`.
+    **Corrección (mismo día, primera prueba)**: salió `primer paquete de 0,064 a 0,064, corte a 0,074` y el estribo
+    cortado por la mitad. Medido con el MCP en `Col B-3`: las grapas de las caras X (446011, 446055) están **debajo** del
+    estribo (centro a 0,064 m), el estribo (445760) a ~0,074, las de las caras Y (446100, 446144…) a ~0,102 y las X del
+    paquete siguiente a ~0,124. O sea, el orden no es "estribo y después grapas". Ahora `PrimerPaquete.Calcular` recibe
+    cada pieza con su huella en planta (dónde está y qué forma tiene, al centímetro) y su altura: toma la primera vez que
+    aparece cada huella y el paquete va desde la más baja hasta la más alta de esas primeras, antes de que alguna huella
+    se repita (ahí empieza el paquete siguiente) y sin pasar de 0.15 m sobre la más baja. Luciano: "tiene que servir para
+    todas las columnas sin importar la medida ni la separación": no usa medidas de esta columna, solo el orden en que se
+    repiten las piezas (pruebas con separación chica, grande y grapas cada dos estribos). En `Col B-3` da de 0,064 a ~0,102: corte a ~0,112, fondo a 0,044, y las X del paquete siguiente (0,124)
+    quedan fuera.
 - **Vigas de piso "recortadas"** (2026-11-09, medido con el MCP de Revit, solo lectura): la viga 193085 (`viga 35x50 m`)
   va de 3,86 a 4,36 m y la losa 203035 (`losa de e =0.25m`) de 4,11 a 4,36 m, unida a ella y cortándola: la viga queda
   de 0,25. El add-in de acero de vigas armó para esos 0,25 (estribo de 0,27 × 0,17 por dentro). No es del despiece:

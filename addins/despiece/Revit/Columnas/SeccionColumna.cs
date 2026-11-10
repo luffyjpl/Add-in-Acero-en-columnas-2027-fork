@@ -26,11 +26,21 @@ internal static class SeccionColumna
     /// <summary>Lo que se deja entre la base del elemento y el fondo del rango de vista: el dado y la zapata no se ven.</summary>
     private const double SobreElFondo = 0.005 * M;
 
-    /// <summary>El corte, por lo menos así de sobre el primer estribo, para que el estribo se vea (decisión 12 del plan de #317).</summary>
-    private const double SobreElEstribo = 0.03 * M;
+    /// <summary>El corte, así de sobre lo último del primer paquete: lo ve sin llegar al siguiente estribo (decisiones 12 y 44 del plan de #317).</summary>
+    private const double SobreElEstribo = 0.01 * M;
 
     /// <summary>El fondo de la vista, así de bajo el primer estribo: lo de más abajo (los ganchos de anclaje) no se ve.</summary>
     private const double BajoElEstribo = 0.02 * M;
+
+    /// <summary>
+    /// Dónde está en planta una pieza horizontal y qué forma tiene, al centímetro: dos con la misma huella se ven igual en la
+    /// sección (la misma grapa en otro paquete).
+    /// </summary>
+    private static string Huella(List<XYZ> puntos)
+    {
+        static long Cm(double pies) => (long)Math.Round(pies * 30.48);
+        return $"{Cm(puntos.Min(p => p.X))}|{Cm(puntos.Max(p => p.X))}|{Cm(puntos.Min(p => p.Y))}|{Cm(puntos.Max(p => p.Y))}|{puntos.Count}";
+    }
 
     /// <summary>Dos medidas de sección iguales al centímetro.</summary>
     private const double AlCentimetro = 0.01 * M;
@@ -70,13 +80,25 @@ internal static class SeccionColumna
         BoundingBoxXYZ caja = arriba.get_BoundingBox(null);
         // Un mismo elemento puede bajar hasta la cimentación, donde no hay estribos y sí los ganchos de anclaje de las barras
         // (Col B-3, 09-nov): el corte va justo sobre el primer estribo y la vista no mira más abajo de él.
-        List<double> estribosAbajo = barras.Where(b => !LectorColumnas.EsVertical(b) && b.GetHostId() == arriba.Id)
-            .Select(b => LectorColumnas.Alturas(b).Abajo).Where(z => z >= caja.Min.Z).ToList();
-        double? primerEstribo = estribosAbajo.Count > 0 ? estribosAbajo.Min() : null;
-        double zCorte = Corte(columna, caja.Min.Z), zFondo = caja.Min.Z + SobreElFondo;
-        if (primerEstribo is { } e0)
+        // Y abarca todo el primer paquete: el estribo y las grapas de las caras X y de las Y, que van a distinta altura y no
+        // siempre encima del estribo (en Col B-3 las X van debajo; decisión 44 del plan de #317).
+        List<Rebar> delElemento = barras.Where(b => !LectorColumnas.EsVertical(b) && b.GetHostId() == arriba.Id).ToList();
+        List<(string Huella, double Z)> piezas = delElemento.SelectMany(b => Enumerable.Range(0, b.NumberOfBarPositions)
+            .Select(i => b.GetTransformedCenterlineCurves(false, true, false, MultiplanarOption.IncludeOnlyPlanarCurves, i)
+                .SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList())
+            .Where(p => p.Count > 0)
+            .Select(p => (Huella: Huella(p), Z: p.Average(x => x.Z))))
+            .Where(n => n.Z >= caja.Min.Z).Select(n => (n.Huella, n.Z * 0.3048)).ToList();
+        double? primerEstribo = null, ultimoDelPaquete = null;
+        if (piezas.Count > 0)
         {
-            zCorte = Math.Max(zCorte, e0 + SobreElEstribo);
+            (double desde, double hasta) = PrimerPaquete.Calcular(piezas);
+            (primerEstribo, ultimoDelPaquete) = (desde / 0.3048, hasta / 0.3048);
+        }
+        double zCorte = Corte(columna, caja.Min.Z), zFondo = caja.Min.Z + SobreElFondo;
+        if (primerEstribo is { } e0 && ultimoDelPaquete is { } e1)
+        {
+            zCorte = Math.Max(zCorte, e1 + SobreElEstribo);
             zFondo = Math.Max(zFondo, e0 - BajoElEstribo);
         }
         XYZ centro = new((caja.Min.X + caja.Max.X) / 2, (caja.Min.Y + caja.Max.Y) / 2, zCorte);
@@ -84,7 +106,7 @@ internal static class SeccionColumna
         XYZ En(double x, double y) => new(x, y, zCorte);
 
         ViewPlan vista = Planta(doc, zCorte, zFondo);
-        Registro.Paso($"sección de columna: primer estribo a {(primerEstribo is { } p ? (p * 0.3048).ToString("0.00") : "—")}, fondo de la vista a {zFondo * 0.3048:0.00}");
+        Registro.Paso($"sección de columna: primer paquete de {(primerEstribo is { } p ? (p * 0.3048).ToString("0.000") : "—")} a {(ultimoDelPaquete is { } u ? (u * 0.3048).ToString("0.000") : "—")}, corte a {zCorte * 0.3048:0.000}, fondo a {zFondo * 0.3048:0.000}");
         Registro.Paso($"sección de columna: {(porTraslapo ? "traslapos" : "varillas")}, nivel {vista.GenLevel?.Name}, corte a {zCorte * 0.3048:0.00} en el elemento {arriba.Id} (base {caja.Min.Z * 0.3048:0.00})");
         GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor, alto / 2 + Leyenda + 0.15 * M * Letra.Factor, alto / 2 + 0.10 * M * Letra.Factor);
         Limpiar(doc, vista, columna, barras);
@@ -158,21 +180,21 @@ internal static class SeccionColumna
         if (estribo is not null && !porTraslapo)
             sobre = Math.Max(sobre, SacarEstribo(doc, vista, barras, estribo, En(caja.Max.X + EstriboAparte, centro.Y), tipos) - centro.Y + 0.05 * M * Letra.Factor);
         List<Rebar> cortadas = verticales.Where(b => arribaIds.Contains(b.Id)).ToList();
+        // Solo el color y el diámetro, sin la cantidad (punto 14 de Santiago, decisión 2 del plan del 10-11).
         List<(string Texto, Color Color)> leyenda = porTraslapo
             ? [("Traslapo A", ColorA), ("Traslapo B", ColorB)]
-            : cortadas.GroupBy(b => doc.GetElement(b.GetTypeId()).Name)
-                .OrderByDescending(g => LectorDespiece.Numero(g.Key))
-                .Select(g =>
+            : cortadas.Select(b => TextosDespiece.Nombre(doc.GetElement(b.GetTypeId()).Name)).Distinct()
+                .OrderByDescending(TextosDespiece.Numero)
+                .Select(nombre =>
                 {
-                    int n = LectorDespiece.Numero(g.Key);
-                    (byte r, byte v, byte a) = ColoresDiametro.Rgb(n);
-                    return ($"{g.Sum(b => b.Quantity)} {(n > 0 ? "#" + n : g.Key)}", new Color(r, v, a));
+                    (byte r, byte v, byte a) = ColoresDiametro.Rgb(TextosDespiece.Numero(nombre));
+                    return (nombre, new Color(r, v, a));
                 }).ToList();
         // Los estribos y menores, en el color de su diámetro, si ese diámetro no está ya (decisión 15 del plan de #317).
         foreach (string nombre in barras.Where(b => !LectorColumnas.EsVertical(b)).Select(b => TextosDespiece.Nombre(doc.GetElement(b.GetTypeId()).Name))
             .Distinct().OrderByDescending(TextosDespiece.Numero))
         {
-            if (!porTraslapo && !leyenda.Any(l => l.Texto.EndsWith(" " + nombre, StringComparison.Ordinal)))
+            if (!porTraslapo && !leyenda.Any(l => l.Texto == nombre))
             {
                 (byte r, byte v, byte a) = ColoresDiametro.Rgb(TextosDespiece.Numero(nombre));
                 leyenda.Add((nombre, new Color(r, v, a)));
