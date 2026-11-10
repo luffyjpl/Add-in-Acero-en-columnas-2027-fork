@@ -425,7 +425,7 @@ public static class PlanificadorViguetas
     {
         double U(Punto p) => repartoEnY ? p.Y : p.X;
         var cortes = new List<double>();
-        foreach (double u in panel.AnillosLibre.SelectMany(r => r.Select(U)).Concat(bandas.SelectMany(b => new[] { b.U0, b.U1 })).Order())
+        foreach (double u in panel.AnillosLibre.SelectMany(r => Esquinas(r, U)).Concat(bandas.SelectMany(b => new[] { b.U0, b.U1 })).Order())
             if (cortes.Count == 0 || u - cortes[^1] > 1)
                 cortes.Add(u);
         var regiones = new List<RegionReparto>();
@@ -460,6 +460,22 @@ public static class PlanificadorViguetas
             abiertas = siguen;
         }
         return regiones;
+    }
+
+    /// <summary>Menos que esto (radianes, 12°) no es una esquina: es un tramo de curva (decisión 38).</summary>
+    private const double GiroDeEsquina = 0.2094;
+
+    /// <summary>La coordenada <paramref name="u"/> de las esquinas de un anillo y de sus dos extremos: una curva no parte el reparto en cada tramo.</summary>
+    private static IEnumerable<double> Esquinas(IReadOnlyList<Punto> anillo, Func<Punto, double> u)
+    {
+        (double menor, double mayor) = (anillo.Min(u), anillo.Max(u));
+        for (int i = 0; i < anillo.Count; i++)
+        {
+            Punto a = anillo[(i - 1 + anillo.Count) % anillo.Count], p = anillo[i], b = anillo[(i + 1) % anillo.Count];
+            (double x0, double y0, double x1, double y1) = (p.X - a.X, p.Y - a.Y, b.X - p.X, b.Y - p.Y);
+            if (Math.Abs(Math.Atan2(x0 * y1 - y0 * x1, x0 * x1 + y0 * y1)) >= GiroDeEsquina || u(p) <= menor + 1 || u(p) >= mayor - 1)
+                yield return u(p);
+        }
     }
 
     /// <summary>

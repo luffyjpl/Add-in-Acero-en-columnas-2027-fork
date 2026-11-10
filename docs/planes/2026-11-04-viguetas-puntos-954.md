@@ -333,6 +333,20 @@
     el add-in en ese nivel, no las dibujadas a mano, porque las viguetas de borde del modelo harían ver todos los pisos
     como construidos. Se actualiza solo al crear, quitar o vaciar. `PisoResumen.Creadas`, `LectorPiso.Pisos`.
 
+37. **En Puntos, un lado puede ir «hasta el voladizo»** (usuario, 10-nov, con captura de N+14.00: elegir hasta el voladizo
+    sin que nazca una vigueta diagonal ni horizontal; las viguetas siguen hasta ahí). Corrige la decisión 27 solo para
+    ese lado. Mientras se marca el contorno, el botón «Siguiente lado: hasta voladizo» deja que el próximo lado (o el de
+    cierre) vaya en cualquier ángulo. Ese lado no crea vigueta de borde: si va sobre una viga o vigueta, las viguetas
+    llegan a ella como siempre; si no hay nada debajo, llegan hasta esa línea. Sin el botón, los lados en diagonal siguen
+    sin aceptarse. `ZonaPuntos.Voladizos`, `PisoViguetas.ConVoladizos`, `Correr`.
+38. **Las vigas curvas se ven y sirven de llegada** (usuario, 10-nov, viga en arco sobre el eje D). Antes solo se leían vigas
+    rectas. Una viga en arco horizontal se lee partida en tramos rectos de 6° o menos, con ids `elemento~n`, por el
+    centro de su geometría. Cierra paneles como cualquier viga, se dibuja y en Por vigas se elige entera. En Puntos tiene
+    punto en sus dos extremos y donde la cruza otra viga, no en cada tramo; un lado «hasta voladizo» entre dos puntos de la
+    misma curva sigue la curva. Los tramos no parten el reparto: las regiones solo se cortan en esquinas de verdad (giro
+    de 12° o más) y en los extremos. Otras curvas, como splines, no se leen. `TramosDeCurva`, `LectorPiso.LeerArco`,
+    `DetectorPaneles.Cruce`, `PlanificadorViguetas.Esquinas`.
+
 ## Plan paso a paso
 
 1. `Geometria.CortesAnillos` + `Panel` con huecos y viguetas de borde — tests.

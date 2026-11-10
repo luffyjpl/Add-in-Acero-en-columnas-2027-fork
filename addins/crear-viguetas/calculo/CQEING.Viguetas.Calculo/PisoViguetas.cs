@@ -8,7 +8,10 @@ namespace CQEING.Viguetas.Calculo;
 /// </summary>
 public sealed record ArmazonPiso(string Id, Punto Desde, Punto Hasta, double Ancho, string? NombreTipo, bool Creada)
 {
-    public bool EsVigueta => ReglaVigueta.Es(NombreTipo, Ancho);
+    /// <summary>Decisión 38: es un tramo de una viga curva. Cuenta siempre como viga.</summary>
+    public bool EsCurva => TramosDeCurva.Es(Id);
+
+    public bool EsVigueta => !EsCurva && ReglaVigueta.Es(NombreTipo, Ancho);
 
     /// <summary>El punto a <paramref name="t"/> del largo (0 = Desde, 1 = Hasta).</summary>
     public Punto En(double t) => new(Desde.X + (Hasta.X - Desde.X) * t, Desde.Y + (Hasta.Y - Desde.Y) * t);
@@ -36,8 +39,12 @@ public sealed record SueloPiso(string Id, IReadOnlyList<IReadOnlyList<Punto>> Co
 /// </summary>
 public sealed record PuntoPiso(Punto P, string Tipo);
 
-/// <summary>Una zona que armó el usuario con puntos (#954): su contorno y sus vacíos, por ejes, en mm.</summary>
-public sealed record ZonaPuntos(string Id, IReadOnlyList<Punto> Contorno, IReadOnlyList<IReadOnlyList<Punto>> Vacios);
+/// <summary>
+/// Una zona que armó el usuario con puntos (#954): su contorno y sus vacíos, por ejes, en mm. <paramref name="Voladizos"/>:
+/// los lados marcados «hasta el voladizo» (decisión 37), por sus dos puntos.
+/// </summary>
+public sealed record ZonaPuntos(string Id, IReadOnlyList<Punto> Contorno, IReadOnlyList<IReadOnlyList<Punto>> Vacios,
+    IReadOnlyList<(Punto A, Punto B)>? Voladizos = null);
 
 /// <summary>
 /// Lo que se lee de un nivel de Revit para «Crear viguetas» (#948). <paramref name="Cota"/> en mm. <paramref name="Suelos"/>:
@@ -127,12 +134,19 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         List<ArmazonPiso> propio = Piso.Armazon.Where(a => !a.Creada).ToList();
         for (int i = 0; i < propio.Count; i++)
             for (int j = i + 1; j < propio.Count; j++)
-                if (Cruce(propio[i], new BordePanel(propio[j].Id, propio[j].Desde, propio[j].Hasta, propio[j].Ancho), incluirPuntas: true) is double t)
+                if (!TramosDeCurva.Misma(propio[i].Id, propio[j].Id)
+                    && Cruce(propio[i], new BordePanel(propio[j].Id, propio[j].Desde, propio[j].Hasta, propio[j].Ancho), incluirPuntas: true) is double t)
                     Sumar(propio[i].En(t), propio[i].EsVigueta || propio[j].EsVigueta ? "vigueta" : "cruce");
-        foreach (ArmazonPiso a in propio)
+        foreach (ArmazonPiso a in propio.Where(a => !a.EsCurva))
         {
             Sumar(a.Desde, a.EsVigueta ? "vigueta" : "viga");
             Sumar(a.Hasta, a.EsVigueta ? "vigueta" : "viga");
+        }
+        // Decisión 38: de una curva, sus dos puntas; no cada tramo.
+        foreach (List<ArmazonPiso> curva in Curvas)
+        {
+            Sumar(curva[0].Desde, "viga");
+            Sumar(curva[^1].Hasta, "viga");
         }
         // Decisión 24: las puntas de las viguetas que creó el add-in también se pueden elegir.
         foreach (ArmazonPiso a in Piso.Armazon.Where(a => a.Creada))
@@ -164,10 +178,75 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
         return zonas;
     }
 
+    /// <summary>Las vigas curvas del piso, cada una con sus tramos en orden (decisión 38).</summary>
+    private IEnumerable<List<ArmazonPiso>> Curvas => Piso.Armazon.Where(a => a.EsCurva && !a.Creada)
+        .GroupBy(a => TramosDeCurva.Elemento(a.Id)).Select(g => g.OrderBy(a => TramosDeCurva.Numero(a.Id)).ToList());
+
+    /// <summary>A esto (mm) o menos, un punto del contorno es el de un lado marcado (el contorno se endereza un poco).</summary>
+    private const double MismoLadoMarcado = 200;
+
+    /// <summary>A esto (mm) o menos de la punta de una curva, un punto está en su extremo: puede terminar en la cara de una columna.</summary>
+    private const double PuntaDeCurva = 400;
+
+    /// <summary>
+    /// Decisión 37: el contorno con sus lados «hasta el voladizo»: si los dos puntos van sobre la misma curva, el lado la
+    /// sigue (decisión 38). Devuelve también los lados que no llevan vigueta de borde.
+    /// </summary>
+    private (List<Punto> Eje, HashSet<(Punto, Punto)> SinBorde) ConVoladizos(List<Punto> anillo, IReadOnlyList<(Punto A, Punto B)> voladizos)
+    {
+        List<(Punto A, Punto B)> marcados = voladizos.Select(v => (AlEje(v.A), AlEje(v.B))).ToList();
+        bool Cerca(Punto p, Punto q) => Geometria.Distancia(p, q) <= MismoLadoMarcado;
+        var eje = new List<Punto>();
+        var sinBorde = new HashSet<(Punto, Punto)>();
+        for (int i = 0; i < anillo.Count; i++)
+        {
+            Punto a = anillo[i], b = anillo[(i + 1) % anillo.Count];
+            eje.Add(a);
+            if (!marcados.Any(m => (Cerca(m.A, a) && Cerca(m.B, b)) || (Cerca(m.A, b) && Cerca(m.B, a))))
+                continue;
+            List<Punto> curva = PuntosDeCurva(a, b);
+            eje.AddRange(curva);
+            Punto previo = a;
+            foreach (Punto q in curva.Append(b))
+            {
+                sinBorde.Add((previo, q));
+                previo = q;
+            }
+        }
+        return (eje, sinBorde);
+    }
+
+    /// <summary>Los vértices de la curva entre <paramref name="a"/> y <paramref name="b"/>, en ese orden; vacío si no van sobre la misma curva.</summary>
+    private List<Punto> PuntosDeCurva(Punto a, Punto b)
+    {
+        foreach (List<ArmazonPiso> curva in Curvas)
+        {
+            if (SobreCurva(curva, a) is not double ta || SobreCurva(curva, b) is not double tb)
+                continue;
+            List<Punto> vertices = [curva[0].Desde, .. curva.Select(x => x.Hasta)];
+            List<int> entre = Enumerable.Range(1, vertices.Count - 2).Where(k => k > Math.Min(ta, tb) + 0.02 && k < Math.Max(ta, tb) - 0.02).ToList();
+            return (ta < tb ? entre : Enumerable.Reverse(entre)).Select(k => vertices[k]).ToList();
+        }
+        return [];
+    }
+
+    /// <summary>Dónde cae <paramref name="p"/> a lo largo de la curva, en tramos (0 = su inicio); null si no está sobre ella.</summary>
+    private static double? SobreCurva(List<ArmazonPiso> curva, Punto p)
+    {
+        if (Geometria.Distancia(p, curva[0].Desde) <= PuntaDeCurva)
+            return 0;
+        if (Geometria.Distancia(p, curva[^1].Hasta) <= PuntaDeCurva)
+            return curva.Count;
+        for (int k = 0; k < curva.Count; k++)
+            if (Proyeccion(curva[k].Desde, curva[k].Hasta, p) is (Punto q, double d) && d <= curva[k].Ancho / 2 + SobreElEje)
+                return k + Geometria.Distancia(curva[k].Desde, q) / Geometria.Distancia(curva[k].Desde, curva[k].Hasta);
+        return null;
+    }
+
     private Panel? Zona(ZonaPuntos z, double ancho)
     {
-        List<Punto> eje = Orientar(Enderezar(z.Contorno.Select(AlEje).ToList()), antihorario: true);
-        (List<Punto> libre, List<Punto> apoyo, List<(Punto, Punto)> bordes) = Correr(eje, ancho);
+        (List<Punto> eje, HashSet<(Punto, Punto)> sinBorde) = ConVoladizos(Orientar(Enderezar(z.Contorno.Select(AlEje).ToList()), antihorario: true), z.Voladizos ?? []);
+        (List<Punto> libre, List<Punto> apoyo, List<(Punto, Punto)> bordes) = Correr(eje, ancho, sinBorde);
         if (libre.Count < 3 || Geometria.Area(libre) <= 0)
             return null;
         var panel = new Panel(z.Id, eje, libre, [], [], bordes, [apoyo], []);
@@ -339,7 +418,7 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     /// También devuelve el anillo de apoyo (decisión 4): los lados sobre armazón quedan en su eje y los libres, en el eje
     /// de su vigueta de borde.
     /// </summary>
-    private (List<Punto> Libre, List<Punto> Apoyo, List<(Punto, Punto)> Bordes) Correr(List<Punto> anillo, double ancho)
+    private (List<Punto> Libre, List<Punto> Apoyo, List<(Punto, Punto)> Bordes) Correr(List<Punto> anillo, double ancho, HashSet<(Punto, Punto)>? sinBorde = null)
     {
         var corrimientos = new List<double>();
         var alApoyo = new List<double>();
@@ -351,6 +430,13 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
             {
                 corrimientos.Add(cara);
                 alApoyo.Add(eje);
+                continue;
+            }
+            // Decisión 37: un lado «hasta el voladizo» sin nada debajo: las viguetas llegan a esa línea, sin vigueta de borde.
+            if (sinBorde?.Contains((a, b)) == true)
+            {
+                corrimientos.Add(0);
+                alApoyo.Add(0);
                 continue;
             }
             corrimientos.Add(ancho);
@@ -418,7 +504,7 @@ public sealed class PisoViguetas(PisoLeido piso, bool viguetasComoBorde)
     /// Las vigas del piso (armazón propio que no es vigueta): las paralelas a las viguetas que quedan dentro de una zona
     /// parten su reparto (#954, decisión 10).
     /// </summary>
-    public IReadOnlyList<BordePanel> Vigas { get; } = piso.Armazon.Where(a => !a.Creada && !a.EsVigueta)
+    public IReadOnlyList<BordePanel> Vigas { get; } = piso.Armazon.Where(a => !a.Creada && !a.EsVigueta && !a.EsCurva)
         .Select(a => new BordePanel(a.Id, a.Desde, a.Hasta, a.Ancho)).ToList();
 
     /// <summary>Viguetas de la misma línea a menos de esto (mm) se toman como una sola guía.</summary>

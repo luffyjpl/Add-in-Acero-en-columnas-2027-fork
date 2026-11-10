@@ -97,7 +97,8 @@ public static class ProtocoloViguetas
             "quitar" when paneles.Count > 0 => new QuitarCreadas(paneles),
             "perimetro" => new ArmarPerimetro(e.Ids ?? []),
             "zonas" => new ArmarZonas((e.Zonas ?? []).Where(z => z.Id is not null)
-                .Select(z => new ZonaPuntos(z.Id!, Puntos(z.Contorno), (z.Vacios ?? []).Select(Puntos).ToList())).ToList(), e.Ancho ?? 0),
+                .Select(z => new ZonaPuntos(z.Id!, Puntos(z.Contorno), (z.Vacios ?? []).Select(Puntos).ToList(),
+                    (z.Voladizos ?? []).Select(Puntos).Where(v => v.Count == 2).Select(v => (v[0], v[1])).ToList())).ToList(), e.Ancho ?? 0),
             "vaciar" when e.Id is not null => new VaciarPanel(e.Id),
             "cerrar" => new CerrarViguetas(),
             _ => new DesconocidoViguetas(),
@@ -219,6 +220,7 @@ public static class ProtocoloViguetas
     {
         public string? Id { get; set; }
         public List<double[]>? Contorno { get; set; }
+        public List<List<double[]>>? Voladizos { get; set; }
         public List<List<double[]>>? Vacios { get; set; }
     }
 }
