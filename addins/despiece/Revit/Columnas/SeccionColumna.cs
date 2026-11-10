@@ -48,19 +48,11 @@ internal static class SeccionColumna
     /// <summary>Una barra vertical que termina más abajo que esto del corte es una pieza de abajo: se oculta.</summary>
     private const double PiezaDeAbajo = 0.15 * M;
 
-    // Sin etiquetas por barra (#281): la leyenda de colores dice qué es cada una. Debajo de la columna quedan el
-    // recubrimiento, la cota total y la leyenda; arriba, nada.
+    // Sin etiquetas por barra (#281): la leyenda de colores dice qué es cada una. Abajo y a la izquierda, una sola línea de
+    // cota por lado con el recubrimiento y el total; a la derecha, la leyenda y después el estribo aparte y los menores
+    // (observaciones 2 y 3 del Ing. Carlos, plan docs/planes/2026-11-10-despiece-carlos.md).
     /// <summary>Del cuadrito de color de la leyenda a su texto (decisión 22 del plan de #287).</summary>
     private static double AnchoCuadro => 0.09 * M * Letra.Factor;
-    // Primero (más cerca de la columna) las medidas parciales, el recubrimiento `0.04 · 0.22 · 0.04`, y después la cota
-    // total (#282, Santiago en la reunión del 05-nov: "las primeras que van siempre son las pequeñas y después va la
-    // total"). Abajo, la caja del texto baja 0.09 m desde su punto; la cota va debajo, con su número encima de la línea.
-    private static double TextoAncho => 0.08 * M * Letra.Factor;
-    private static double CotaAncho => 0.17 * M * Letra.Factor;
-    private static double TextoAlto => 0.08 * M * Letra.Factor;
-    private static double CotaAlto => 0.17 * M * Letra.Factor;
-    private static double Leyenda => 0.32 * M * Letra.Factor;
-    private static double EstriboAparte => 0.70 * M * Letra.Factor;
 
     /// <summary>A 1:15 la caja de una nota mide 0.12 m (medido en la viga).</summary>
     private static double FilaTexto => 0.13 * M * Letra.Factor;
@@ -89,6 +81,10 @@ internal static class SeccionColumna
             .Where(p => p.Count > 0)
             .Select(p => (Huella: Huella(p), Z: p.Average(x => x.Z))))
             .Where(n => n.Z >= caja.Min.Z).Select(n => (n.Huella, n.Z * 0.3048)).ToList();
+        // Para ver dónde empieza cada pieza (estribo, grapas, cajas): la primera vez que aparece cada huella (paso 2 del plan
+        // docs/planes/2026-11-10-despiece-carlos.md, columna 189817 sin menores).
+        Registro.Paso("sección de columna: primeras piezas " + string.Join("; ", piezas.GroupBy(n => n.Huella).Select(g => g.Min(n => n.Item2)).Order()
+            .Take(12).Select(z => z.ToString("0.000"))) + $" de {piezas.Select(n => n.Huella).Distinct().Count()} huellas");
         double? primerEstribo = null, ultimoDelPaquete = null;
         if (piezas.Count > 0)
         {
@@ -108,7 +104,7 @@ internal static class SeccionColumna
         ViewPlan vista = Planta(doc, zCorte, zFondo);
         Registro.Paso($"sección de columna: primer paquete de {(primerEstribo is { } p ? (p * 0.3048).ToString("0.000") : "—")} a {(ultimoDelPaquete is { } u ? (u * 0.3048).ToString("0.000") : "—")}, corte a {zCorte * 0.3048:0.000}, fondo a {zFondo * 0.3048:0.000}");
         Registro.Paso($"sección de columna: {(porTraslapo ? "traslapos" : "varillas")}, nivel {vista.GenLevel?.Name}, corte a {zCorte * 0.3048:0.00} en el elemento {arriba.Id} (base {caja.Min.Z * 0.3048:0.00})");
-        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor, alto / 2 + Leyenda + 0.15 * M * Letra.Factor, alto / 2 + 0.10 * M * Letra.Factor);
+        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor, alto / 2 + 0.60 * M * Letra.Factor, alto / 2 + 0.10 * M * Letra.Factor);
         Limpiar(doc, vista, columna, barras);
 
         // Las piezas de abajo se verían como un segundo círculo junto a cada varilla.
@@ -175,10 +171,6 @@ internal static class SeccionColumna
             if (transversales.Count > 0)
                 vista.HideElements(transversales);
         }
-        // El encabezado del estribo aparte (#313) sube más que la columna: el recorte de arriba crece con él.
-        double sobre = alto / 2 + 0.10 * M * Letra.Factor;
-        if (estribo is not null && !porTraslapo)
-            sobre = Math.Max(sobre, SacarEstribo(doc, vista, barras, estribo, En(caja.Max.X + EstriboAparte, centro.Y), tipos) - centro.Y + 0.05 * M * Letra.Factor);
         List<Rebar> cortadas = verticales.Where(b => arribaIds.Contains(b.Id)).ToList();
         // Solo el color y el diámetro, sin la cantidad (punto 14 de Santiago, decisión 2 del plan del 10-11).
         List<(string Texto, Color Color)> leyenda = porTraslapo
@@ -200,18 +192,33 @@ internal static class SeccionColumna
                 leyenda.Add((nombre, new Color(r, v, a)));
             }
         }
-        // Una debajo de otra: el cuadrito en el color y el texto en negro (decisión 22 del plan de #287).
+        // A la derecha de la columna, de arriba hacia abajo, el cuadrito en el color y el texto en negro (observación 2 del
+        // Ing. Carlos, decisión 4 del plan docs/planes/2026-11-10-despiece-carlos.md; antes iba debajo).
+        double xLeyenda = caja.Max.X + GeneradorPrevia.HuecoLeyenda;
         for (int i = 0; i < leyenda.Count; i++)
         {
-            double y = caja.Min.Y - Leyenda - i * FilaTexto;
-            TextNote cuadro = TextNote.Create(doc, vista.Id, En(caja.Min.X, y), "■", tipos.Nota(HorizontalTextAlignment.Left));
+            double y = caja.Max.Y - i * FilaTexto;
+            TextNote cuadro = TextNote.Create(doc, vista.Id, En(xLeyenda, y), "■", tipos.Nota(HorizontalTextAlignment.Left));
             // El cuadrito es la clave de los colores: va en color aunque se pidan los textos en negro.
             Pintar(vista, cuadro.Id, leyenda[i].Color, siempre: true);
-            TextNote.Create(doc, vista.Id, En(caja.Min.X + AnchoCuadro, y), leyenda[i].Texto, tipos.Nota(HorizontalTextAlignment.Left));
+            TextNote.Create(doc, vista.Id, En(xLeyenda + AnchoCuadro, y), leyenda[i].Texto, tipos.Nota(HorizontalTextAlignment.Left));
         }
-        // El recorte de abajo crece con las filas de la leyenda.
-        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + 0.60 * M * Letra.Factor, ancho / 2 + 1.20 * M * Letra.Factor,
-            alto / 2 + Leyenda + Math.Max(0, leyenda.Count - 1) * FilaTexto + 0.15 * M * Letra.Factor, sobre);
+        double finLeyenda = leyenda.Count == 0 ? caja.Max.X : xLeyenda + AnchoCuadro + leyenda.Max(l => l.Texto.Length) * 0.65 * GeneradorPrevia.AltoLetraSeccion;
+        // El estribo aparte y los menores después de la leyenda, en columnas que no bajan más que la sección.
+        double sobre = alto / 2 + 0.10 * M * Letra.Factor;
+        double bajo = Math.Max(alto / 2 + GeneradorPrevia.LineaCotaSeccion + 2 * GeneradorPrevia.AltoLetraSeccion, -(caja.Max.Y - (leyenda.Count - 1) * FilaTexto - centro.Y) + FilaTexto) + 0.10 * M * Letra.Factor;
+        double finDibujo = finLeyenda;
+        if (estribo is not null && !porTraslapo)
+        {
+            double pisoMinimo = caja.Min.Y - GeneradorPrevia.LineaCotaSeccion - 1.5 * GeneradorPrevia.AltoLetraSeccion;
+            double desde = finLeyenda + GeneradorPrevia.HuecoLeyenda;
+            (double techo, double piso, double derechaEstribos) = SacarEstribo(doc, vista, barras, estribo, En(desde, centro.Y), tipos, pisoMinimo, desde);
+            sobre = Math.Max(sobre, techo - centro.Y + 0.05 * M * Letra.Factor);
+            bajo = Math.Max(bajo, centro.Y - piso + 0.10 * M * Letra.Factor);
+            finDibujo = Math.Max(finDibujo, derechaEstribos);
+        }
+        GeneradorPrevia.Recortar(vista, centro, ancho / 2 + GeneradorPrevia.LineaCotaSeccion + 2 * GeneradorPrevia.AltoLetraSeccion + 0.10 * M * Letra.Factor,
+            finDibujo - centro.X + 0.10 * M * Letra.Factor, bajo, sobre);
         Registro.Paso("sección de columna: leyenda " + string.Join(", ", leyenda.Select(l => l.Texto)));
         doc.Regenerate();
         return vista;
@@ -511,40 +518,26 @@ internal static class SeccionColumna
                 return;
             }
             double x0 = enX[0].Origin.X, x1 = enX[^1].Origin.X, y0 = enY[0].Origin.Y, y1 = enY[^1].Origin.Y;
-            void Cota(Reference a, Reference b, XYZ desde, XYZ hacia)
+            // Una sola línea por lado con el total y la cadena del recubrimiento, como en la viga (observación 3 del Ing.
+            // Carlos, plan docs/planes/2026-11-10-despiece-carlos.md).
+            double linea = GeneradorPrevia.LineaCotaSeccion, alto = GeneradorPrevia.AltoLetraSeccion;
+            var abajo = new XYZ(x0, y0 - linea, zCorte);
+            var izquierda = new XYZ(x0 - linea, y0, zCorte);
+            Dimension? totalAncho = GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: ancho", abajo, XYZ.BasisX, [0, x1 - x0], tipos.Cota);
+            Dimension? totalAlto = GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: alto", izquierda, XYZ.BasisY, [0, y1 - y0], tipos.Cota);
+            Dimension? cadenaAncho = null, cadenaAlto = null;
+            if (estribo is not null)
             {
-                var referencias = new ReferenceArray();
-                referencias.Append(a);
-                referencias.Append(b);
-                Dimension cota = doc.Create.NewDimension(vista, Line.CreateBound(desde, hacia), referencias);
-                if (tipos.Cota is { } tipo)
-                    cota.DimensionType = tipo;
-                doc.Regenerate();
+                double d = ((RebarBarType)doc.GetElement(estribo.GetTypeId())).BarNominalDiameter;
+                IList<Curve> tramos = GeneradorPrevia.Curvas(estribo, true);
+                List<Curve> esquinas = tramos.Where(c => c is Arc).ToList();
+                List<XYZ> puntos = (esquinas.Count > 0 ? esquinas : tramos).SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
+                double ex0 = puntos.Min(p => p.X) - d / 2, ex1 = puntos.Max(p => p.X) + d / 2, ey0 = puntos.Min(p => p.Y) - d / 2, ey1 = puntos.Max(p => p.Y) + d / 2;
+                cadenaAncho = GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: cadena del ancho", abajo, XYZ.BasisX, [0, ex0 - x0, ex1 - x0, x1 - x0], tipos.Cota);
+                cadenaAlto = GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: cadena del alto", izquierda, XYZ.BasisY, [0, ey0 - y0, ey1 - y0, y1 - y0], tipos.Cota);
             }
-            Cota(enX[0].Reference, enX[^1].Reference, new XYZ(x0, y0 - CotaAncho, zCorte), new XYZ(x1, y0 - CotaAncho, zCorte));
-            // Las referencias dejan de valer al crear una cota (como en la viga): se leen de nuevo.
-            enY = Caras(XYZ.BasisY);
-            Cota(enY[0].Reference, enY[^1].Reference, new XYZ(x0 - CotaAlto, y0, zCorte), new XYZ(x0 - CotaAlto, y1, zCorte));
-
-            if (estribo is null)
-                return;
-            double d = ((RebarBarType)doc.GetElement(estribo.GetTypeId())).BarNominalDiameter;
-            IList<Curve> tramos = GeneradorPrevia.Curvas(estribo, true);
-            List<Curve> esquinas = tramos.Where(c => c is Arc).ToList();
-            List<XYZ> puntos = (esquinas.Count > 0 ? esquinas : tramos).SelectMany(c => new[] { c.GetEndPoint(0), c.GetEndPoint(1) }).ToList();
-            double ex0 = puntos.Min(p => p.X) - d / 2, ex1 = puntos.Max(p => p.X) + d / 2, ey0 = puntos.Min(p => p.Y) - d / 2, ey1 = puntos.Max(p => p.Y) + d / 2;
-            // Como cota en cadena contra planos de referencia, como en la viga (#313); si Revit no la acepta, en texto.
-            if (!GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: cadena del ancho", new XYZ(x0, y0 - TextoAncho, zCorte), XYZ.BasisX,
-                    [0, ex0 - x0, ex1 - x0, x1 - x0], tipos.Cota))
-                TextNote.Create(doc, vista.Id, new XYZ((x0 + x1) / 2, y0 - TextoAncho, zCorte),
-                    GeneradorPrevia.Cadena(ex0 - x0, ex1 - ex0, x1 - ex1), tipos.Nota(HorizontalTextAlignment.Center));
-            if (!GeneradorPrevia.CadenaPorPlanos(doc, vista, "sección de columna: cadena del alto", new XYZ(x0 - TextoAlto, y0, zCorte), XYZ.BasisY,
-                    [0, ey0 - y0, ey1 - y0, y1 - y0], tipos.Cota))
-            {
-                TextNoteOptions vertical = tipos.Nota(HorizontalTextAlignment.Center);
-                vertical.Rotation = Math.PI / 2;
-                TextNote.Create(doc, vista.Id, new XYZ(x0 - TextoAlto, (y0 + y1) / 2, zCorte), GeneradorPrevia.Cadena(ey0 - y0, ey1 - ey0, y1 - ey1), vertical);
-            }
+            GeneradorPrevia.UnaLinea(doc, cadenaAncho, totalAncho, abajo, XYZ.BasisX, XYZ.BasisY.Negate(), alto, "sección de columna: ancho");
+            GeneradorPrevia.UnaLinea(doc, cadenaAlto, totalAlto, izquierda, XYZ.BasisY, XYZ.BasisX.Negate(), alto, "sección de columna: alto");
         }
         catch (Exception e)
         {
@@ -558,12 +551,13 @@ internal static class SeccionColumna
     /// 21). Primero el principal y después los menores (grapas, cajas), apilados hacia abajo con
     /// <see cref="GeneradorPrevia.ApilarEstribos"/>, igual que en la viga (decisión 18). Devuelve la Y más alta que ocupa.
     /// </summary>
-    private static double SacarEstribo(Document doc, View vista, List<Rebar> barras, Rebar principal, XYZ punto, TiposPropios tipos)
+    private static (double Techo, double Piso, double Derecha) SacarEstribo(Document doc, View vista, List<Rebar> barras, Rebar principal, XYZ punto, TiposPropios tipos,
+        double pisoMinimo, double izquierda)
     {
         // Por tipo, largo y gancho al centímetro, no por la forma de Revit (decisión 23 del plan de #287), y la grapa de los
         // traslapos sumada a la normal (decisión 16 del plan de #317).
         List<List<Rebar>> formas = GeneradorPrevia.FormasEstribos(barras.Where(b => !LectorColumnas.EsVertical(b)).ToList(), principal);
         // Cerrado, con el encabezado arriba y el diámetro abajo, igual que en la viga (#313).
-        return GeneradorPrevia.ApilarEstribos(doc, vista, formas, principal, punto, tipos).Techo;
+        return GeneradorPrevia.ApilarEstribos(doc, vista, formas, principal, punto, tipos, pisoMinimo, izquierda);
     }
 }
