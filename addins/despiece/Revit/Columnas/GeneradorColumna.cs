@@ -248,12 +248,16 @@ internal static class GeneradorColumna
         Registro.Paso($"columna: {barras.Count} barras; derecha {derecha}");
 
         Limpiar(doc, vista, columna, min, max, barras);
-        GeneradorPrevia.Colorear(doc, vista, barras);
+        // Fino: las barras con su grosor real y su borde (aristas, plan del 10-11 de Carlos).
+        vista.DetailLevel = ViewDetailLevel.Fine;
+        GeneradorPrevia.Colorear(doc, vista, barras, aristas: true);
         doc.Regenerate();
 
         double izq = Math.Min(min.DotProduct(derecha), max.DotProduct(derecha)), der = Math.Max(min.DotProduct(derecha), max.DotProduct(derecha));
         double bordeIzq = izq - Lado, bordeDer = der + Lado;
         XYZ En(double s, double z) => new XYZ(enPlano.X, enPlano.Y, z) + derecha * (s - enPlano.DotProduct(derecha));
+        ContornoCompleto(doc, vista, columna, derecha, En);
+        ArranquesDeVigas(doc, vista, min, max, derecha, En, izq, der, bordeIzq, bordeDer);
 
         // Las barras sacadas arrancan desde la cara de la columna, no después de la viga que se deja ver (decisión 13 del plan de #317).
         List<Sacada> sacadas = Sacar(doc, vista, columna, barras, derecha, der, En, tipos);
@@ -290,21 +294,34 @@ internal static class GeneradorColumna
         double abajo = Math.Min(min.Z - Holgura, cajas.Min(c => c.Min.Z) - margen);
         double arriba = Math.Max(max.Z + Holgura, cajas.Max(c => c.Max.Z) + margen);
 
+        double centroX = centro.DotProduct(derecha);
+        GeneradorPrevia.Recortar(vista, centro, centroX - bordeIzq, hasta - centroX, centro.Z - abajo, arriba - centro.Z);
+        doc.Regenerate();
+        Registro.Paso($"columna: recorte hasta las barras giradas ({(hasta - bordeDer) * 0.3048:0.00} m más)");
+    }
+
+    /// <summary>
+    /// Las vigas de los nudos: se ocultan y su arranque (hasta <see cref="Lado"/>) se dibuja con una región gris solo a los
+    /// costados de la columna, sin pasar por ella (decisión 39 del plan de #287). Antes se hacía solo con barras giradas;
+    /// desde que la columna va en blanco con su contorno (observación 7 del Ing. Carlos), una viga que la atraviesa se veía
+    /// gris dentro de ella, así que va siempre.
+    /// </summary>
+    private static void ArranquesDeVigas(Document doc, View vista, XYZ min, XYZ max, XYZ derecha, Func<double, double, XYZ> En,
+        double izq, double der, double bordeIzq, double bordeDer)
+    {
         double holgura = 0.05 * M;
         var filtro = new BoundingBoxIntersectsFilter(new Outline(min - new XYZ(holgura, holgura, holgura), max + new XYZ(holgura, holgura, holgura)));
         var ocultar = new List<ElementId>();
+        int regiones = 0;
         foreach (Element viga in new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_StructuralFraming)
             .WhereElementIsNotElementType().WherePasses(filtro))
         {
             BoundingBoxXYZ c = viga.get_BoundingBox(null);
-            if (c is null)
+            if (c is null || !viga.CanBeHidden(vista))
                 continue;
             List<double> xs = new[] { c.Min, c.Max, new XYZ(c.Min.X, c.Max.Y, 0), new XYZ(c.Max.X, c.Min.Y, 0) }.Select(p => p.DotProduct(derecha)).ToList();
             double desde = xs.Min(), hastaViga = xs.Max();
-            if (hastaViga <= bordeDer + 0.01 * M || !viga.CanBeHidden(vista))
-                continue;
             ocultar.Add(viga.Id);
-            // Lo que se veía antes: a cada lado de la columna, sin pasar por ella.
             foreach ((double a, double b) in new[] { (Math.Max(desde, bordeIzq), Math.Min(hastaViga, izq)), (Math.Max(desde, der), Math.Min(hastaViga, bordeDer)) })
             {
                 if (b - a < 0.01 * M)
@@ -318,6 +335,7 @@ internal static class GeneradorColumna
                 try
                 {
                     FilledRegion.Create(doc, TipoViga(doc), vista.Id, [lazo]);
+                    regiones++;
                 }
                 catch (Exception e)
                 {
@@ -327,10 +345,77 @@ internal static class GeneradorColumna
         }
         if (ocultar.Count > 0)
             vista.HideElements(ocultar);
-        double centroX = centro.DotProduct(derecha);
-        GeneradorPrevia.Recortar(vista, centro, centroX - bordeIzq, hasta - centroX, centro.Z - abajo, arriba - centro.Z);
-        doc.Regenerate();
-        Registro.Paso($"columna: recorte hasta las barras giradas ({(hasta - bordeDer) * 0.3048:0.00} m más), {ocultar.Count} vigas con el arranque dibujado");
+        Registro.Paso($"columna: {ocultar.Count} vigas ocultas, {regiones} arranques dibujados a los costados");
+    }
+
+    /// <summary>
+    /// La columna con su contorno entero, sin huecos en los nudos (observación 7 del Ing. Carlos, decisión 5 del plan
+    /// docs/planes/2026-11-10-despiece-carlos.md): como la viga en la vista larga (decisión 40 del plan de #317), los
+    /// elementos de la columna no se dibujan (en blanco) y va su contorno en líneas de detalle negras. Cada elemento llega
+    /// hasta donde empieza el siguiente, así el nudo queda dentro de la columna; si cambia el ancho, una línea horizontal
+    /// une los dos lados.
+    /// </summary>
+    private static void ContornoCompleto(Document doc, View vista, ColumnaLeida columna, XYZ derecha, Func<double, double, XYZ> En)
+    {
+        try
+        {
+            var tramos = new List<(double Izq, double Der, double Abajo, double Arriba)>();
+            foreach (ElementId id in columna.Elementos)
+            {
+                if (doc.GetElement(id).get_BoundingBox(null) is not { } c)
+                    continue;
+                double a = c.Min.DotProduct(derecha), b = c.Max.DotProduct(derecha);
+                tramos.Add((Math.Min(a, b), Math.Max(a, b), c.Min.Z, c.Max.Z));
+            }
+            if (tramos.Count == 0)
+                return;
+            tramos = tramos.OrderBy(t => t.Abajo).ToList();
+
+            var invisible = new OverrideGraphicSettings();
+            invisible.SetProjectionLineColor(new Color(255, 255, 255));
+            invisible.SetCutLineColor(new Color(255, 255, 255));
+            invisible.SetSurfaceForegroundPatternVisible(false);
+            invisible.SetSurfaceBackgroundPatternVisible(false);
+            invisible.SetCutForegroundPatternVisible(false);
+            invisible.SetCutBackgroundPatternVisible(false);
+            invisible.SetSurfaceTransparency(100);
+            foreach (ElementId id in columna.Elementos)
+                vista.SetElementOverrides(id, invisible);
+
+            var lineas = new List<Line>();
+            void Linea(XYZ p, XYZ q)
+            {
+                if (p.DistanceTo(q) > doc.Application.ShortCurveTolerance)
+                    lineas.Add(Line.CreateBound(p, q));
+            }
+            for (int i = 0; i < tramos.Count; i++)
+            {
+                (double izq, double der, double abajo, double arriba) = tramos[i];
+                // Hasta donde empieza el siguiente: el nudo es parte de la columna.
+                double tope = i + 1 < tramos.Count ? Math.Max(arriba, tramos[i + 1].Abajo) : arriba;
+                Linea(En(izq, abajo), En(izq, tope));
+                Linea(En(der, abajo), En(der, tope));
+                if (i == 0)
+                    Linea(En(izq, abajo), En(der, abajo));
+                if (i + 1 < tramos.Count)
+                {
+                    Linea(En(izq, tope), En(tramos[i + 1].Izq, tope));
+                    Linea(En(der, tope), En(tramos[i + 1].Der, tope));
+                }
+                else
+                    Linea(En(izq, tope), En(der, tope));
+            }
+            var negro = new OverrideGraphicSettings();
+            negro.SetProjectionLineColor(new Color(0, 0, 0));
+            negro.SetProjectionLineWeight(3);
+            foreach (Line l in lineas)
+                vista.SetElementOverrides(doc.Create.NewDetailCurve(vista, l).Id, negro);
+            Registro.Paso($"columna: contorno completo con {lineas.Count} líneas de {tramos.Count} elementos");
+        }
+        catch (Exception e)
+        {
+            Registro.Paso("columna: contorno completo no se pudo: " + e.Message);
+        }
     }
 
     /// <summary>El relleno gris del arranque de las vigas, como el concreto de la sección.</summary>
@@ -843,13 +928,9 @@ internal static class GeneradorColumna
         prueba.Start();
         try
         {
-            var blanco = new OverrideGraphicSettings();
-            blanco.SetProjectionLineColor(new Color(255, 255, 255));
             List<Reference> planos = marcas.Select(z =>
             {
-                ReferencePlane plano = doc.Create.NewReferencePlane(En(bordeIzq + DentroDelRecorte, z), En(Math.Min(xCadena, xTotal) - DentroDelRecorte, z), vista.ViewDirection, vista);
-                vista.SetElementOverrides(plano.Id, blanco);
-                return plano.GetReference();
+                return GeneradorPrevia.ReferenciaEnVista(doc, vista, En(bordeIzq + DentroDelRecorte, z), En(Math.Min(xCadena, xTotal) - DentroDelRecorte, z));
             }).ToList();
             doc.Regenerate();
 
