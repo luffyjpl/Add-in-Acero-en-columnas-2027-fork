@@ -217,9 +217,11 @@
   }
 
   /* ---------- primera entrada ---------- */
+  /** Decisión 36: si en ese piso ya hay viguetas creadas con el add-in. */
+  const estadoPiso = (p) => (p.creadas ? `<span class="hecho">Construido · ${p.creadas} viguetas</span>` : 'Sin construir');
   function modal() {
     $('m-pisos').innerHTML = S.pisos.length
-      ? S.pisos.map((p) => `<button class="piso" data-piso="${esc(p.id)}"><span class="lv">${esc(p.nombre)}</span><span>${fmt(p.cota)} m</span><span class="pc">${p.armazon} vigas y viguetas</span></button>`).join('')
+      ? S.pisos.map((p) => `<button class="piso" data-piso="${esc(p.id)}"><span class="lv">${esc(p.nombre)}</span><span>${fmt(p.cota)} m</span><span class="pc">${estadoPiso(p)}</span></button>`).join('')
       : '<p>Este modelo no tiene vigas con nivel de referencia.</p>';
     $('modal').hidden = !!S.piso;
   }
@@ -242,7 +244,7 @@
   }
   function abrirCrear() {
     S.pisosCrear = [S.piso.id];
-    $('mc-pisos').innerHTML = S.pisos.map((p) => `<label class="piso marca"><input type="checkbox" data-p="${esc(p.id)}"><span class="lv">${esc(p.nombre)}</span><span>${fmt(p.cota)} m</span><span class="pc">${p.id === S.piso.id ? 'piso abierto' : `${p.armazon} vigas y viguetas`}</span></label>`).join('');
+    $('mc-pisos').innerHTML = S.pisos.map((p) => `<label class="piso marca"><input type="checkbox" data-p="${esc(p.id)}"><span class="lv">${esc(p.nombre)}</span><span>${fmt(p.cota)} m</span><span class="pc">${p.id === S.piso.id ? 'piso abierto · ' : ''}${estadoPiso(p)}</span></label>`).join('');
     marcasCrear();
     $('m-crear').hidden = false;
   }
@@ -288,7 +290,7 @@
     }
     $('side').innerHTML = `
       <div class="sec"><div class="sh">${n(1, !!S.piso)}Piso</div>
-        <select class="sel" id="f-piso" aria-label="Piso">${S.piso ? '' : '<option value="">Elige un piso</option>'}${S.pisos.map((p) => `<option value="${esc(p.id)}" ${S.piso && S.piso.id === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select>
+        <select class="sel" id="f-piso" aria-label="Piso">${S.piso ? '' : '<option value="">Elige un piso</option>'}${S.pisos.map((p) => `<option value="${esc(p.id)}" ${S.piso && S.piso.id === p.id ? 'selected' : ''}>${esc(p.nombre)}${p.creadas ? ' · construido' : ''}</option>`).join('')}</select>
         <label class="chk" title="Las viguetas que ya están en el modelo también cierran paneles (viguetas de borde)"><input type="checkbox" id="f-borde" ${S.comoBorde ? 'checked' : ''} ${S.piso ? '' : 'disabled'}>Usar las viguetas del modelo como borde</label></div>
       <div class="sec ${S.piso ? '' : 'off'}"><div class="sh">${n(2, !!pan)}${porPuntos() ? 'Zonas' : 'Paneles'}</div>
         <div class="modos" role="group" aria-label="Cómo elegir las zonas">${MODOS.map(([v, l, t]) => `<button data-act="modo" data-v="${v}" aria-pressed="${S.modo === v}" title="${t}">${l}</button>`).join('')}</div>

@@ -18,9 +18,9 @@ internal static class LectorPiso
     private const double ToleranciaColumna = 100;
 
     public static List<PisoResumen> Pisos(Document doc) =>
-        Armazon(doc).Select(NivelDe).OfType<Level>()
-            .GroupBy(l => l.Id)
-            .Select(g => new PisoResumen(g.Key.ToString(), g.First().Name, Medidas.Mm(g.First().Elevation), g.Count()))
+        Armazon(doc).Select(f => (Elemento: f, Nivel: NivelDe(f))).Where(x => x.Nivel is not null)
+            .GroupBy(x => x.Nivel!.Id)
+            .Select(g => new PisoResumen(g.Key.ToString(), g.First().Nivel!.Name, Medidas.Mm(g.First().Nivel!.Elevation), g.Count(), g.Count(x => EsCreada(x.Elemento))))
             .OrderBy(p => p.Cota)
             .ToList();
 
