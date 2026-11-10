@@ -1275,6 +1275,40 @@ public class ViguetasTests
     }
 
     [Fact]
+    public void ConDosVaciosEnPanelesDistintosLasViguetasNoSeEnciman()
+    {
+        // Decisión 35 (fila 9 de la revisión del 09-nov): antes salían líneas a 5 cm y una vigueta distinta por panel.
+        List<ArmazonPiso> armazon =
+        [
+            new("x0", new(0, 0), new(0, 10000), 300, "V30X40", false),
+            new("x1", new(9000, 0), new(9000, 10000), 300, "V30X40", false),
+        ];
+        armazon.AddRange(new[] { 0, 1500, 5800, 10000 }.Select(y => new ArmazonPiso($"y{y}", new(0, y), new(9000, y), 300, "V30X40", false)));
+        var piso = new PisoViguetas(new PisoLeido("1", "N+3.70", 3700, armazon, []), false);
+        Panel z = piso.Zonas([new ZonaPuntos("Z1", Rectangulo(0, 0, 9000, 10000), [Rectangulo(4500, 2500, 5100, 3500), Rectangulo(6000, 7000, 6900, 8000)])], 100)[0];
+
+        PropuestaViguetas p = PlanificadorViguetas.Planificar([z], Direccion.Y, 800, 100, new HashSet<string>(), piso.Cruces, divisiones: piso.Vigas)!;
+
+        List<(double X, double Y0, double Y1)> nervios = p.Lineas(continuas: true).Where(l => Math.Abs(l.Desde.X - l.Hasta.X) < 1)
+            .Select(l => (l.Desde.X, Math.Min(l.Desde.Y, l.Hasta.Y), Math.Max(l.Desde.Y, l.Hasta.Y))).OrderBy(l => l.X).ThenBy(l => l.Item2).ToList();
+        foreach ((double X, double Y0, double Y1) a in nervios)
+            Assert.DoesNotContain(nervios, b => b != a && Math.Min(a.Y1, b.Y1) - Math.Max(a.Y0, b.Y0) > 1 && Math.Abs(a.X - b.X) < 400);
+        // La línea del borde de un vacío sigue entera por las vigas, de punta a punta.
+        Assert.Contains((4450.0, 0.0, 10000.0), nervios.Select(n => (Math.Round(n.X), Math.Round(n.Y0), Math.Round(n.Y1))));
+        Assert.Contains((6950.0, 0.0, 10000.0), nervios.Select(n => (Math.Round(n.X), Math.Round(n.Y0), Math.Round(n.Y1))));
+        Assert.All(p.Paneles, r => Assert.True(r.Reparto.EjeAEje >= 400, $"eje a eje de {r.Reparto.EjeAEje}"));
+    }
+
+    [Fact]
+    public void LaListaDePisosDiceCuantasViguetasCreadasTiene()
+    {
+        // Decisión 36.
+        using var json = System.Text.Json.JsonDocument.Parse(ProtocoloViguetas.Pisos("Modelo", [new PisoResumen("1", "N+3.70", 3700, 20, 7), new PisoResumen("2", "N+6.70", 6700, 20)], []));
+        Assert.Equal(7, json.RootElement.GetProperty("pisos")[0].GetProperty("creadas").GetInt32());
+        Assert.Equal(0, json.RootElement.GetProperty("pisos")[1].GetProperty("creadas").GetInt32());
+    }
+
+    [Fact]
     public void QuitarEnUnPanelSoloCortaElTramoDeEsePanel()
     {
         // Decisión 32: la larga cruza los tres paneles y sigue afuera; la corta está toda dentro del panel del medio.

@@ -96,16 +96,19 @@ public sealed record PropuestaViguetas(Direccion Direccion, double Ancho, IReadO
         {
             // #954, decisión 25: la vigueta que sigue la línea de una vigueta de borde de un vacío, del otro lado de la viga,
             // se crea con ella como una sola.
-            int k = !continuas || Math.Abs(Cota(b.Desde) - Cota(b.Hasta)) > 1 ? -1 : lineas.FindIndex(l => Math.Abs(Cota(l.Desde) - Cota(b.Desde)) <= 1
-                && new[] { Largo(l.Desde), Largo(l.Hasta) }.Any(x => Math.Abs(x - Largo(b.Desde)) <= Union || Math.Abs(x - Largo(b.Hasta)) <= Union));
-            if (k < 0)
+            // Decisión 35: puede tocar una de cada lado; las tres van juntas.
+            List<int> tocan = !continuas || Math.Abs(Cota(b.Desde) - Cota(b.Hasta)) > 1 ? [] : Enumerable.Range(0, lineas.Count).Where(k => Math.Abs(Cota(lineas[k].Desde) - Cota(b.Desde)) <= 1
+                && new[] { Largo(lineas[k].Desde), Largo(lineas[k].Hasta) }.Any(x => Math.Abs(x - Largo(b.Desde)) <= Union || Math.Abs(x - Largo(b.Hasta)) <= Union)).ToList();
+            if (tocan.Count == 0)
             {
                 lineas.Add((b.Desde, b.Hasta));
                 continue;
             }
-            double cota = Cota(lineas[k].Desde);
-            double[] largos = [Largo(lineas[k].Desde), Largo(lineas[k].Hasta), Largo(b.Desde), Largo(b.Hasta)];
-            lineas[k] = (Punto(cota, largos.Min()), Punto(cota, largos.Max()));
+            double cota = Cota(lineas[tocan[0]].Desde);
+            List<double> largos = [Largo(b.Desde), Largo(b.Hasta), .. tocan.SelectMany(k => new[] { Largo(lineas[k].Desde), Largo(lineas[k].Hasta) })];
+            lineas[tocan[0]] = (Punto(cota, largos.Min()), Punto(cota, largos.Max()));
+            foreach (int k in tocan.Skip(1).Reverse())
+                lineas.RemoveAt(k);
         }
         return lineas;
     }
@@ -369,15 +372,24 @@ public static class PlanificadorViguetas
             // Las líneas de las viguetas de borde de un vacío que llegan a cualquiera del grupo valen para todo el grupo:
             // así toda la columna sigue la misma línea, viga tras viga.
             List<double> deBordes = g.SelectMany(i => BordesQueLlegan(regiones[i], bordes, repartoEnY)).ToList();
+            // Decisión 35: las que mandan por ser angostas toman las líneas ya fijadas que les queden cerca.
+            var fijas = new List<double>(deBordes);
+            foreach (int i in mandan.OrderByDescending(i => manda[i]).ThenBy(i => regiones[i].Hasta - regiones[i].Desde))
+            {
+                if (!manda[i])
+                    propias[i] = Alinear(propias[i], fijas, regiones[i], ejeAEje, ancho);
+                fijas.AddRange(propias[i]);
+            }
             foreach (int i in g.Except(mandan))
             {
                 RegionReparto r = regiones[i];
-                List<double> guia = mandan.Where(j => Math.Min(regiones[j].Hasta, r.Hasta) - Math.Max(regiones[j].Desde, r.Desde) > ancho)
-                    .SelectMany(j => propias[j]).Concat(deBordes)
-                    .Where(c => c - ancho / 2 >= r.Desde - 1 && c + ancho / 2 <= r.Hasta + 1)
-                    .Order().ToList();
-                // La misma línea puede venir de dos que mandan (arriba y abajo de un vacío): una sola vez.
-                guia = guia.Where((c, k) => k == 0 || c - guia[k - 1] > 1).ToList();
+                // Primero las líneas de los bordes; de las demás, solo las que no queden pegadas a una ya puesta.
+                var guia = new List<double>();
+                foreach (double c in deBordes.Order().Concat(mandan.Where(j => Math.Min(regiones[j].Hasta, r.Hasta) - Math.Max(regiones[j].Desde, r.Desde) > ancho)
+                             .SelectMany(j => propias[j]).Order()))
+                    if (c - ancho / 2 >= r.Desde - 1 && c + ancho / 2 <= r.Hasta + 1 && guia.All(x => Math.Abs(x - c) >= ejeAEje / 2))
+                        guia.Add(c);
+                guia.Sort();
                 if (guia.Count == 0)
                     continue;
                 propias[i] = Seguir(guia, r.Desde, r.Hasta, ejeAEje, ancho);
@@ -515,6 +527,29 @@ public static class PlanificadorViguetas
         Rellenar(desde, guia[0] - ancho / 2);
         Rellenar(guia[^1] + ancho / 2, hasta);
         return cotas.Order().ToList();
+    }
+
+    /// <summary>
+    /// Decisión 35: las <paramref name="cotas"/> de una región, pasadas a la línea de <paramref name="fijas"/> que les quede a
+    /// menos de medio eje a eje y entre en la región. Si alguna cambió, se rellenan los espacios muy grandes (<see cref="Seguir"/>).
+    /// </summary>
+    private static List<double> Alinear(List<double> cotas, List<double> fijas, RegionReparto r, double ejeAEje, double ancho)
+    {
+        bool Entra(double c) => c - ancho / 2 >= r.Desde - 1 && c + ancho / 2 <= r.Hasta + 1;
+        double Linea(double c)
+        {
+            List<double> cerca = fijas.Where(f => Entra(f) && Math.Abs(f - c) < ejeAEje / 2).OrderBy(f => Math.Abs(f - c)).ToList();
+            return cerca.Count > 0 ? cerca[0] : c;
+        }
+        List<double> alineadas = cotas.Select(Linea).Distinct().Order().ToList();
+        // Donde quedó un espacio muy grande, primero una línea ya fijada que entre en él; así no se inventa otra casi igual.
+        foreach (double f in fijas.Where(Entra).Order())
+        {
+            double antes = alineadas.Where(c => c < f).DefaultIfEmpty(r.Desde).Max(), despues = alineadas.Where(c => c > f).DefaultIfEmpty(r.Hasta).Min();
+            if (despues - antes > ejeAEje && alineadas.All(c => Math.Abs(c - f) >= ejeAEje / 2))
+                alineadas = alineadas.Append(f).Order().ToList();
+        }
+        return alineadas.SequenceEqual(cotas) ? cotas : Seguir(alineadas, r.Desde, r.Hasta, ejeAEje, ancho);
     }
 
     /// <summary>Medio ancho de la viga medido a lo largo de las viguetas: más largo si la viga las cruza en diagonal.</summary>

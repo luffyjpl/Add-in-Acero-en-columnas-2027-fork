@@ -49,8 +49,8 @@ public sealed record PisoLeido(string Id, string Nombre, double Cota, IReadOnlyL
     public IReadOnlyList<SueloPiso> LosSuelos => Suelos ?? [];
 }
 
-/// <summary>Un nivel en la lista de pisos: cuántos elementos de armazón tiene.</summary>
-public sealed record PisoResumen(string Id, string Nombre, double Cota, int Armazon);
+/// <summary>Un nivel en la lista de pisos: cuántos elementos de armazón tiene y cuántas viguetas creó ahí el add-in (decisión 36).</summary>
+public sealed record PisoResumen(string Id, string Nombre, double Cota, int Armazon, int Creadas = 0);
 
 /// <summary>Un tipo de armazón del modelo que se puede usar como vigueta; <paramref name="Sugerido"/> si cumple la regla de vigueta.</summary>
 public sealed record TipoArmazon(string Id, string Nombre, bool Sugerido);
