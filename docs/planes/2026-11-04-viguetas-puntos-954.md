@@ -318,6 +318,21 @@
     «Quitar creadas» sigue siendo solo del piso abierto: no es parte de crear. `PisoViguetas.Copiar` y
     `RecortesDeCopia`, `CreadorViguetas.Crear` (`TrabajoViguetas`), campos `pisos` y `vaciados` del mensaje `crear`.
 
+35. **Con varios vacíos, las viguetas de paneles vecinos van en las mismas líneas** (revisión del 09-nov, fila 9: «al
+    momento de generar otro vacío las viguetas se desconfiguran y crean viguetas por paneles y se ponen varias»).
+    Reproducido con dos vacíos en paneles distintos de la misma columna: 33 líneas, algunas a 5 cm. Causa: cuando varias
+    regiones vecinas a través de una viga «mandan» (decisión 25), cada una se repartía por su cuenta y la que seguía
+    juntaba todas sus líneas. Ahora, dentro del grupo, manda primero lo que ya está o lleva punta de viga, después las
+    viguetas de borde de los vacíos y después la región más angosta; una línea a menos de medio eje a eje de otra ya
+    fijada toma esa misma línea. Nunca quedan dos a menos de medio eje a eje al seguir. Además, una vigueta de borde de
+    un vacío se une con las viguetas de su línea de los dos lados, no de uno solo. La decisión 11 sigue igual: en el
+    tramo de un vacío, sus viguetas de borde parten el reparto. `PlanificadorViguetas.PorRegion`, `Alinear`,
+    `PropuestaViguetas.Lineas`.
+36. **La lista de pisos dice cuáles ya están construidos** (revisión del 09-nov, fila 8). En la ventana del inicio, en la
+    de crear y en el selector de piso se ve «Construido · N viguetas» o «Sin construir». Cuenta las viguetas creadas con
+    el add-in en ese nivel, no las dibujadas a mano, porque las viguetas de borde del modelo harían ver todos los pisos
+    como construidos. Se actualiza solo al crear, quitar o vaciar. `PisoResumen.Creadas`, `LectorPiso.Pisos`.
+
 ## Plan paso a paso
 
 1. `Geometria.CortesAnillos` + `Panel` con huecos y viguetas de borde — tests.

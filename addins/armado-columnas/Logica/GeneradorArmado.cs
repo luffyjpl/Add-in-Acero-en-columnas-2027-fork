@@ -201,7 +201,12 @@ public static class GeneradorArmado
             catch (Exception ex)
             {
                 res.TramosOmitidos++;
-                res.Avisos.Add($"{contexto.Marca} tramo {tramo.Indice}: {GeometriaSeccion.Explicar(ex)}");
+                // El mismo motivo en varios tramos (la misma columna mal leída)
+                // se dice una sola vez (decisión 6 del plan del 09-nov).
+                string motivo = GeometriaSeccion.Explicar(ex);
+                if (!res.Avisos.Any(av => av.StartsWith($"{contexto.Marca} tramo ", StringComparison.Ordinal) &&
+                                          av.EndsWith($": {motivo}", StringComparison.Ordinal)))
+                    res.Avisos.Add($"{contexto.Marca} tramo {tramo.Indice}: {motivo}");
 
                 // Probado sobre Revit real: después de que Rebar.CreateFromCurves
                 // falla una vez (devuelve null) en una transacción, las llamadas

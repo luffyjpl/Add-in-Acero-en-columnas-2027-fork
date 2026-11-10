@@ -82,6 +82,13 @@ internal sealed class PuenteViguetas
         }
     }
 
+    /// <summary>Después de tocar el modelo: vuelve a leer el piso y la lista de pisos (cuáles ya están construidos, decisión 36).</summary>
+    private void Refrescar(PisoViguetas abierto)
+    {
+        Abrir(abierto.Piso.Id, abierto.ViguetasComoBorde);
+        ventana.Enviar(ProtocoloViguetas.Pisos(doc.Title, LectorPiso.Pisos(doc), LectorPiso.Tipos(doc)));
+    }
+
     private void Abrir(string id, bool viguetasComoBorde)
     {
         if (Nivel(id) is not Level nivel)
@@ -147,7 +154,7 @@ internal sealed class PuenteViguetas
             return;
         }
         List<(int Creadas, int Recortadas)> resultados = CreadorViguetas.Crear(doc, tipo, trabajos);
-        Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
+        Refrescar(piso);
         int total = resultados.Sum(r => r.Creadas);
         int recortadas = trabajos.Zip(resultados).Where(x => x.First.Nivel.Id == nivel.Id).Sum(x => x.Second.Recortadas);
         string delModeloTexto = recortadas > 0 ? $" y se quitó de {recortadas} viguetas del modelo el tramo dentro del panel" : "";
@@ -166,7 +173,7 @@ internal sealed class PuenteViguetas
             return;
         var recortes = ConIds(piso.TramosEnPanel(panel));
         int cortadas = recortes.Count == 0 ? 0 : CreadorViguetas.Vaciar(doc, recortes);
-        Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
+        Refrescar(piso);
         ventana.Enviar(ProtocoloViguetas.Aviso(cortadas == 0
             ? $"{id} queda como vacío: no tenía viguetas."
             : $"{id} queda como vacío: se cortaron {cortadas} viguetas. Ctrl+Z en Revit lo deshace.", bien: true));
@@ -178,7 +185,7 @@ internal sealed class PuenteViguetas
             return;
         List<Panel> paneles = piso.PanelesDe(ids);
         int quitadas = CreadorViguetas.Quitar(doc, ConIds(piso.CreadasARecortar(paneles)));
-        Abrir(piso.Piso.Id, piso.ViguetasComoBorde);
+        Refrescar(piso);
         ventana.Enviar(ProtocoloViguetas.Aviso($"Se quitaron {quitadas} viguetas de {Nombres(paneles)}.", bien: true));
     }
 

@@ -29,7 +29,7 @@ window.DEMO_VIGUETAS = () => {
   sumar([9070 - 40, 6280 + 40], 'viga');
   suelos[0].contornos[0].forEach((p) => sumar(p, 'suelo'));
   const piso = { tipo: 'piso', id: '1', nombre: 'N+3.70', cota: 3700, viguetasComoBorde: false, armazon, columnas, paneles, suelos, puntos };
-  const pisos = [{ id: '1', nombre: 'N+3.70', cota: 3700 }, { id: '2', nombre: 'N+6.70', cota: 6700 }, { id: '3', nombre: 'N+9.70', cota: 9700 }];
+  const pisos = [{ id: '1', nombre: 'N+3.70', cota: 3700 }, { id: '2', nombre: 'N+6.70', cota: 6700, creadas: 12 }, { id: '3', nombre: 'N+9.70', cota: 9700 }];
   let abierto = piso;
 
   /**

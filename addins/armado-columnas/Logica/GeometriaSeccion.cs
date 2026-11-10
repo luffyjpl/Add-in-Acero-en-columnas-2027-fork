@@ -43,7 +43,7 @@ internal static class GeometriaSeccion
                 $"el elemento {host.Id} no tiene tapa superior e inferior horizontales (¿inclinado o recortado?).");
 
         PlanarFace caraInferior = carasHorizontales.OrderBy(f => f.Origin.Z).First();
-        CurveLoop contorno = LoopExterior(caraInferior);
+        CurveLoop contorno = JuntarLadosEnLinea(LoopExterior(caraInferior));
         ValidarRectangular(contorno, host.Id);
 
         var resultado = (contorno, caraInferior.Origin.Z);
@@ -296,6 +296,47 @@ internal static class GeometriaSeccion
         cara.GetEdgesAsCurveLoops().OrderByDescending(Longitud).First();
 
     /// <summary>
+    /// Une los lados rectos seguidos que van en la misma dirección (decisión 5
+    /// de docs/planes/2026-11-09-observaciones-c2-tevening.md): cuando otro
+    /// elemento unido a la columna toca justo una arista, Revit puede partir
+    /// ese lado de la cara en dos, y un rectángulo llega con 5 «lados» (A-1
+    /// de THEVENIG 2, 09-nov). Si hay un lado curvo, el lazo queda como vino.
+    /// </summary>
+    public static CurveLoop JuntarLadosEnLinea(CurveLoop contorno)
+    {
+        List<Curve> curvas = contorno.ToList();
+        if (curvas.Count <= 4 || curvas.Any(c => c is not Line)) return contorno;
+
+        // Los vértices en orden; se quitan los que están en medio de un lado recto.
+        List<XYZ> vertices = curvas.Select(c => c.GetEndPoint(0)).ToList();
+        bool quitado = true;
+        while (quitado && vertices.Count > 3)
+        {
+            quitado = false;
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                XYZ antes = vertices[(i + vertices.Count - 1) % vertices.Count];
+                XYZ actual = vertices[i];
+                XYZ despues = vertices[(i + 1) % vertices.Count];
+                XYZ a = actual - antes, b = despues - actual;
+                if (a.GetLength() < Tolerancia || b.GetLength() < Tolerancia ||
+                    a.Normalize().CrossProduct(b.Normalize()).GetLength() < 1e-6)
+                {
+                    vertices.RemoveAt(i);
+                    quitado = true;
+                    break;
+                }
+            }
+        }
+
+        if (vertices.Count == curvas.Count) return contorno;
+        var lados = new List<Curve>();
+        for (int i = 0; i < vertices.Count; i++)
+            lados.Add(Line.CreateBound(vertices[i], vertices[(i + 1) % vertices.Count]));
+        return CurveLoop.Create(lados);
+    }
+
+    /// <summary>
     /// Todo el carril (offset del contorno, esquinas de #4, cara X/cara Y de
     /// J4) asume una sección rectangular -- ver #11. Nada de esto tiene
     /// sentido geométrico para una columna circular o de más de 4 lados
@@ -313,7 +354,8 @@ internal static class GeometriaSeccion
 
         if (curvas.Count != 4)
             throw new InvalidOperationException(
-                $"el elemento {hostId} tiene una sección de {curvas.Count} lados, no rectangular -- no soportado por ahora (#11).");
+                $"el elemento {hostId} tiene una sección de {curvas.Count} lados, no rectangular (#11): el add-in todavía no arma " +
+                "columnas así. Revisa en Revit si la columna tiene una esquina cortada o un recorte por otro elemento.");
     }
 
     /// <summary>
@@ -442,6 +484,10 @@ internal static class GeometriaSeccion
         // los primeros frames del stack trace (el .pdb ya viaja junto al
         // .dll en deploy.ps1, así que trae archivo+línea). Sacar una vez que
         // se identifique y corrija la causa real.
+        // Los mensajes que arma el propio add-in ya dicen qué pasó (decisión 6
+        // del plan del 09-nov): el stack trace solo para errores inesperados.
+        if (ex is InvalidOperationException) return ex.Message;
+
         string[] frames = (ex.StackTrace ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         string resumenStack = frames.Length > 0 ? " || " + string.Join(" <- ", frames.Take(3)) : "";
         return ex.Message + resumenStack;
