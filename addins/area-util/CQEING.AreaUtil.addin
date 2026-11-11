@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CQEING - Área útil del lote</Name>
+    <!-- El gestor reescribe esta ruta como absoluta a la carpeta de la versión instalada. -->
+    <Assembly>CQEING.AreaUtil.dll</Assembly>
+    <FullClassName>CQEING.AreaUtil.AppAreaUtil</FullClassName>
+    <ClientId>e51dd9c3-c817-4e2b-bd1e-ac940fa5171e</ClientId>
+    <VendorId>CQEING</VendorId>
+    <VendorDescription>CQEING</VendorDescription>
+  </AddIn>
+</RevitAddIns>

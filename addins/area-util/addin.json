@@ -1,0 +1,8 @@
+{
+  "id": "area-util",
+  "nombre": "Área útil del lote",
+  "descripcion": "Dibuja el lote, los retiros de la curaduría y el área útil del primer piso, con vista previa y avisos de la ficha.",
+  "proyecto": "CQEING.AreaUtil.csproj",
+  "revit": ["2026", "2027"],
+  "heredados": []
+}
