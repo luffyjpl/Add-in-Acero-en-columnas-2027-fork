@@ -44,6 +44,7 @@ public sealed class SesionColumnas
     private string? _aviso;
     private List<string> _choques = new();
     private bool _pendiente;
+    private List<string> _bloqueos = new();
     private List<string>? _resultado;
     private List<string> _avisosResultado = new();
     private bool _nadaArmado;
@@ -147,7 +148,8 @@ public sealed class SesionColumnas
                 _choques.ToList(), _pendiente,
                 _resultado is null ? null : new ResultadoVista(_resultado.ToList(), _avisosResultado.ToList(), _nadaArmado),
                 _error,
-                _columnas.Where(c => paraGenerar.Contains(c.Id)).Select(c => c.Marca).ToList()),
+                _columnas.Where(c => paraGenerar.Contains(c.Id)).Select(c => c.Marca).ToList(),
+                _bloqueos.ToList()),
             new Vista3DVista(
                 _abierta3D,
                 new Filtro3DVista(
@@ -245,6 +247,7 @@ public sealed class SesionColumnas
             case "cancelarGenerar":
                 _choques = new();
                 _pendiente = false;
+                _bloqueos = new();
                 _resultado = null;
                 _error = null;
                 break;
@@ -585,9 +588,22 @@ public sealed class SesionColumnas
     {
         _resultado = null;
         _error = null;
+        _bloqueos = new();
         if (OpcionesParaGenerar(borrarAjeno) is not OpcionesArmado opciones)
         {
             _aviso = "No hay columnas listas: cambia algo en una columna para que quede lista.";
+            return;
+        }
+
+        // Opción D del plan del 10-nov: si el estribo con sus grapas no entra
+        // en la separación, no se genera (ni con «Generar igual»). Antes el
+        // generador dejaba esos tramos sin grapas y solo lo avisaba al final.
+        List<string> bloqueos = Bloqueos(opciones.Plan);
+        if (bloqueos.Count > 0)
+        {
+            _bloqueos = bloqueos;
+            _choques = new();
+            _pendiente = false;
             return;
         }
 
@@ -612,6 +628,19 @@ public sealed class SesionColumnas
         _pendiente = false;
         _planEnviado = opciones.Plan;
         GeneracionPedida = opciones;
+    }
+
+    /// <summary>Lo que impide generar cada columna del plan (<see cref="ArmadorVistaColumnas.Bloqueos"/>), con su marca.</summary>
+    private List<string> Bloqueos(PlanArmado plan)
+    {
+        var bloqueos = new List<string>();
+        foreach (ColumnaPlan columna in plan.Columnas)
+        {
+            if (columna.Contexto is not ColumnaContexto contexto || columna.Longitudinal is not ConfigLongitudinal longitudinal) continue;
+            bloqueos.AddRange(ArmadorVistaColumnas.Bloqueos(contexto, columna.Tramos, longitudinal, BarraDe)
+                .Select(b => $"{contexto.Marca}, {char.ToLower(b[0])}{b[1..]}"));
+        }
+        return bloqueos;
     }
 
     /// <summary>

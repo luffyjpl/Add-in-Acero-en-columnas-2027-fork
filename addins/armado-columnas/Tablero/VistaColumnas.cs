@@ -139,8 +139,13 @@ public sealed record FilaCuadroVista(
 
 /// <param name="Pendiente">Hay choques y se espera que el usuario diga si genera igual.</param>
 /// <param name="Listas">Las marcas de las columnas que se van a generar.</param>
+/// <param name="Bloqueos">
+/// Lo que impide generar (no se puede «Generar igual»): hoy, tramos donde el estribo con sus grapas no entra en la
+/// separación (opción D del plan del 10-nov). Vacío si nada lo impide.
+/// </param>
 public sealed record GeneracionVista(
-    IReadOnlyList<string> Choques, bool Pendiente, ResultadoVista? Resultado, string? Error, IReadOnlyList<string> Listas);
+    IReadOnlyList<string> Choques, bool Pendiente, ResultadoVista? Resultado, string? Error, IReadOnlyList<string> Listas,
+    IReadOnlyList<string> Bloqueos);
 
 /// <summary>
 /// La vista 3D en Revit y sus filtros, como <c>Vistas/PanelFiltros3D</c> (decisión 18 del plan).

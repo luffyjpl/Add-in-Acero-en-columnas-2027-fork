@@ -205,6 +205,45 @@ Probar("reparto_con_paquete", () =>
     Exactas(r.Alturas, 0.20, "con paquete");
 });
 
+// Opción D del plan del 10-nov (docs/planes/2026-11-10-menores-omitidos-en-confinado.md):
+// con #3, una grapa de fila debajo y una de columna encima, el paquete mide
+// 5,7 cm y no entra en un confinado a 5 cm (columna 189817); a 6 cm sí (B-3).
+PaqueteEstribos.Paquete GrapasXY() => PaqueteEstribos.Calcular(
+    new[]
+    {
+        new EstriboMenor { Forma = FormaMenor.GrapaC, Eje = EjeCaja.Fila, Desde = 0, Hasta = 0 },
+        new EstriboMenor { Forma = FormaMenor.GrapaC, Eje = EjeCaja.Columna, Desde = 0, Hasta = 0 },
+    },
+    9.5, _ => 9.5);
+
+Probar("paquete_grapas_xy_mide_5_7", () => Igual(0.057, GrapasXY().Alto, "alto del paquete"));
+
+Probar("menores_no_entran_en_confinado_a_5", () =>
+{
+    PaqueteEstribos.Paquete p = GrapasXY();
+    RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.86, Confinado(0.50, 0.05, 0.10), p);
+    double? s = PaqueteEstribos.SeparacionQueNoEntra(r.Alturas, p);
+    Cierto(s is not null, "a 5 cm tiene que no entrar");
+    Igual(0.05, s!.Value, "separación más chica");
+    string motivo = PaqueteEstribos.MotivoNoEntra(s.Value, p);
+    Cierto(motivo.Contains("5,7") || motivo.Contains("5.7"), $"el motivo dice el alto del paquete: {motivo}");
+    Cierto(motivo.Contains("6 cm"), $"el motivo dice a cuánto subir: {motivo}");
+});
+
+Probar("menores_entran_en_confinado_a_6", () =>
+{
+    PaqueteEstribos.Paquete p = GrapasXY();
+    RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.86, Confinado(0.50, 0.06, 0.12), p);
+    Cierto(PaqueteEstribos.SeparacionQueNoEntra(r.Alturas, p) is null, "a 6 cm entra");
+});
+
+Probar("sin_menores_no_bloquea", () =>
+{
+    PaqueteEstribos.Paquete p = Solo(9.5);
+    RepartoEstribos.Resultado r = RepartoEstribos.Calcular(0, 3.86, Confinado(0.50, 0.05, 0.10), p);
+    Cierto(PaqueteEstribos.SeparacionQueNoEntra(r.Alturas, p) is null, "sin menores no hay paquete que no entre");
+});
+
 // Los límites del reparto, compartidos con GeneradorArmado.GenerarTramo.
 Probar("limites_del_reparto", () =>
 {

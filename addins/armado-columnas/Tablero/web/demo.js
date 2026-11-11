@@ -399,7 +399,7 @@
       actuales: copia(OPCIONES0), // lo que muestra el panel si la columna no tiene opciones propias
       guardadas: copia(GUARDADAS0),
       configuracion: null,
-      generacion: { choques: [], pendiente: false, resultado: null, error: null },
+      generacion: { choques: [], pendiente: false, resultado: null, error: null, bloqueos: [] },
       vista3D: { abierta: false, filtro: copia(FILTRO_TODO), numeros: [], estado: null, fallo: false },
       aviso: null,
     };

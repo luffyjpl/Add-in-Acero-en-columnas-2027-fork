@@ -242,12 +242,10 @@ public static class ArmadorVistaColumnas
                 continue;
             }
 
-            // Grapas y cerrados en los tramos libres y en los nudos, como en
-            // GeneradorArmado (los tramos contra la zapata ya salieron arriba).
-            List<EstriboMenor> piezas = longitudinal.MenoresParaGenerar();
-            PaqueteEstribos.Paquete paquete = PaqueteEstribos.Calcular(piezas, d, p => barraDe(p.TipoBarraNombre)?.DiametroMm ?? d);
-            RepartoEstribos.Resultado reparto = RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete);
+            (PaqueteEstribos.Paquete paquete, RepartoEstribos.Resultado reparto) = Reparto(tramo, cfg, longitudinal, barraDe, d);
             if (reparto.Aviso is not null) avisos.Add($"Tramo {tramo.Indice + 1}: {reparto.Aviso}");
+            if (PaqueteEstribos.SeparacionQueNoEntra(reparto.Alturas, paquete) is double separacion)
+                avisos.Add($"Tramo {tramo.Indice + 1}: {PaqueteEstribos.MotivoNoEntra(separacion, paquete)} Así no se puede generar.");
             if (reparto.Alturas.Count > 0 && (primerEstribo is null || reparto.Alturas[0] < primerEstribo))
                 primerEstribo = reparto.Alturas[0];
 
@@ -260,6 +258,41 @@ public static class ArmadorVistaColumnas
                     z.Alturas.Select(M).ToList()));
         }
         return zonas;
+    }
+
+    /// <summary>
+    /// Grapas y cerrados en los tramos libres y en los nudos, como en
+    /// GeneradorArmado (contra la zapata no hay estribos): el paquete y las
+    /// alturas de un tramo, con la barra del estribo de <paramref name="diametroMm"/>.
+    /// </summary>
+    private static (PaqueteEstribos.Paquete Paquete, RepartoEstribos.Resultado Reparto) Reparto(
+        Tramo tramo, ConfigTramo cfg, ConfigLongitudinal longitudinal, Func<string?, TipoBarra?> barraDe, double diametroMm)
+    {
+        List<EstriboMenor> piezas = longitudinal.MenoresParaGenerar();
+        PaqueteEstribos.Paquete paquete = PaqueteEstribos.Calcular(piezas, diametroMm, p => barraDe(p.TipoBarraNombre)?.DiametroMm ?? diametroMm);
+        return (paquete, RepartoEstribos.Calcular(tramo.ZInferior, tramo.ZSuperior, cfg, paquete));
+    }
+
+    /// <summary>
+    /// Los tramos donde el estribo con sus menores no entra en la separación:
+    /// con alguno, la columna no se genera (opción D del plan del 10-nov,
+    /// docs/planes/2026-11-10-menores-omitidos-en-confinado.md). Antes el
+    /// generador dejaba ese tramo entero sin menores y solo lo avisaba al final.
+    /// </summary>
+    public static List<string> Bloqueos(
+        ColumnaContexto columna, IReadOnlyList<ConfigTramo?> tramos, ConfigLongitudinal longitudinal, Func<string?, TipoBarra?> barraDe)
+    {
+        var bloqueos = new List<string>();
+        foreach (Tramo tramo in columna.Tramos)
+        {
+            if (tramo.Tipo == TipoTramo.ContraZapata || tramo.Indice >= tramos.Count || tramos[tramo.Indice] is not ConfigTramo cfg) continue;
+            if (barraDe(cfg.TipoBarraNombre)?.DiametroMm is not double d) continue;
+
+            (PaqueteEstribos.Paquete paquete, RepartoEstribos.Resultado reparto) = Reparto(tramo, cfg, longitudinal, barraDe, d);
+            if (PaqueteEstribos.SeparacionQueNoEntra(reparto.Alturas, paquete) is double separacion)
+                bloqueos.Add($"Tramo {tramo.Indice + 1}: {PaqueteEstribos.MotivoNoEntra(separacion, paquete)}");
+        }
+        return bloqueos;
     }
 
     /// <summary>De los rótulos de <see cref="RepartoEstribos"/> a los de la página.</summary>

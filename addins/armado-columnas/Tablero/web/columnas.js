@@ -218,6 +218,7 @@
         </div>
         ${aviso ? html`<div class="aviso-flotante" role="status">${aviso}</div>` : null}
         ${v.generacion.pendiente ? this.dialogoChoques(v) : null}
+        ${(v.generacion.bloqueos || []).length ? this.dialogoBloqueos(v) : null}
         ${s.cuadro ? this.dialogoCuadro(v, o) : null}
         ${s.avisos && v.generacion.resultado ? this.dialogoAvisos(v.generacion.resultado.avisos) : null}
       </div>`;
@@ -750,6 +751,19 @@
           <div class="pie">
             <button type="button" class="boton" onClick=${() => { this.enviar({ tipo: 'cancelarGenerar' }); this.setState({ paso: 3 }); }}>Volver a revisar</button>
             <button type="button" class="boton primario" onClick=${() => this.enviar({ tipo: 'generar', borrarAjeno: this.state.borrarAjeno, aunConChoques: true })}>Generar igual</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // Lo que impide generar: sin «Generar igual» (opción D del plan del 10-nov, docs/planes/2026-11-10-menores-omitidos-en-confinado.md).
+    dialogoBloqueos(v) {
+      return html`<div class="velo" role="dialog" aria-modal="true" aria-labelledby="bloqueos-titulo">
+        <div class="dialogo">
+          <h2 id="bloqueos-titulo">No se puede generar todavía</h2>
+          <ul>${v.generacion.bloqueos.map((b) => html`<li>${b}</li>`)}</ul>
+          <div class="pie">
+            <button type="button" class="boton primario" onClick=${() => { this.enviar({ tipo: 'cancelarGenerar' }); this.setState({ paso: 2 }); }}>Volver a revisar</button>
           </div>
         </div>
       </div>`;
