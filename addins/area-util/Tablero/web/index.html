@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Área útil del lote</title>
+<!-- Tablero de tres columnas (decisión 4 del spec 2026-11-10-area-util-lote): datos, vista previa, resumen. -->
+<style>
+:root{--ink:#1F2933;--ink3:#5B6672;--line:#D0D5DB;--line2:#E4E7EB;--campo:#B9C0C8;--azul:#1F5FAD;--bien:#1E8E4E;--mal:#B42318;--amarillo:#8A5A00;--fondoAm:#FFF6DD}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#DDE1E6;font:13px/1.35 'Segoe UI',system-ui,sans-serif;color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.55}
+h2{margin:0;font-size:13px;font-weight:600}
+h3{margin:12px 0 6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.barra{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#fff;border-bottom:1px solid var(--line)}
+.barra .modelo{color:var(--ink3);margin-right:auto}
+.btn{height:32px;padding:0 12px;border:1px solid var(--campo);border-radius:6px;background:#fff;font-weight:500}
+.btn.azul{background:var(--azul);border-color:var(--azul);color:#fff;font-weight:600}
+#cuerpo{flex:1;min-height:0;display:grid;grid-template-columns:320px minmax(420px,1fr) 340px;gap:12px;padding:12px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-height:0}
+.titulo{padding:9px 12px;border-bottom:1px solid var(--line2)}
+.contenido{padding:4px 12px 12px;overflow:auto;flex:1}
+.fila{display:grid;grid-template-columns:1fr 110px;align-items:center;gap:8px;margin:4px 0}
+.fila label{color:var(--ink3)}
+input[type=number],select{height:30px;padding:0 6px;border:1px solid var(--campo);border-radius:6px;width:100%}
+.pestanas{display:flex;gap:4px;margin:8px 0}
+.pestanas button{flex:1;height:30px;border:1px solid var(--campo);background:#fff;border-radius:6px}
+.pestanas button.activa{background:var(--azul);border-color:var(--azul);color:#fff}
+table{width:100%;border-collapse:collapse}
+td,th{padding:2px 3px;text-align:left}
+td input{width:100%;height:26px;border:1px solid var(--campo);border-radius:4px;padding:0 4px}
+textarea{width:100%;height:70px;border:1px solid var(--campo);border-radius:6px;padding:6px;resize:vertical}
+#vista{flex:1;min-height:0;background:#FAFBFC}
+#vista svg{width:100%;height:100%;display:block}
+.lado{cursor:pointer}
+.lado:hover{stroke:#1F5FAD}
+.leyenda{display:flex;flex-wrap:wrap;gap:10px;padding:8px 12px;border-top:1px solid var(--line2);color:var(--ink3)}
+.leyenda span::before{content:"";display:inline-block;width:14px;height:3px;margin-right:4px;vertical-align:middle;background:var(--c)}
+.dato{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line2)}
+.dato b{font-variant-numeric:tabular-nums}
+.aviso{margin:6px 0;padding:8px;border-radius:6px;background:var(--fondoAm);color:var(--amarillo)}
+.aviso.bloquea{background:#FDECEA;color:var(--mal)}
+.aviso.bien{background:#E7F5EC;color:var(--bien)}
+.colores .fila{grid-template-columns:1fr 46px 56px}
+</style>
+</head>
+<body>
+<div class="barra">
+  <h2>Área útil del lote</h2><span class="modelo" id="modelo"></span>
+  <button class="btn" id="cerrar">Cerrar</button>
+</div>
+<div id="cuerpo">
+  <section class="panel">
+    <div class="titulo"><h2>Datos</h2></div>
+    <div class="contenido">
+      <h3>Lote</h3>
+      <div class="pestanas"><button id="modoRect" class="activa">Frente × fondo</button><button id="modoPuntos">Puntos</button></div>
+      <div id="datosRect">
+        <div class="fila"><label for="frente">Frente (m)</label><input id="frente" type="number" step="0.01" value="7"></div>
+        <div class="fila"><label for="fondo">Fondo (m)</label><input id="fondo" type="number" step="0.01" value="14"></div>
+      </div>
+      <div id="datosPuntos" hidden>
+        <table><thead><tr><th>#</th><th>X (m)</th><th>Y (m)</th><th>Z (m)</th><th></th></tr></thead><tbody id="tablaPuntos"></tbody></table>
+        <button class="btn" id="agregarPunto">+ Punto</button>
+        <h3>Pegar desde Excel o AutoCAD</h3>
+        <textarea id="pegar" placeholder="X   Y   Z (una fila por punto)"></textarea>
+        <div class="fila"><label for="coordenadas">Coordenadas</label>
+          <select id="coordenadas"><option value="compartidas">Compartidas (topografía)</option><option value="proyecto">Del proyecto</option></select></div>
+      </div>
+      <h3>Retiros (m)</h3>
+      <div class="fila"><label for="rFrontal">Frontal</label><input id="rFrontal" type="number" step="0.01" value="1.5"></div>
+      <div class="fila"><label for="rPosterior">Posterior</label><input id="rPosterior" type="number" step="0.01" value="2"></div>
+      <div class="fila"><label for="rIzquierdo">Lateral izquierdo</label><input id="rIzquierdo" type="number" step="0.01" value="1"></div>
+      <div class="fila"><label for="rDerecho">Lateral derecho</label><input id="rDerecho" type="number" step="0.01" value="1"></div>
+      <h3>Ficha de la curaduría</h3>
+      <div class="fila"><label for="imo">IMO</label><input id="imo" type="number" step="0.01"></div>
+      <div class="fila"><label for="imc">IMC</label><input id="imc" type="number" step="0.01"></div>
+      <div class="fila"><label for="pisos">Pisos</label><input id="pisos" type="number" step="1"></div>
+      <div class="fila"><label for="loteMinimo">Lote mínimo (m²)</label><input id="loteMinimo" type="number" step="0.01"></div>
+      <div class="fila"><label for="frenteMinimo">Frente mínimo (m)</label><input id="frenteMinimo" type="number" step="0.01"></div>
+      <h3>Lados del lote</h3>
+      <div id="lados"></div>
+      <h3>Nivel</h3>
+      <select id="nivel"></select>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="titulo"><h2>Vista previa</h2></div>
+    <div id="vista"></div>
+    <div class="leyenda" id="leyenda"></div>
+  </section>
+  <section class="panel">
+    <div class="titulo"><h2>Resumen y recomendaciones</h2></div>
+    <div class="contenido">
+      <div id="resumen"></div>
+      <div id="avisos"></div>
+      <h3>Colores en Revit</h3>
+      <div class="colores" id="colores"></div>
+      <button class="btn azul" id="generar" style="width:100%;margin-top:12px" disabled>Generar en Revit</button>
+    </div>
+  </section>
+</div>
+<script src="area-util.js"></script>
+</body>
+</html>
