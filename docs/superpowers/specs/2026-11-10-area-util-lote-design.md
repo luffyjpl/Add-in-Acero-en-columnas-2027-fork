@@ -65,9 +65,10 @@ previa con las áreas y los avisos, y genera en Revit el contorno del lote, las 
    área útil es el corte de los dos lados vecinos ya corridos. Así cada lado tiene su propio retiro, que es lo que pide
    la norma. Si el resultado se cruza, se invierte o desaparece, se avisa y no se genera (no se intenta repararlo en la
    versión 1).
-7. **Clasificación de los lados** (2026-11-10, Claude): el usuario marca un lado como frente. El posterior es el lado
+7. ~~**Clasificación de los lados** (2026-11-10, Claude): el usuario marca un lado como frente. El posterior es el lado
    cuya dirección es la más opuesta a la del frente, y el resto son laterales: izquierdo o derecho según el lado del
-   frente en que quedan. Cualquier lado se puede cambiar a mano. En frente × fondo, el frente es el lado sobre el eje X.
+   frente en que quedan. Cualquier lado se puede cambiar a mano. En frente × fondo, el frente es el lado sobre el eje X.~~
+   **Reemplazada** el 2026-11-11 por la decisión 19 del plan: cada lado se clasifica por hacia dónde mira.
 8. **Coordenadas** (2026-11-10, Claude; **por medir en Revit**): frente × fondo se dibuja desde el origen del proyecto.
    Los puntos se interpretan en coordenadas compartidas (las del punto de reconocimiento, que son las de la topografía)
    y se pasan a coordenadas internas con `ActiveProjectLocation.GetTotalTransform()` (medido el 2026-11-11: lleva de compartidas a internas; ver hallazgo 9 del plan). La Z se guarda y se muestra, pero

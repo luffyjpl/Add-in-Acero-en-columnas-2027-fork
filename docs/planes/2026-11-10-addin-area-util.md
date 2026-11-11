@@ -145,6 +145,30 @@ Siguen las del spec (1 a 9).
     - Coordenadas pegadas con separador de miles («1.200.000,50» o «1,200,000.50»), que es como Excel copia una celda
       con formato, se leen bien: el último separador es el decimal.
 
+18. **Elegir dónde se coloca el lote** (2026-11-11, usuario: opción A; sub-issue S7, #338). Solo frente × fondo:
+    X e Y (m, coordenadas internas de Revit, las mismas que da un clic) de la esquina izquierda del frente y el giro
+    del frente (°, antihorario desde el eje X). El rectángulo se mueve y gira en el protocolo, antes de calcular, así la
+    vista previa, las áreas y lo generado coinciden; el modo puntos no cambia. «Elegir en Revit»: se aparta la ventana,
+    se abre la planta del nivel si la vista activa no es una planta (`PickPoint` exige un plano de trabajo) y se piden
+    dos clics con `Selection.PickPoint(ObjectSnapTypes, mensaje)`, público en `RevitAPIUI.xml` 2026. Esc lanza
+    `OperationCanceledException`: se atrapa en el mismo trabajo para que la ventana vuelva. La cuenta va en
+    `calculo/Ubicacion.cs` con pruebas.
+
+19. **Cada lado se clasifica por hacia dónde mira** (2026-11-11, usuario: opción A; reemplaza la decisión 7 del spec).
+    En un lote en L, el escalón y el fondo real van igual de opuestos al frente, y la regla vieja (un solo posterior,
+    el más opuesto) se quedaba con el escalón: el fondo real salía lateral con 1 m en vez de 2. Ahora, con la normal
+    hacia afuera de cada lado: si mira más de 45° hacia el fondo (coseno con la dirección hacia adentro del frente
+    mayor que cos 45°) es **posterior**; si mira más de 45° hacia la calle, también es **frente** (un lote con
+    entrante en la fachada); si no, es **lateral derecho o izquierdo** según hacia qué costado mira. Puede haber más de
+    un posterior o ninguno (un triángulo con el frente en la base tiene dos laterales). Cualquier lado se sigue
+    cambiando a mano.
+
+20. **Lienzo libre: dibujar en Revit con clics** (2026-11-11, usuario: opción A; será la sub-issue S8). Como lo
+    describió Carlos (min 30–32): se aparta la ventana, una barra arriba («Deshacer punto», «Terminar», «Cancelar») y
+    clics en la planta con enganches; al terminar, los puntos pasan a la tabla de «Puntos». Antes de programarlo se
+    mide en Revit cómo convive el ciclo de `PickPoint` con la barra (regla del repo), y se acuerdan cómo se termina el
+    dibujo y si se ve el polígono mientras se dibuja.
+
 
 ## Plan paso a paso
 
@@ -2419,6 +2443,22 @@ PR (`.github/workflows/compilar.yml`).
   `utilidadcqeing-prog/…:main`. Después del merge, la etiqueta `area-util-v0.1.0` (anotada) publica la primera versión
   en el gestor.
 
+### Tarea 11 (S7, #338): elegir dónde se coloca el lote
+
+**Archivos:** crear `calculo/CQEING.AreaUtil.Calculo/Ubicacion.cs` y `calculo/CQEING.AreaUtil.Calculo.Tests/UbicacionTests.cs`;
+modificar `ProtocoloAreaUtil.cs` (campo `ubicacion`, mensaje `elegirUbicacion`, respuesta `ubicacion`),
+`Tablero/PuenteTablero.cs` (`ElegirUbicacion`), `Tablero/web/index.html` y `area-util.js` (grupo «Ubicación en Revit»).
+
+**Interfaces:** `sealed record Ubicacion(double X, double Y, double GiroGrados)` con `Punto Aplicar(Punto)`,
+`static Ubicacion Origen` y `static Ubicacion DesdeDosPuntos(Punto esquina, Punto haciaElFrente)`;
+`sealed record ElegirUbicacionAreaUtil(string NivelId) : MensajeAreaUtil`; `ProtocoloAreaUtil.UbicacionElegida(Ubicacion)`.
+
+- [ ] Pruebas que fallan: mover sin giro, girar 90°, dos clics a 90° y a 30°, dos clics en el mismo punto (giro 0),
+  el rectángulo ubicado y girado mide lo mismo (52.5 m² útiles), el modo puntos ignora la ubicación.
+- [ ] Implementar y ver las pruebas en verde; suite completa en verde.
+- [ ] Página y puente; `node --check`; compilar 2026 sin advertencias.
+- [ ] Probar en Revit (usuario): dos clics, Esc, X/Y/giro a mano.
+
 ## Cómo probarlo
 
 ```powershell
@@ -2431,6 +2471,58 @@ powershell -ExecutionPolicy Bypass -File tools/desplegar-local.ps1 -Addin area-u
 ```
 
 Lista en Revit: el paso 6 de las tareas 1, 8 y 9.
+
+### Lista de prueba visual completa (2026-11-11)
+
+Revit 2026 con una copia de `Prueba 080720sfsd26.0028`. Retiros por defecto: frontal 1.5, posterior 2, laterales 1.
+Al terminar, no guardar el modelo.
+
+| # | Qué | Cómo | Esperado |
+|---|---|---|---|
+| 1 | Abrir | CQEING → Lote → «Área útil del lote» | Ventana de tres columnas, el nombre del modelo arriba, niveles en la lista |
+| 2 | Cerrar con la X | X de la ventana | Se cierra y Revit sigue abierto |
+| 3 | Cerrar con «Cerrar» | Botón de la barra | Igual |
+| 4 | Botón dos veces | Pulsar el botón con la ventana abierta | Trae la misma ventana, no abre otra |
+| 5 | Rectángulo | 7 × 14 por defecto | 98 / 45,5 / 52,5 m², frente 7 m, área roja en la vista previa |
+| 6 | Cambiar el frente | Clic en el lado derecho de la vista previa | Ese lado queda azul; útil 42 m² |
+| 7 | Lado a mano | «Lados del lote»: lado 2 → Frente | Cambia el área útil |
+| 8 | Frente mínimo | Frente mínimo 8 | Aviso amarillo; «Generar» sigue activo |
+| 9 | Lote mínimo | Lote mínimo 120 | Aviso amarillo |
+| 10 | IMO | IMO 0,5 | Ocupación máx. 49 m² y aviso «manda el índice» |
+| 11 | IMC y pisos | IMC 1, pisos 2 | Construcción con los pisos 105 m² y aviso del IMC |
+| 12 | Pisos con decimales | Pisos 2,5 | Sigue calculando (toma 2) |
+| 13 | Ficha negativa | IMO -0,5 | Aviso «no se tuvo en cuenta» |
+| 14 | Retiros que se comen el lote | Laterales 4 y 4 | Aviso rojo y «Generar» desactivado |
+| 15 | Frente en 0 | Frente 0 | Aviso rojo «escriba frente y fondo mayores que cero» |
+| 16 | Ubicación con clics | «Elegir en Revit», dos clics | Vuelve la ventana con X, Y y giro; vista previa girada |
+| 17 | Ubicación: Esc | «Elegir en Revit» y Esc | Vuelve con «Se canceló» y nada cambia |
+| 18 | Ubicación a mano | X 10, Y 5, giro 30 | La vista previa gira; las áreas no cambian |
+| 19 | Puntos: rectángulo | Pegar `0 0 / 7 0 / 7 14 / 0 14` | Igual que el caso 5 |
+| 20 | Puntos: trapecio | `0 0 / 10 0 / 8 12 / 2 12` | 96 / 44,53 / 51,47 m² |
+| 21 | Puntos: lote en L | `0 0 / 12 0 / 12 8 / 6 8 / 6 16 / 0 16` | 144 / 67 / 77 m²; lados F, D, P, D, P, I |
+| 22 | Puntos: irregular | `0 0 / 9 -1 / 11 7 / 6 13 / -1 10` | 124 / 55,31 / 68,69 m²; los dos lados de arriba posteriores |
+| 23 | Excel con encabezado | Tres columnas con encabezado, copiadas | Ignora el encabezado |
+| 24 | Rótulo del punto | `P1 0 0 0` … | Ignora «P1» |
+| 25 | Coma decimal | `0;0 / 7,5;0 / 7,5;14 / 0;14` | 105 m² de lote |
+| 26 | Miles | `1.200.000,50⇥900.000,25` | Lo lee como un punto |
+| 27 | Fila basura | Una fila «hola» en medio | Aviso «Fila N: no se entiende» y el resto se lee |
+| 28 | Cierre del topógrafo | El primer punto repetido al final | Mismo resultado, sin lado de más |
+| 29 | Agregar y quitar | «+ Punto», editar una celda, «−» | La vista previa se actualiza |
+| 30 | Dos puntos | Quitar hasta dejar 2 | Aviso rojo y «Generar» desactivado |
+| 31 | Desorden | `0 0 / 7 14 / 7 0 / 0 14` | Aviso rojo «los lados del lote se cruzan» |
+| 32 | Coordenadas grandes | `1200000 900000 / 1200007 900000 / 1200007 900014 / 1200000 900014` y «Generar» | Vista previa bien; al generar, aviso «más de 30 km del origen» |
+| 33 | Generar | Caso 5, nivel N+0.00, desde la vista 3D | Se minimiza, abre la planta del nivel, líneas seleccionadas con zoom |
+| 34 | Estilos | Gestionar → Estilos de objeto → Líneas | Los cinco «CQ …» con sus colores |
+| 35 | Volver | Botón «Área útil del lote» | La ventana vuelve como estaba |
+| 36 | Regenerar | Otro frente y «Generar» | Reemplaza; no quedan líneas viejas |
+| 37 | Doble clic | «Generar» dos veces seguidas | Las líneas quedan una sola vez |
+| 38 | Ctrl+Z | Después de generar | Se deshace toda la generación de una vez |
+| 39 | Líneas a mano | Dibujar una línea de modelo y generar | La línea a mano no se borra |
+| 40 | Colores | Cambiar el color y el grosor del área útil y generar | «CQ Área útil» toma el color nuevo |
+| 41 | Nivel sin planta | Nivel N-0.65 (si no tiene planta) y generar | Se muestran en la vista activa, sin error |
+| 42 | Cerrar tras generar | Generar y cerrar enseguida | Revit sigue abierto |
+| 43 | Otro modelo | Abrir otro modelo con la ventana abierta y volver | Recarga modelo y niveles |
+| 44 | Cerrar el modelo | Cerrar el modelo con la ventana abierta | Aviso «No hay un modelo de proyecto abierto», sin error |
 
 ## Estado
 
@@ -2446,7 +2538,8 @@ Lista en Revit: el paso 6 de las tareas 1, 8 y 9.
 | S3 Medición en Revit | 7 | 2026-11-11 00:40 | 2026-11-11 00:42 | 2 min | ✅ Hallazgos 8 y 9; se corrigió el sentido de las coordenadas |
 | S4 Tablero de tres columnas | 8 | 2026-11-10 21:04 | 21:05 (código) | 1 min | Código listo; falta verlo en Revit |
 | S5 Generar en Revit | 9 | 2026-11-10 21:04 | 21:05 (código) + 2026-11-11 00:42 (coordenadas) | 1 min + corrección | Código listo y medido; falta probarlo en Revit |
-| S6 Depuración y cierre | 10 | | | | ⏳ |
+| S6 Depuración y cierre | 10 | 2026-11-11 | | | ⏳ Prueba visual de 44 pasos pasada (usuario, 11-nov); faltan PR y revisión final |
+| S7 Elegir dónde se coloca el lote | 11 | 2026-11-11 08:47 | 2026-11-11 09:51 | código 08:47–08:55; probado por el usuario | ✅ Dos clics, Esc, X/Y/giro a mano |
 
 Versión 2 (fuera de este plan): dibujo libre del lote, línea de propiedad en 2027, recordar los datos en el modelo,
 2.º piso y voladizos.
