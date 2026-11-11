@@ -34,6 +34,9 @@ public sealed record LeerPuntosAreaUtil(string Texto) : MensajeAreaUtil;
 /// <summary><paramref name="Compartidas"/>: los puntos vienen en coordenadas compartidas (decisión 8 del spec).</summary>
 public sealed record GenerarAreaUtil(EntradaLote Entrada, string NivelId, bool Compartidas, IReadOnlyList<EstiloLinea> Estilos) : MensajeAreaUtil;
 
+/// <summary>«Elegir en Revit» (decisión 18): dos clics en una planta de ese nivel.</summary>
+public sealed record ElegirUbicacionAreaUtil(string NivelId) : MensajeAreaUtil;
+
 public sealed record CerrarAreaUtil : MensajeAreaUtil;
 
 public sealed record DesconocidoAreaUtil : MensajeAreaUtil;
@@ -70,6 +73,7 @@ public static class ProtocoloAreaUtil
             "leerPuntos" => new LeerPuntosAreaUtil(e.Texto ?? ""),
             "generar" when !string.IsNullOrEmpty(e.NivelId) => new GenerarAreaUtil(Lote(e), e.NivelId,
                 e.Modo == "puntos" && e.Coordenadas == "compartidas", e.Estilos is { Count: > 0 } s ? s : EstilosLinea.PorDefecto),
+            "elegirUbicacion" => new ElegirUbicacionAreaUtil(e.NivelId ?? ""),
             "cerrar" => new CerrarAreaUtil(),
             _ => new DesconocidoAreaUtil(),
         };
@@ -78,9 +82,11 @@ public static class ProtocoloAreaUtil
     private static EntradaLote Lote(Entrada e)
     {
         // Frente o fondo en 0 o negativos no son un lote (un negativo lo dibujaría espejado): sin puntos, el cálculo avisa.
+        // El rectángulo se ubica aquí (decisión 18): la vista previa, las áreas y lo generado usan el mismo lote.
+        var ubicacion = e.Ubicacion is { } u ? new Ubicacion(u.X, u.Y, u.Giro) : Ubicacion.Origen;
         IReadOnlyList<Punto> puntos = e.Modo == "puntos"
             ? (e.Puntos ?? []).Select(p => new Punto(p.X, p.Y)).ToList()
-            : e.Frente > 0 && e.Fondo > 0 ? Poligono.Rectangulo(e.Frente.Value, e.Fondo.Value).Vertices : [];
+            : e.Frente > 0 && e.Fondo > 0 ? Poligono.Rectangulo(e.Frente.Value, e.Fondo.Value).Vertices.Select(ubicacion.Aplicar).ToList() : [];
         List<TipoLado>? tipos = e.Tipos?.Select(t => Enum.TryParse(t, out TipoLado tipo) ? tipo : (TipoLado?)null).ToList() is { } leidos
             && leidos.All(t => t is not null) ? leidos.Select(t => t!.Value).ToList() : null;
         RetirosJson r = e.Retiros ?? new RetirosJson();
@@ -108,6 +114,8 @@ public static class ProtocoloAreaUtil
 
     public static string Generado(int lineas) => Escribir(new { tipo = "generado", lineas });
 
+    public static string UbicacionElegida(Ubicacion u) => Escribir(new { tipo = "ubicacion", x = u.X, y = u.Y, giro = u.GiroGrados });
+
     public static string Aviso(string texto, bool bien = false) => Escribir(new { tipo = "aviso", texto, bien });
 
     private static string Escribir<T>(T valor) => JsonSerializer.Serialize(valor, Json);
@@ -127,6 +135,14 @@ public static class ProtocoloAreaUtil
         public string? Coordenadas { get; set; }
         public List<EstiloLinea>? Estilos { get; set; }
         public string? Texto { get; set; }
+        public UbicacionJson? Ubicacion { get; set; }
+    }
+
+    private sealed class UbicacionJson
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Giro { get; set; }
     }
 
     private sealed class PuntoJson

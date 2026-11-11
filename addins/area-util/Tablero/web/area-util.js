@@ -40,6 +40,7 @@ function entrada() {
       imo: numero('imo'), imc: numero('imc'), pisos: numero('pisos'),
       loteMinimo: numero('loteMinimo'), frenteMinimo: numero('frenteMinimo'),
     },
+    ubicacion: { x: numero('ubX') ?? 0, y: numero('ubY') ?? 0, giro: numero('ubGiro') ?? 0 },
     nivelId: $('nivel').value,
     coordenadas: $('coordenadas').value,
     estilos: estado.estilos,
@@ -221,6 +222,12 @@ window.chrome?.webview?.addEventListener('message', e => {
     $('avisos').insertAdjacentHTML('afterbegin', d.errores.map(t => `<div class="aviso">${t}</div>`).join(''));
   } else if (d.tipo === 'aviso') {
     $('avisos').insertAdjacentHTML('afterbegin', `<div class="aviso ${d.bien ? 'bien' : ''}">${d.texto}</div>`);
+  } else if (d.tipo === 'ubicacion') {
+    // Redondeo al milímetro y a la décima de grado: los clics traen muchos decimales.
+    $('ubX').value = d.x.toFixed(3);
+    $('ubY').value = d.y.toFixed(3);
+    $('ubGiro').value = d.giro.toFixed(1);
+    calcular();
   } else if (d.tipo === 'generado') {
     $('avisos').insertAdjacentHTML('afterbegin', `<div class="aviso bien">Listo: ${d.lineas} líneas en Revit, seleccionadas en la planta del nivel. Ctrl+Z las deshace. Esta ventana vuelve con el botón «Área útil del lote».</div>`);
   }
@@ -230,6 +237,7 @@ $('modoRect').addEventListener('click', () => cambiarModo('rectangulo'));
 $('modoPuntos').addEventListener('click', () => cambiarModo('puntos'));
 document.querySelectorAll('#datosRect input, .contenido > .fila input, #nivel, #coordenadas').forEach(el => el.addEventListener('input', calcular));
 $('generar').addEventListener('click', () => enviar({ tipo: 'generar', ...entrada() }));
+$('elegirUbicacion').addEventListener('click', () => enviar({ tipo: 'elegirUbicacion', nivelId: $('nivel').value }));
 $('cerrar').addEventListener('click', () => enviar({ tipo: 'cerrar' }));
 
 pintarPuntos();

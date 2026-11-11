@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
+using Autodesk.Revit.UI.Selection;
 using CQEING.AreaUtil.Calculo;
 using CQEING.AreaUtil.Revit;
 
@@ -93,7 +94,49 @@ internal sealed class PuenteTablero
         }
         if (mensaje is GenerarAreaUtil g)
             Generar(doc, g);
+        else if (mensaje is ElegirUbicacionAreaUtil u)
+            ElegirUbicacion(doc, u);
     }
+
+    private const ObjectSnapTypes Enganches =
+        ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Midpoints | ObjectSnapTypes.Nearest;
+
+    /// <summary>
+    /// Decisión 18: dos clics en una planta (la esquina izquierda del frente y hacia dónde va el frente). PickPoint
+    /// exige un plano de trabajo, por eso se abre la planta del nivel si la vista activa no es una planta.
+    /// </summary>
+    private void ElegirUbicacion(Document doc, ElegirUbicacionAreaUtil m)
+    {
+        if (uiapp.ActiveUIDocument is not UIDocument uidoc)
+            return;
+        ventana.Apartar();
+        try
+        {
+            if (uidoc.ActiveView is not ViewPlan && long.TryParse(m.NivelId, out long id)
+                && doc.GetElement(new ElementId(id)) is Level nivel && Planta(doc, nivel) is ViewPlan planta)
+                uidoc.ActiveView = planta;
+            if (uidoc.ActiveView is not ViewPlan)
+            {
+                ventana.Enviar(ProtocoloAreaUtil.Aviso("Abra una planta para elegir dónde va el lote: el nivel elegido no tiene ninguna."));
+                return;
+            }
+            XYZ esquina = uidoc.Selection.PickPoint(Enganches, "Área útil del lote: clic en la esquina izquierda del frente (Esc cancela).");
+            XYZ hacia = uidoc.Selection.PickPoint(Enganches, "Área útil del lote: clic hacia donde va el frente (Esc cancela).");
+            Ubicacion u = Ubicacion.DesdeDosPuntos(new Punto(Metros(esquina.X), Metros(esquina.Y)), new Punto(Metros(hacia.X), Metros(hacia.Y)));
+            ventana.Enviar(ProtocoloAreaUtil.UbicacionElegida(u));
+        }
+        catch (Autodesk.Revit.Exceptions.OperationCanceledException)
+        {
+            // Esc: se atrapa aquí, no en AccionesRevit, para que la ventana vuelva.
+            ventana.Enviar(ProtocoloAreaUtil.Aviso("Se canceló: la ubicación no cambió."));
+        }
+        finally
+        {
+            ventana.Volver();
+        }
+    }
+
+    private static double Metros(double pies) => UnitUtils.ConvertFromInternalUnits(pies, UnitTypeId.Meters);
 
     private void Recargar(UIApplication app)
     {
