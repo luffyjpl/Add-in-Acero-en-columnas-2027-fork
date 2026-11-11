@@ -21,42 +21,31 @@ public sealed record Retiros(double Frontal, double Posterior, double LateralIzq
     };
 }
 
-/// <summary>Decisión 7 del spec: el usuario marca el frente y el resto se deduce; luego se puede cambiar a mano.</summary>
+/// <summary>
+/// Decisión 19 del plan: el usuario marca el frente y cada otro lado se clasifica por hacia dónde mira; luego se
+/// puede cambiar a mano. En un lote en L el escalón y el fondo real miran los dos hacia atrás: los dos son posteriores.
+/// </summary>
 public static class LadosLote
 {
+    /// <summary>Un lado que mira más de 45° hacia el fondo (o hacia la calle) deja de ser lateral.</summary>
+    private static readonly double Coseno45 = Math.Sqrt(0.5);
+
     public static TipoLado[] Clasificar(Poligono lote, int frente)
     {
         int n = lote.Lados;
         frente = ((frente % n) + n) % n;
-        (Punto fa, Punto fb) = lote.Lado(frente);
-        Punto direccion = (fb - fa).Unitario();
-        Punto adentro = lote.NormalAdentro(frente);
+        Punto haciaElFondo = lote.NormalAdentro(frente);
         // Quien está en la calle mirando hacia el lote tiene la derecha girando 90° en sentido horario.
-        var derecha = new Punto(adentro.Y, -adentro.X);
-        Punto medioFrente = (fa + fb) * 0.5;
-
-        int posterior = -1;
-        double masOpuesto = double.MaxValue;
-        for (int i = 0; i < n; i++)
-        {
-            if (i == frente)
-                continue;
-            (Punto a, Punto b) = lote.Lado(i);
-            double coseno = direccion.Escalar((b - a).Unitario());
-            if (coseno < masOpuesto)
-            {
-                masOpuesto = coseno;
-                posterior = i;
-            }
-        }
+        var derecha = new Punto(haciaElFondo.Y, -haciaElFondo.X);
 
         var tipos = new TipoLado[n];
         for (int i = 0; i < n; i++)
         {
-            (Punto a, Punto b) = lote.Lado(i);
-            tipos[i] = i == frente ? TipoLado.Frente
-                : i == posterior ? TipoLado.Posterior
-                : ((a + b) * 0.5 - medioFrente).Escalar(derecha) > 0 ? TipoLado.LateralDerecho
+            Punto afuera = -lote.NormalAdentro(i);
+            double haciaAtras = afuera.Escalar(haciaElFondo);
+            tipos[i] = i == frente || haciaAtras < -Coseno45 ? TipoLado.Frente
+                : haciaAtras > Coseno45 ? TipoLado.Posterior
+                : afuera.Escalar(derecha) > 0 ? TipoLado.LateralDerecho
                 : TipoLado.LateralIzquierdo;
         }
         return tipos;
