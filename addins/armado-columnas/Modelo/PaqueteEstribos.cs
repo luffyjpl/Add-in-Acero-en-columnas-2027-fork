@@ -131,4 +131,27 @@ public static class PaqueteEstribos
         for (int i = 0; i < posiciones; i++)
             yield return zInicio + i * separacion;
     }
+
+    /// <summary>
+    /// La separación más chica entre dos estribos seguidos de
+    /// <paramref name="alturas"/> (metros), si el paquete con sus menores no
+    /// entra en ella; null si entra o si no hay menores. Es la misma cuenta
+    /// con la que <c>GeneradorLongitudinal</c> deja un tramo sin menores; la
+    /// ventana la usa para no dejar generar (opción D del plan del 10-nov,
+    /// docs/planes/2026-11-10-menores-omitidos-en-confinado.md).
+    /// </summary>
+    public static double? SeparacionQueNoEntra(IReadOnlyList<double> alturas, Paquete paquete)
+    {
+        if (paquete.Piezas.Count == 0 || alturas.Count < 2) return null;
+
+        List<double> ordenadas = alturas.OrderBy(z => z).ToList();
+        double minima = ordenadas.Zip(ordenadas.Skip(1), (a, b) => b - a).Min();
+        return minima < paquete.Alto - 1e-6 ? minima : null;
+    }
+
+    /// <summary>Por qué no entra, y qué hacer, para la ventana (medidas en metros).</summary>
+    public static string MotivoNoEntra(double separacion, Paquete paquete) =>
+        $"el estribo con sus grapas encima y debajo ocupa {paquete.Alto * 100:0.#} cm y la separación es de " +
+        $"{separacion * 100:0.#} cm: no entran. Sube la separación a {Math.Ceiling(paquete.Alto * 100 - 1e-6):0} cm o más, " +
+        "o cambia las grapas.";
 }
