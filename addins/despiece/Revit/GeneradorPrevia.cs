@@ -1955,6 +1955,11 @@ internal static class GeneradorPrevia
         Importados.Ocultar(doc, vista);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_Sections), true);
         vista.SetCategoryHidden(new ElementId(BuiltInCategory.OST_SectionBox), true);
+        // Las líneas verdes: planos de referencia que dejaron versiones viejas del despiece en el modelo. Ninguna cota
+        // depende de ellos desde la 0.8.0 (ReferenciaEnVista); plan 2026-11-11-despiece-ocultar-planos.
+        var planos = new ElementId(BuiltInCategory.OST_CLines);
+        if (vista.CanCategoryBeHidden(planos))
+            vista.SetCategoryHidden(planos, true);
     }
 
     /// <summary>

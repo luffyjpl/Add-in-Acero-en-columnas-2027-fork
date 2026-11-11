@@ -445,7 +445,8 @@ internal static class GeneradorColumna
             vista.HideElements(ocultar);
         Importados.Ocultar(doc, vista);
         foreach (BuiltInCategory c in new[] { BuiltInCategory.OST_Sections, BuiltInCategory.OST_SectionBox, BuiltInCategory.OST_Levels,
-            BuiltInCategory.OST_Grids, BuiltInCategory.OST_Elev })
+            BuiltInCategory.OST_Grids, BuiltInCategory.OST_Elev,
+            BuiltInCategory.OST_CLines })  // planos de referencia viejos: plan 2026-11-11-despiece-ocultar-planos
         {
             if (vista.CanCategoryBeHidden(new ElementId(c)))
                 vista.SetCategoryHidden(new ElementId(c), true);
