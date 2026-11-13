@@ -109,6 +109,16 @@ la cubre:
     de Revit fuera del contexto de la API lanza, y dentro de un evento de WPF nadie lo atrapa. Zapatas lo envuelve en
     `try/catch`. Corrección (decisión 15): el cierre se cancela en `Closing` y se repite desde la cola de Revit, donde
     se quitan los eventos; si Revit destruye la ventana al cerrarse, `Soltar` lo intenta dentro de un `try`.
+11. (2026-11-12, prueba del usuario: «en la planta no se ve, en 3D sí») El journal `journal.0016.txt` muestra que 6 de
+    las 7 generaciones dejaron activa «Floor Plan: N-0.65»: las líneas se generaron en la **cimentación**. Con el
+    add-in abierto desde la vista 3D, el nivel por defecto era el más bajo del modelo (`GenLevel` de una vista 3D es
+    null). En la planta «N+0.00 Piso 1» no se ven porque quedan 0,65 m por debajo de su rango de vista. Ver decisión 23.
+12. (2026-11-12, medición de la decisión 22, `diagnostico-dibujo.txt`) En dos corridas (N+0.00 y N-0.65): los clics
+    con `PickPoint` y las líneas temporales funcionan; el clic sobre el primer punto cierra; un doble clic se ignora;
+    el `RollBack` no deja rastro (84 → 84 y 90 → 90 líneas de modelo). Los botones de la barra («Deshacer punto»,
+    «Cancelar») y la tecla Esc quedaron sin registro en el diagnóstico; se probaron después con la versión final (pasos
+    53 a 55 de la lista, usuario, 2026-11-12): funcionan. No quedó anotado cuál de los dos envíos de Esc de la barra
+    (`PostMessage` o teclado) corta el clic; la barra prueba los dos. El comando de diagnóstico se quitó al cerrar S8.
 
 ## Decisiones
 
@@ -168,6 +178,36 @@ Siguen las del spec (1 a 9).
     clics en la planta con enganches; al terminar, los puntos pasan a la tabla de «Puntos». Antes de programarlo se
     mide en Revit cómo convive el ciclo de `PickPoint` con la barra (regla del repo), y se acuerdan cómo se termina el
     dibujo y si se ve el polígono mientras se dibuja.
+
+21. **Cómo se dibuja el lote a mano** (2026-11-11, usuario: 1-A y 2-A; S8, #339). Termina con **Esc** o con un clic
+    sobre el primer punto (con 3 puntos o más); la barra trae «Deshacer punto» y «Cancelar». Mientras se dibuja, cada
+    tramo es una línea de modelo temporal dentro de un `TransactionGroup` que se deshace al final (`RollBack`): no
+    queda nada en el modelo ni en Ctrl+Z. Los puntos pasan a la tabla en coordenadas del proyecto.
+22. **Medición con un comando de diagnóstico, no con el MCP** (2026-11-11, Claude): el MCP ejecuta su código dentro de
+    una transacción propia y no recibe clics en una barra. `ComandoDiagnosticoDibujo` (solo en Debug) usa el mismo
+    `DibujoLibre` y la misma barra que la versión final y anota en `%AppData%\CQEING\area-util\diagnostico-dibujo.txt`
+    cada clic, cada Esc y cada botón de la barra, con la hora. Lo que se mide: (1) si los botones de la barra reciben
+    el clic mientras `PickPoint` espera; (2) si el botón logra cortar ese `PickPoint` mandando Esc a Revit, con
+    `PostMessage` o con `SetForegroundWindow` + `keybd_event`; (3) si las líneas temporales se ven y si el
+    `RollBack` no deja rastro (líneas de modelo antes y después, y Ctrl+Z).
+
+23. **El nivel por defecto es el primer piso, y se ve** (2026-11-12, Claude, por el hallazgo 11): el de la planta
+    activa; si no hay planta activa, el primero a cota 0 o más arriba; si todos están bajo cero, el más alto
+    (`NivelesLote.PorDefecto`, con pruebas). El botón dice «Generar en <nivel>». Después de generar, si las líneas no se
+    ven en la planta que se abrió (plantilla que oculta Líneas o rango de vista), se avisa qué revisar.
+
+24. **Paquete de uso diario** (2026-11-12, usuario: opción A del repaso de uso). Seis arreglos para que el add-in sea
+    práctico en el trabajo de una arquitecta:
+    1. **Recordar los datos por modelo**: la página guarda lo escrito (lote, ubicación, puntos, retiros, ficha, nivel,
+       colores) en su almacenamiento local con el nombre del modelo, como zapatas, y lo trae al volver a abrir.
+    2. **Retiros vacíos de entrada**, sin valores de ejemplo. Un retiro vacío se toma como 0 con un aviso amarillo que
+       dice cuáles faltan (`EntradaLote.RetirosVacios`, con pruebas); escribir 0 no avisa.
+    3. **Barra «Volver al add-in»** arriba del dibujo cuando la ventana se minimiza al generar: un clic la trae de
+       vuelta, sin buscar el botón de la cinta. Es solo interfaz, no llama a la API de Revit.
+    4. **Ventana más chica** (1180 × 760 como máximo) para ver el modelo detrás; se puede agrandar.
+    5. **«Vía pública»** rotulada junto al frente en la vista previa, y la explicación de izquierda y derecha
+       (mirando el lote desde la calle) bajo «Lados del lote».
+    6. **Botón «Leer puntos»** junto al cuadro de pegar, para cuando se escribe a mano en él.
 
 
 ## Plan paso a paso
@@ -2459,6 +2499,19 @@ modificar `ProtocoloAreaUtil.cs` (campo `ubicacion`, mensaje `elegirUbicacion`, 
 - [ ] Página y puente; `node --check`; compilar 2026 sin advertencias.
 - [ ] Probar en Revit (usuario): dos clics, Esc, X/Y/giro a mano.
 
+### Tarea 12 (S8, #339): dibujo libre del lote
+
+**Archivos:** crear `Revit/DibujoLibre.cs` (el ciclo de clics, las líneas temporales y la cuenta del cierre),
+`Tablero/BarraDibujo.cs` (la barra), `Revit/ComandoDiagnosticoDibujo.cs` (solo Debug); modificar `AppAreaUtil.cs`
+(botón de diagnóstico en Debug). Después: `calculo/CierreDibujo.cs` con pruebas, el mensaje `dibujarLote` en el
+protocolo, el puente y el botón «Dibujar en Revit» de la página.
+
+- [ ] Medición (decisión 22): desplegar Debug, correr «Diagnóstico de dibujo» en una planta, anotar el resultado en
+  Hallazgos.
+- [ ] Pruebas del cierre y de los puntos repetidos, en rojo y luego en verde.
+- [ ] Barra, puente y página; compilar 2026 sin advertencias; suite en verde.
+- [ ] Prueba del usuario en Revit (lista de la sub-issue #339).
+
 ## Cómo probarlo
 
 ```powershell
@@ -2523,6 +2576,17 @@ Al terminar, no guardar el modelo.
 | 42 | Cerrar tras generar | Generar y cerrar enseguida | Revit sigue abierto |
 | 43 | Otro modelo | Abrir otro modelo con la ventana abierta y volver | Recarga modelo y niveles |
 | 44 | Cerrar el modelo | Cerrar el modelo con la ventana abierta | Aviso «No hay un modelo de proyecto abierto», sin error |
+| 45 | Nivel por defecto | Abrir el add-in desde la vista 3D | El botón dice «Generar en N+0.00 Piso 1 (0,00 m)», no la cimentación |
+| 46 | Líneas en la planta | Generar y abrir la planta N+0.00 Piso 1 | Las líneas se ven en la planta |
+| 47 | Retiros vacíos | Abrir el add-in en un modelo nuevo | Retiros vacíos y aviso amarillo «Faltan los retiros … se toman como 0» |
+| 48 | Recordar los datos | Llenar, cerrar el add-in y volver a abrirlo | Vuelven el lote, los retiros, la ficha, el nivel y los colores |
+| 49 | Volver al add-in | Generar | Aparece arriba «Lote generado en … · Volver al add-in»; un clic trae la ventana y la barra se va |
+| 50 | Ventana más chica | Abrir el add-in | Se ve Revit alrededor; la ventana se puede agrandar |
+| 51 | Vía pública | Vista previa | «Vía pública» del lado de afuera del frente; se mueve al cambiar el frente |
+| 52 | Leer puntos | Escribir `0 0` / `7 0` / `7 14` / `0 14` en el cuadro y pulsar «Leer puntos» | Los puntos pasan a la tabla y el cuadro queda vacío |
+| 53 | Dibujo: Deshacer | «Dibujar en Revit», 3 clics y «Deshacer punto» en la barra | Se borra el último tramo y se sigue dibujando |
+| 54 | Dibujo: Cancelar | «Dibujar en Revit», 2 clics y «Cancelar» | Aviso «Se canceló», la tabla no cambia |
+| 55 | Dibujo: Esc | «Dibujar en Revit», 4 clics y Esc | Los 4 puntos pasan a la tabla |
 
 ## Estado
 
@@ -2538,7 +2602,8 @@ Al terminar, no guardar el modelo.
 | S3 Medición en Revit | 7 | 2026-11-11 00:40 | 2026-11-11 00:42 | 2 min | ✅ Hallazgos 8 y 9; se corrigió el sentido de las coordenadas |
 | S4 Tablero de tres columnas | 8 | 2026-11-10 21:04 | 21:05 (código) | 1 min | Código listo; falta verlo en Revit |
 | S5 Generar en Revit | 9 | 2026-11-10 21:04 | 21:05 (código) + 2026-11-11 00:42 (coordenadas) | 1 min + corrección | Código listo y medido; falta probarlo en Revit |
-| S6 Depuración y cierre | 10 | 2026-11-11 | | | ⏳ Prueba visual de 44 pasos pasada (usuario, 11-nov); faltan PR y revisión final |
+| S6 Depuración y cierre | 10 | 2026-11-11 | | | ⏳ Lista de prueba de 55 pasos pasada (usuario, 11 y 12-nov); falta pasar el PR #340 a listo para revisión |
+| S8 Dibujo libre del lote | 12 | 2026-11-11 10:13 | 2026-11-12 19:53 | código 2026-11-12 18:40–19:20; probado por el usuario | ✅ Clics, cierre, Deshacer, Cancelar, Esc; sin rastro |
 | S7 Elegir dónde se coloca el lote | 11 | 2026-11-11 08:47 | 2026-11-11 09:51 | código 08:47–08:55; probado por el usuario | ✅ Dos clics, Esc, X/Y/giro a mano |
 
 Versión 2 (fuera de este plan): dibujo libre del lote, línea de propiedad en 2027, recordar los datos en el modelo,

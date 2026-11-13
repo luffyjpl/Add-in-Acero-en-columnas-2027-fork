@@ -4,8 +4,7 @@ Add-in de Revit 2026 y 2027 (pestaña **CQEING → Lote**). Con los datos de la 
 contorno del lote, las líneas de retiro y el **área útil del primer piso**: lo que hoy se hace en Excel y después a mano
 en AutoCAD o Revit.
 
-> Versión 1. Dibujo libre del lote (clics en Revit), 2.º piso con voladizos y recordar los datos en el modelo llegan en
-> versiones siguientes.
+> Versión 1. El 2.º piso con voladizos, varios lotes por modelo y los lotes curvos llegan en versiones siguientes.
 
 ## Antes de empezar
 
@@ -22,7 +21,8 @@ Pestaña **CQEING → panel Lote → Área útil del lote**. La ventana tiene tr
 | **Vista previa** (centro) | El lote (negro), los tramos de retiro (naranjas) y el área útil (roja), con el largo de cada lado |
 | **Resumen y recomendaciones** (derecha) | Las áreas, lo que permite la ficha, los avisos, los colores y el botón **Generar en Revit** |
 
-Todo se recalcula al escribir: no hay que pulsar nada para ver el resultado.
+Todo se recalcula al escribir: no hay que pulsar nada para ver el resultado. Lo escrito se **recuerda por modelo**: al
+volver a abrir el add-in en el mismo proyecto, el lote, los retiros, la ficha, el nivel y los colores siguen ahí.
 
 ## Paso a paso
 
@@ -45,15 +45,25 @@ Todo se recalcula al escribir: no hay que pulsar nada para ver el resultado.
      de miles; una fila de encabezado y un rótulo por punto (P1, P2…).
    - Si una fila no se entiende, se avisa con su número y el resto se lee.
    - Si el primer punto se repite al final (como lo cierran los topógrafos), no pasa nada.
-2. También se puede escribir en la tabla: **+ Punto** agrega una fila y **−** la quita.
+2. También se puede escribir en la tabla (**+ Punto** agrega una fila y **−** la quita) o escribir en el cuadro de
+   pegar y pulsar **Leer puntos**.
 3. **Coordenadas**: «Compartidas (topografía)» si los puntos vienen del topógrafo; «Del proyecto» si son medidas de
    Revit.
 
-> El cuadro de pegar solo reacciona al pegar (Ctrl+V). Para escribir a mano, use la tabla.
+**Lote dibujado a mano** (pestaña **Puntos** → **Dibujar en Revit**), para levantamientos en obra sin medidas:
+
+1. La ventana se minimiza y Revit abre la planta del nivel. Arriba aparece una barra.
+2. Dé un clic en cada esquina del lote; se engancha a muros, CAD y ejes, y cada tramo se ve mientras dibuja.
+3. Termine con un **clic sobre el primer punto** o con **Esc** (hacen falta 3 esquinas o más). **Deshacer punto** quita
+   la última esquina y **Cancelar** sale sin cambiar nada.
+4. Los puntos pasan a la tabla, con «Coordenadas: del proyecto». Las líneas del dibujo se borran solas: no queda nada
+   en el modelo ni en Ctrl+Z.
 
 ### 2. El frente y los lados
 
-- El **frente** se marca en **azul** en la vista previa. Para cambiarlo, **haga clic en otro lado**.
+- El **frente** se marca en **azul** en la vista previa, con **Vía pública** del lado de afuera. Para cambiarlo, **haga
+  clic en otro lado**.
+- **Izquierda y derecha** se miran desde la calle, de frente al lote.
 - Los demás lados se clasifican solos **según hacia dónde miran**: los que miran hacia el fondo son **posteriores**
   (en un lote en L pueden ser dos), los que miran a un costado son **laterales izquierdo o derecho**, y los que miran
   a la calle también son **frente**.
@@ -61,7 +71,8 @@ Todo se recalcula al escribir: no hay que pulsar nada para ver el resultado.
 
 ### 3. Los retiros y la ficha
 
-1. **Retiros** (m): frontal, posterior, lateral izquierdo y lateral derecho, como los da la ficha.
+1. **Retiros** (m): frontal, posterior, lateral izquierdo y lateral derecho, como los da la ficha. Arrancan vacíos: un
+   retiro vacío se toma como 0 y se avisa; si el retiro es 0, escriba 0.
 2. **Ficha de la curaduría** (opcional): IMO, IMC, pisos, lote mínimo y frente mínimo. Lo que se deje vacío no genera
    avisos.
 
@@ -85,11 +96,13 @@ Todo se recalcula al escribir: no hay que pulsar nada para ver el resultado.
 
 ### 5. Generar en Revit
 
-1. Elija el **nivel** donde va el lote.
+1. Elija el **nivel** donde va el lote. Se propone el de la planta abierta o, si no, el primer piso (cota 0). El botón
+   dice dónde se va a generar: **Generar en N+0.00 Piso 1**.
 2. Si quiere, cambie el **color** y el **grosor** de cada estilo en **Colores en Revit**.
 3. Pulse **Generar en Revit**. La ventana se minimiza, Revit abre la planta del nivel y deja **seleccionadas** las
    líneas creadas.
-4. Para volver a la ventana, pulse otra vez el botón **Área útil del lote** de la cinta.
+4. Para volver a la ventana, pulse **Volver al add-in** en la barra que aparece arriba del dibujo, o el botón
+   **Área útil del lote** de la cinta.
 
 Lo que queda en el modelo son **líneas de modelo** con estos estilos (Gestionar → Estilos de objeto → Líneas):
 
@@ -108,8 +121,10 @@ Lo que queda en el modelo son **líneas de modelo** con estos estilos (Gestionar
   están en desorden. El aviso dice cuál.
 - **El lote quedó lejos del modelo.** Si eligió «Compartidas», revise que el punto de reconocimiento del modelo esté
   bien ubicado; si el lote queda a más de 30 km del origen, el add-in avisa y no genera.
-- **No veo las líneas.** Revise que la planta del nivel elegido no oculte la categoría Líneas o los estilos «CQ …».
-- **El nivel no tiene planta.** Las líneas se generan igual y se muestran en la vista activa.
+- **No veo las líneas en la planta.** Revise que se generaron en el nivel de esa planta (el botón lo dice). Si están en
+  ese nivel y no se ven, el add-in avisa: revise en Visibilidad/Gráficos la categoría Líneas y los estilos «CQ …».
+- **El nivel no tiene planta.** Las líneas se generan igual y se muestran en la vista activa. Para dibujar a mano o
+  elegir la ubicación con clics hace falta una planta.
 
 ## Para quien mantiene el add-in
 
