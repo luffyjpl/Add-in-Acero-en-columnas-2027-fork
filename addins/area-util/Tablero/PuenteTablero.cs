@@ -22,6 +22,8 @@ internal sealed class PuenteTablero
     private bool cerrando;
     /// <summary>Los eventos de Revit ya se quitaron.</summary>
     private bool soltado;
+    /// <summary>La barrita «Volver al add-in» mientras la ventana está minimizada después de generar (decisión 24).</summary>
+    private BarraVolver? volver;
 
     public PuenteTablero(VentanaTablero ventana, UIApplication uiapp)
     {
@@ -33,7 +35,33 @@ internal sealed class PuenteTablero
         uiapp.ViewActivated += AlActivarVista;
         uiapp.Application.DocumentClosing += AlCerrarDocumento;
         ventana.Closing += AlPedirCierre;
-        ventana.Closed += (_, _) => Soltar();
+        ventana.Closed += (_, _) =>
+        {
+            volver?.Close();
+            Soltar();
+        };
+        // Vuelva como vuelva la ventana (la barrita o el botón de la cinta), la barrita sobra.
+        ventana.StateChanged += (_, _) =>
+        {
+            if (ventana.WindowState != System.Windows.WindowState.Minimized)
+                volver?.Close();
+        };
+    }
+
+    /// <summary>Solo dentro de un trabajo de Revit: lee el área de dibujo para ubicar la barrita.</summary>
+    private void MostrarVolver(string texto)
+    {
+        volver?.Close();
+        Autodesk.Revit.DB.Rectangle area = uiapp.DrawingAreaExtents;
+        var barra = new BarraVolver(uiapp.MainWindowHandle, (area.Left, area.Top, area.Right, area.Bottom), texto);
+        barra.Volver += () => ventana.Volver();
+        barra.Closed += (_, _) =>
+        {
+            if (volver == barra)
+                volver = null;
+        };
+        volver = barra;
+        barra.Show();
     }
 
     /// <summary>
@@ -96,6 +124,54 @@ internal sealed class PuenteTablero
             Generar(doc, g);
         else if (mensaje is ElegirUbicacionAreaUtil u)
             ElegirUbicacion(doc, u);
+        else if (mensaje is DibujarLoteAreaUtil d)
+            Dibujar(doc, d);
+    }
+
+    /// <summary>
+    /// Decisión 21: el lote a mano, con clics en la planta del nivel, la barra arriba y las líneas temporales. Al
+    /// terminar, los puntos pasan a la tabla de la página en coordenadas del proyecto.
+    /// </summary>
+    private void Dibujar(Document doc, DibujarLoteAreaUtil m)
+    {
+        if (uiapp.ActiveUIDocument is not UIDocument uidoc)
+            return;
+        ventana.Apartar();
+        BarraDibujo? barra = null;
+        try
+        {
+            if (!AbrirPlanta(uidoc, doc, m.NivelId))
+            {
+                ventana.Enviar(ProtocoloAreaUtil.Aviso("Abra una planta para dibujar el lote: el nivel elegido no tiene ninguna."));
+                return;
+            }
+            Autodesk.Revit.DB.Rectangle area = uiapp.DrawingAreaExtents;
+            barra = new BarraDibujo(uiapp.MainWindowHandle, (area.Left, area.Top, area.Right, area.Bottom), _ => { });
+            barra.Show();
+            ResultadoDibujo r = DibujoLibre.Dibujar(uidoc, barra, _ => { });
+            if (!r.Terminado)
+            {
+                ventana.Enviar(ProtocoloAreaUtil.Aviso(r.Puntos.Count == 0
+                    ? "Se canceló: el lote no cambió."
+                    : "Hacen falta 3 puntos o más para cerrar el lote: no cambió."));
+                return;
+            }
+            ventana.Enviar(ProtocoloAreaUtil.PuntosDibujados(r.Puntos.Select(p => new PuntoLote(Metros(p.X), Metros(p.Y), 0)).ToList()));
+        }
+        finally
+        {
+            barra?.Close();
+            ventana.Volver();
+        }
+    }
+
+    /// <summary>PickPoint exige un plano de trabajo: si la vista activa no es una planta, abre la del nivel.</summary>
+    private static bool AbrirPlanta(UIDocument uidoc, Document doc, string nivelId)
+    {
+        if (uidoc.ActiveView is not ViewPlan && long.TryParse(nivelId, out long id)
+            && doc.GetElement(new ElementId(id)) is Level nivel && Planta(doc, nivel) is ViewPlan planta)
+            uidoc.ActiveView = planta;
+        return uidoc.ActiveView is ViewPlan;
     }
 
     private const ObjectSnapTypes Enganches =
@@ -112,10 +188,7 @@ internal sealed class PuenteTablero
         ventana.Apartar();
         try
         {
-            if (uidoc.ActiveView is not ViewPlan && long.TryParse(m.NivelId, out long id)
-                && doc.GetElement(new ElementId(id)) is Level nivel && Planta(doc, nivel) is ViewPlan planta)
-                uidoc.ActiveView = planta;
-            if (uidoc.ActiveView is not ViewPlan)
+            if (!AbrirPlanta(uidoc, doc, m.NivelId))
             {
                 ventana.Enviar(ProtocoloAreaUtil.Aviso("Abra una planta para elegir dónde va el lote: el nivel elegido no tiene ninguna."));
                 return;
@@ -148,11 +221,11 @@ internal sealed class PuenteTablero
             ventana.Enviar(ProtocoloAreaUtil.Aviso("No hay un modelo de proyecto abierto. Abra uno para dibujar el lote."));
             return;
         }
-        List<Level> niveles = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().OrderBy(l => l.Elevation).ToList();
-        string? activo = (doc.ActiveView?.GenLevel ?? niveles.FirstOrDefault())?.Id.ToString();
-        ventana.Enviar(ProtocoloAreaUtil.Datos(doc.Title,
-            niveles.Select(l => new NivelLeido(l.Id.ToString(), l.Name, UnitUtils.ConvertFromInternalUnits(l.Elevation, UnitTypeId.Meters))).ToList(),
-            activo));
+        List<NivelLeido> niveles = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>().OrderBy(l => l.Elevation)
+            .Select(l => new NivelLeido(l.Id.ToString(), l.Name, UnitUtils.ConvertFromInternalUnits(l.Elevation, UnitTypeId.Meters))).ToList();
+        // Decisión 23: solo una planta activa propone su nivel; desde el 3D antes salía el más bajo (la cimentación).
+        string? dePlanta = doc.ActiveView is ViewPlan planta ? planta.GenLevel?.Id.ToString() : null;
+        ventana.Enviar(ProtocoloAreaUtil.Datos(doc.Title, niveles, NivelesLote.PorDefecto(niveles, dePlanta)));
     }
 
     private void Generar(Document doc, GenerarAreaUtil g)
@@ -196,6 +269,13 @@ internal sealed class PuenteTablero
             uidoc.ActiveView = planta;
         uidoc.Selection.SetElementIds(creadas);
         uidoc.ShowElements(creadas);
+        MostrarVolver($"Lote generado en {nivel.Name}");
+        // Una plantilla de vista que oculta Líneas, o un rango de vista corrido, deja las líneas fuera de la planta aunque
+        // existan: se dice, en vez de dejar al usuario buscándolas (decisión 23).
+        if (uidoc.ActiveView is ViewPlan vista
+            && new FilteredElementCollector(doc, vista.Id).WherePasses(new ElementIdSetFilter(creadas)).GetElementCount() < creadas.Count)
+            ventana.Enviar(ProtocoloAreaUtil.Aviso($"Las líneas se generaron en {nivel.Name}, pero no se ven en la vista «{vista.Name}»: " +
+                "revise en Visibilidad/Gráficos que la categoría Líneas y los estilos «CQ …» estén visibles, o el rango de vista."));
     }
 
     /// <summary>La primera planta del nivel que no sea plantilla: de piso, estructural o de techo, en ese orden.</summary>

@@ -44,6 +44,7 @@ textarea{width:100%;height:70px;border:1px solid var(--campo);border-radius:6px;
 .aviso.bloquea{background:#FDECEA;color:var(--mal)}
 .aviso.bien{background:#E7F5EC;color:var(--bien)}
 .colores .fila{grid-template-columns:1fr 46px 56px}
+.ayuda{margin:0 0 6px;color:var(--ink3);font-size:12px}
 </style>
 </head>
 <body>
@@ -69,16 +70,18 @@ textarea{width:100%;height:70px;border:1px solid var(--campo);border-radius:6px;
       <div id="datosPuntos" hidden>
         <table><thead><tr><th>#</th><th>X (m)</th><th>Y (m)</th><th>Z (m)</th><th></th></tr></thead><tbody id="tablaPuntos"></tbody></table>
         <button class="btn" id="agregarPunto">+ Punto</button>
+        <button class="btn" id="dibujarLote" title="Clic en cada esquina del lote en la planta; Esc o clic en el primer punto para terminar">Dibujar en Revit</button>
         <h3>Pegar desde Excel o AutoCAD</h3>
         <textarea id="pegar" placeholder="X   Y   Z (una fila por punto)"></textarea>
+        <button class="btn" id="leerPuntos" title="Lee lo escrito en el cuadro (al pegar con Ctrl+V se lee solo)">Leer puntos</button>
         <div class="fila"><label for="coordenadas">Coordenadas</label>
           <select id="coordenadas"><option value="compartidas">Compartidas (topografía)</option><option value="proyecto">Del proyecto</option></select></div>
       </div>
       <h3>Retiros (m)</h3>
-      <div class="fila"><label for="rFrontal">Frontal</label><input id="rFrontal" type="number" step="0.01" value="1.5"></div>
-      <div class="fila"><label for="rPosterior">Posterior</label><input id="rPosterior" type="number" step="0.01" value="2"></div>
-      <div class="fila"><label for="rIzquierdo">Lateral izquierdo</label><input id="rIzquierdo" type="number" step="0.01" value="1"></div>
-      <div class="fila"><label for="rDerecho">Lateral derecho</label><input id="rDerecho" type="number" step="0.01" value="1"></div>
+      <div class="fila"><label for="rFrontal">Frontal</label><input id="rFrontal" type="number" step="0.01" placeholder="de la ficha"></div>
+      <div class="fila"><label for="rPosterior">Posterior</label><input id="rPosterior" type="number" step="0.01" placeholder="de la ficha"></div>
+      <div class="fila"><label for="rIzquierdo">Lateral izquierdo</label><input id="rIzquierdo" type="number" step="0.01" placeholder="de la ficha"></div>
+      <div class="fila"><label for="rDerecho">Lateral derecho</label><input id="rDerecho" type="number" step="0.01" placeholder="de la ficha"></div>
       <h3>Ficha de la curaduría</h3>
       <div class="fila"><label for="imo">IMO</label><input id="imo" type="number" step="0.01"></div>
       <div class="fila"><label for="imc">IMC</label><input id="imc" type="number" step="0.01"></div>
@@ -86,6 +89,7 @@ textarea{width:100%;height:70px;border:1px solid var(--campo);border-radius:6px;
       <div class="fila"><label for="loteMinimo">Lote mínimo (m²)</label><input id="loteMinimo" type="number" step="0.01"></div>
       <div class="fila"><label for="frenteMinimo">Frente mínimo (m)</label><input id="frenteMinimo" type="number" step="0.01"></div>
       <h3>Lados del lote</h3>
+      <p class="ayuda">Izquierda y derecha se miran desde la calle, de frente al lote. El frente es el lado azul de la vista previa.</p>
       <div id="lados"></div>
       <h3>Nivel</h3>
       <select id="nivel"></select>

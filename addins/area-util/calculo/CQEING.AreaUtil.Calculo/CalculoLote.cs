@@ -13,7 +13,9 @@ public sealed record Resumen(double AreaLote, double AreaUtil, double AreaRetiro
     double? OcupacionMaxima, double? ConstruccionMaxima, double? ConstruccionPosible);
 
 /// <summary>Lo que llena el usuario. <paramref name="Tipos"/>: los tipos cambiados a mano, o null para deducirlos del frente.</summary>
-public sealed record EntradaLote(IReadOnlyList<Punto> Puntos, int Frente, IReadOnlyList<TipoLado>? Tipos, Retiros Retiros, Ficha Ficha);
+/// <param name="RetirosVacios">Los retiros que quedaron vacíos en la página: se toman como 0 y se avisa (decisión 24).</param>
+public sealed record EntradaLote(IReadOnlyList<Punto> Puntos, int Frente, IReadOnlyList<TipoLado>? Tipos, Retiros Retiros, Ficha Ficha,
+    IReadOnlyList<TipoLado>? RetirosVacios = null);
 
 public sealed record ResultadoLote(Poligono? Lote, IReadOnlyList<TipoLado> Tipos, Poligono? Util, IReadOnlyList<Trazo> Trazos,
     Resumen? Resumen, IReadOnlyList<Aviso> Avisos)
@@ -49,6 +51,8 @@ public static class CalculoLote
 
         if (d.Problema is { } problema)
             avisos.Insert(0, new Aviso(problema, true));
+        if (e.RetirosVacios is { Count: > 0 } vacios)
+            avisos.Add(new Aviso($"Faltan los retiros {Lista(vacios.Select(NombreRetiro))} de la ficha: se toman como 0.", false));
         if (f.FrenteMinimo is double fm && largoFrente < fm - Poligono.Tolerancia)
             avisos.Add(new Aviso(Texto($"El frente mide {largoFrente:0.##} m y la ficha pide al menos {fm:0.##} m."), false));
         if (f.LoteMinimo is double lm && lote.Area < lm - 0.01)
@@ -79,6 +83,21 @@ public static class CalculoLote
         }
         return new Ficha(Positivo(f.Imo, "El IMO"), Positivo(f.Imc, "El IMC"), pisos,
             Positivo(f.LoteMinimo, "El lote mínimo"), Positivo(f.FrenteMinimo, "El frente mínimo"));
+    }
+
+    private static string NombreRetiro(TipoLado tipo) => tipo switch
+    {
+        TipoLado.Frente => "frontal",
+        TipoLado.Posterior => "posterior",
+        TipoLado.LateralIzquierdo => "lateral izquierdo",
+        _ => "lateral derecho",
+    };
+
+    /// <summary>«a», «a y b», «a, b y c».</summary>
+    private static string Lista(IEnumerable<string> partes)
+    {
+        List<string> l = partes.ToList();
+        return l.Count <= 1 ? string.Concat(l) : $"{string.Join(", ", l.Take(l.Count - 1))} y {l[^1]}";
     }
 
     private static string Texto(FormattableString texto) => texto.ToString(Es);

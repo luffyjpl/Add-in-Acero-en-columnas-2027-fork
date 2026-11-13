@@ -37,6 +37,9 @@ public sealed record GenerarAreaUtil(EntradaLote Entrada, string NivelId, bool C
 /// <summary>«Elegir en Revit» (decisión 18): dos clics en una planta de ese nivel.</summary>
 public sealed record ElegirUbicacionAreaUtil(string NivelId) : MensajeAreaUtil;
 
+/// <summary>«Dibujar en Revit» (decisión 21): el lote a mano, con clics en una planta de ese nivel.</summary>
+public sealed record DibujarLoteAreaUtil(string NivelId) : MensajeAreaUtil;
+
 public sealed record CerrarAreaUtil : MensajeAreaUtil;
 
 public sealed record DesconocidoAreaUtil : MensajeAreaUtil;
@@ -74,6 +77,7 @@ public static class ProtocoloAreaUtil
             "generar" when !string.IsNullOrEmpty(e.NivelId) => new GenerarAreaUtil(Lote(e), e.NivelId,
                 e.Modo == "puntos" && e.Coordenadas == "compartidas", e.Estilos is { Count: > 0 } s ? s : EstilosLinea.PorDefecto),
             "elegirUbicacion" => new ElegirUbicacionAreaUtil(e.NivelId ?? ""),
+            "dibujarLote" => new DibujarLoteAreaUtil(e.NivelId ?? ""),
             "cerrar" => new CerrarAreaUtil(),
             _ => new DesconocidoAreaUtil(),
         };
@@ -91,8 +95,14 @@ public static class ProtocoloAreaUtil
             && leidos.All(t => t is not null) ? leidos.Select(t => t!.Value).ToList() : null;
         RetirosJson r = e.Retiros ?? new RetirosJson();
         FichaJson f = e.Ficha ?? new FichaJson();
-        return new EntradaLote(puntos, e.LadoFrente ?? 0, tipos, new Retiros(r.Frontal, r.Posterior, r.LateralIzquierdo, r.LateralDerecho),
-            new Ficha(f.Imo, f.Imc, f.Pisos is double p ? (int)Math.Floor(p) : null, f.LoteMinimo, f.FrenteMinimo));
+        var vacios = new List<TipoLado>();
+        if (r.Frontal is null) vacios.Add(TipoLado.Frente);
+        if (r.Posterior is null) vacios.Add(TipoLado.Posterior);
+        if (r.LateralIzquierdo is null) vacios.Add(TipoLado.LateralIzquierdo);
+        if (r.LateralDerecho is null) vacios.Add(TipoLado.LateralDerecho);
+        return new EntradaLote(puntos, e.LadoFrente ?? 0, tipos,
+            new Retiros(r.Frontal ?? 0, r.Posterior ?? 0, r.LateralIzquierdo ?? 0, r.LateralDerecho ?? 0),
+            new Ficha(f.Imo, f.Imc, f.Pisos is double p ? (int)Math.Floor(p) : null, f.LoteMinimo, f.FrenteMinimo), vacios);
     }
 
     public static string Datos(string modelo, IReadOnlyList<NivelLeido> niveles, string? nivelActivo) =>
@@ -113,6 +123,9 @@ public static class ProtocoloAreaUtil
     public static string Puntos(List<PuntoLote> puntos, List<string> errores) => Escribir(new { tipo = "puntos", puntos, errores });
 
     public static string Generado(int lineas) => Escribir(new { tipo = "generado", lineas });
+
+    /// <summary>Los puntos del dibujo libre, en metros y coordenadas del proyecto.</summary>
+    public static string PuntosDibujados(IReadOnlyList<PuntoLote> puntos) => Escribir(new { tipo = "dibujo", puntos });
 
     public static string UbicacionElegida(Ubicacion u) => Escribir(new { tipo = "ubicacion", x = u.X, y = u.Y, giro = u.GiroGrados });
 
@@ -152,12 +165,13 @@ public static class ProtocoloAreaUtil
         public double Z { get; set; }
     }
 
+    /// <summary>Null = el campo quedó vacío en la página (decisión 24): se toma como 0 y se avisa.</summary>
     private sealed class RetirosJson
     {
-        public double Frontal { get; set; }
-        public double Posterior { get; set; }
-        public double LateralIzquierdo { get; set; }
-        public double LateralDerecho { get; set; }
+        public double? Frontal { get; set; }
+        public double? Posterior { get; set; }
+        public double? LateralIzquierdo { get; set; }
+        public double? LateralDerecho { get; set; }
     }
 
     private sealed class FichaJson

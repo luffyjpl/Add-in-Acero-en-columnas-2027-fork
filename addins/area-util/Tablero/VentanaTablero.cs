@@ -27,8 +27,9 @@ internal sealed class VentanaTablero : Window
     {
         Rect area = SystemParameters.WorkArea;
         Title = "Área útil del lote";
-        Width = Math.Min(1440, area.Width);
-        Height = Math.Min(900, area.Height);
+        // Más chica que la de zapatas para ver el modelo detrás (decisión 24, punto 4); se puede agrandar.
+        Width = Math.Min(1180, area.Width);
+        Height = Math.Min(760, area.Height);
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ShowInTaskbar = false;
         Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xDD, 0xE1, 0xE6));
